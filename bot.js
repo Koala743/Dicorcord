@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const axios = require('axios');
 
-// Token viene desde las Variables de entorno de Railway
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 const client = new Client({
@@ -18,8 +17,7 @@ async function translateWithLingva(text) {
     const res = await axios.get(url);
     if (res.data && res.data.translation) return res.data.translation;
     return null;
-  } catch (err) {
-    console.error("❌ Error traduciendo:", err.message);
+  } catch {
     return null;
   }
 }
@@ -32,6 +30,9 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.content) return;
 
   const original = message.content.trim();
+  const noText = /^[\p{Emoji}\p{Punctuation}\p{Symbol}\s]+$/u.test(original);
+  if (noText) return;
+
   if (original.length < 2) return;
 
   console.log(`📨 ${message.author.username}: ${original}`);
