@@ -11,6 +11,12 @@ const client = new Client({
   ]
 });
 
+const CHANNELS_TO_TRANSLATE = new Set([
+  '1381953561008541920',
+  '1386131661942554685',
+  '1299860715884249088'
+]);
+
 async function translateWithLingva(text) {
   try {
     const url = `https://lingva.ml/api/v1/auto/es/${encodeURIComponent(text)}`;
@@ -27,9 +33,16 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.content) return;
+  if (
+    message.author.bot ||
+    !message.content ||
+    !CHANNELS_TO_TRANSLATE.has(message.channel.id)
+  ) return;
 
   const original = message.content.trim();
+
+  const hasLongWord = original.split(/\s+/).some(word => word.length > 3);
+  if (!hasLongWord) return;
 
   const sinTexto = original
     .replace(/<a?:\w+:\d+>/g, '')
