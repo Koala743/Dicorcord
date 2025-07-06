@@ -74,10 +74,6 @@ client.on('messageCreate', async (message) => {
     const original = referencedMessage.content.trim();
     if (!original) return;
 
-    const words = original.split(/\s+/);
-    const maxWordLength = Math.max(...words.map(w => w.length));
-    if (maxWordLength <= 5) return;
-
     const translated = await translateWithLingva(original);
     if (translated && translated.toLowerCase() !== original.toLowerCase()) {
       await message.reply(`📥 **Traducción al español:** ${translated}`);
