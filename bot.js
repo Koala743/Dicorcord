@@ -33,16 +33,13 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (
-    message.author.bot ||
-    !message.content ||
-    !CHANNELS_TO_TRANSLATE.has(message.channel.id)
-  ) return;
+  if (message.author.bot || !message.content || !CHANNELS_TO_TRANSLATE.has(message.channel.id)) return;
 
   const original = message.content.trim();
 
-  const hasLongWord = original.split(/\s+/).some(word => word.length > 3);
-  if (!hasLongWord) return;
+  const words = original.split(/\s+/);
+  const maxWordLength = Math.max(...words.map(w => w.length));
+  if (maxWordLength < 3) return;
 
   const sinTexto = original
     .replace(/<a?:\w+:\d+>/g, '')
@@ -50,15 +47,43 @@ client.on('messageCreate', async (message) => {
 
   if (sinTexto.length === 0 || original.length < 2) return;
 
-  console.log(`📨 ${message.author.username}: ${original}`);
+  if (original.toLowerCase().startsWith('.tg')) return;
 
-  const translated = await translateWithLingva(original);
+  if (maxWordLength >= 3 && maxWordLength <= 5) {
+    const translated = await translateWithLingva(original);
+    if (translated && translated.toLowerCase() !== original.toLowerCase()) {
+      const reply = await message.reply(`📥 **Traducción al español:** ${translated}`);
+      setTimeout(() => reply.delete().catch(() => {}), 5000);
+    }
+  }
+});
 
-  if (translated && translated.toLowerCase() !== original.toLowerCase()) {
-    console.log(`📝 Traducción: ${translated}`);
-    await message.reply(`📥 **Traducción al español:** ${translated}`);
-  } else {
-    console.log("⚠️ No se pudo traducir o ya está en español.");
+client.on('messageCreate', async (message) => {
+  if (
+    message.author.bot ||
+    !message.content ||
+    !CHANNELS_TO_TRANSLATE.has(message.channel.id)
+  ) return;
+
+  if (!message.content.toLowerCase().startsWith('.tg')) return;
+
+  if (!message.reference || !message.reference.messageId) return;
+
+  try {
+    const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+    const original = referencedMessage.content.trim();
+    if (!original) return;
+
+    const words = original.split(/\s+/);
+    const maxWordLength = Math.max(...words.map(w => w.length));
+    if (maxWordLength <= 5) return;
+
+    const translated = await translateWithLingva(original);
+    if (translated && translated.toLowerCase() !== original.toLowerCase()) {
+      await message.reply(`📥 **Traducción al español:** ${translated}`);
+    }
+  } catch {
+    return;
   }
 });
 
