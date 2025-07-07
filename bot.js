@@ -7,7 +7,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -15,6 +16,23 @@ const CHANNELS_TO_TRANSLATE = new Set([
   '1381953561008541920',
   '1386131661942554685',
   '1299860715884249088'
+]);
+
+const USERNAMES_TO_KICK = new Set([
+  '___darkness___',
+  'vandaam_',
+  'dakigd',
+  'barnettmrz',
+  'ultiog',
+  'chilledbybreezy',
+  'iftee.',
+  'ghxst_walker',
+  'hikaishin',
+  'mixxlethereal',
+  'darknessrose6',
+  'yoursecondfan',
+  'z9gg0606',
+  'whoisaeiou'
 ]);
 
 async function translateWithLingva(text) {
@@ -28,8 +46,26 @@ async function translateWithLingva(text) {
   }
 }
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
+
+  const guilds = client.guilds.cache;
+
+  for (const [guildId, guild] of guilds) {
+    try {
+      await guild.members.fetch();
+      guild.members.cache.forEach(member => {
+        const username = member.user.username.toLowerCase();
+        if (USERNAMES_TO_KICK.has(username)) {
+          member.kick('Expulsado automáticamente por estar en lista negra')
+            .then(() => console.log(`🚫 Expulsado: ${username}`))
+            .catch(err => console.log(`❌ No se pudo expulsar a ${username}: ${err.message}`));
+        }
+      });
+    } catch (err) {
+      console.log(`⚠️ Error en guild ${guild.name}: ${err.message}`);
+    }
+  }
 });
 
 client.on('messageCreate', async (message) => {
