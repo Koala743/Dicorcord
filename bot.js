@@ -6,6 +6,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  ComponentType,
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
@@ -48,8 +49,9 @@ const trans = {
     langSaved: '🎉 Idioma guardado exitosamente.',
     dtSuccess: '✅ Mensajes eliminados exitosamente.',
     dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
-    dtInvalidNumber: '⚠️ Por favor, especifica un número válido (1-100).',
     dtChannelNotAllowed: '⚠️ No puedes usar `.DT` en este canal.',
+    dtChooseAmount: '🗑️ Selecciona la cantidad de mensajes a eliminar:',
+    dtTimeout: '⏳ Tiempo para seleccionar expirado.',
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
@@ -61,8 +63,9 @@ const trans = {
     langSaved: '🎉 Language saved successfully.',
     dtSuccess: '✅ Messages deleted successfully.',
     dtFail: '❌ Could not delete messages. Do I have permissions?',
-    dtInvalidNumber: '⚠️ Please specify a valid number (1-100).',
     dtChannelNotAllowed: '⚠️ You cannot use `.DT` in this channel.',
+    dtChooseAmount: '🗑️ Select the amount of messages to delete:',
+    dtTimeout: '⏳ Selection time expired.',
   },
 };
 
@@ -113,27 +116,32 @@ client.on('messageCreate', async (m) => {
 
   const content = m.content.trim();
 
-  // .DT command (delete messages)
+  // .DT command (delete messages) with buttons to select amount
   if (content.toLowerCase().startsWith('.dt')) {
-    // Solo permitir en los canales definidos
     if (!CHANNELS.has(m.channel.id)) {
       return sendWarning(m, T(m.author.id, 'dtChannelNotAllowed'));
     }
-    const parts = content.split(' ');
-    if (parts.length < 2) {
-      return sendWarning(m, T(m.author.id, 'dtInvalidNumber'));
-    }
-    const amount = parseInt(parts[1], 10);
-    if (isNaN(amount) || amount < 1 || amount > 100) {
-      return sendWarning(m, T(m.author.id, 'dtInvalidNumber'));
+
+    const uid = m.author.id;
+    const lang = getLang(uid);
+
+    const buttons = [5, 10, 25, 50, 100, 200, 300, 400].map((num) =>
+      new ButtonBuilder()
+        .setCustomId(`delAmount-${uid}-${num}`)
+        .setLabel(num.toString())
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 5) {
+      rows.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));
     }
 
-    try {
-      await m.channel.bulkDelete(amount + 1, true); // +1 para incluir el comando
-      return sendWarning(m, T(m.author.id, 'dtSuccess'));
-    } catch {
-      return sendWarning(m, T(m.author.id, 'dtFail'));
-    }
+    return m.reply({
+      content: T(uid, 'dtChooseAmount'),
+      components: rows,
+      ephemeral: true,
+    });
   }
 
   // .TD command (translation)
@@ -183,9 +191,22 @@ client.on('messageCreate', async (m) => {
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
 
-  if (i.isButton() && i.customId === `del-${uid}`) {
-    await i.message.delete().catch(() => {});
-    return;
+  if (i.isButton()) {
+    if (i.customId === `del-${uid}`) {
+      await i.message.delete().catch(() => {});
+      return;
+    }
+    if (i.customId.startsWith(`delAmount-${uid}-`)) {
+      const amount = parseInt(i.customId.split('-')[2], 10);
+      try {
+        await i.deferReply({ ephemeral: true });
+        await i.channel.bulkDelete(amount + 1, true);
+        await i.editReply({ content: T(uid, 'dtSuccess') });
+      } catch {
+        await i.editReply({ content: T(uid, 'dtFail') });
+      }
+      return;
+    }
   }
 
   if (!i.isStringSelectMenu()) return;
