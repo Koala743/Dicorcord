@@ -1,5 +1,5 @@
-const { 
-  Client, 
+const {
+  Client,
   GatewayIntentBits,
   ActionRowBuilder,
   StringSelectMenuBuilder,
@@ -42,11 +42,18 @@ async function translateText(text, targetLang) {
   try {
     const url = `https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`;
     const res = await axios.get(url);
-    if (res.data && res.data.translation) return res.data.translation;
+    if (res.data && res.data.translation) return { translated: res.data.translation, detected: res.data.info?.detectedLanguage?.code };
     return null;
   } catch {
     return null;
   }
+}
+
+async function sendTranslatedWarning(channel, userId, text) {
+  const lang = userLangPrefs.get(userId) || 'es';
+  const result = await translateText(text, lang);
+  const msg = await channel.send(result?.translated || text);
+  setTimeout(() => msg.delete().catch(() => {}), 5000);
 }
 
 client.once('ready', () => {
@@ -55,12 +62,10 @@ client.once('ready', () => {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.content || !CHANNELS_TO_TRANSLATE.has(message.channel.id)) return;
-
   if (!message.content.toLowerCase().startsWith('.td')) return;
 
   if (!message.reference || !message.reference.messageId) {
-    const msg = await message.reply('⚠️ Usa el comando respondiendo a un mensaje.');
-    setTimeout(() => msg.delete().catch(() => {}), 5000);
+    await sendTranslatedWarning(message.channel, message.author.id, '⚠️ Usa el comando respondiendo a un mensaje.');
     return;
   }
 
@@ -68,83 +73,33 @@ client.on('messageCreate', async (message) => {
   const original = refMsg.content;
 
   const userId = message.author.id;
-  const langPref = userLangPrefs.get(userId);
+  const langPref = userLangPrefs.get(userId) || 'es';
 
-  if (langPref) {
-    const translated = await translateText(original, langPref);
-    if (!translated || translated.toLowerCase() === original.toLowerCase()) {
-      const msg = await message.channel.send(`⚠️ No se pudo traducir.`);
-      setTimeout(() => msg.delete().catch(() => {}), 5000);
-      return;
-    }
-
-    const rowChangeLang = new ActionRowBuilder()
-      .addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId(`change-lang-${userId}`)
-          .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === langPref)?.label || langPref}`)
-          .addOptions(LANGUAGES)
-          .setMinValues(1)
-          .setMaxValues(1)
-      );
-
-    await message.channel.send({
-      content: `📥 **Traducción (${LANGUAGES.find(l => l.value === langPref)?.label || langPref}):** ${translated}`,
-      components: [rowChangeLang]
-    });
-  } else {
-    const row = new ActionRowBuilder()
-      .addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId(`select-lang-${userId}`)
-          .setPlaceholder('Selecciona el idioma de destino')
-          .addOptions(LANGUAGES)
-          .setMinValues(1)
-          .setMaxValues(1)
-      );
-
-    const promptMsg = await message.reply({
-      content: 'Selecciona el idioma para traducir:',
-      components: [row]
-    });
-
-    const filter = i => i.user.id === userId && i.customId === `select-lang-${userId}`;
-
-    try {
-      const interaction = await promptMsg.awaitMessageComponent({ filter, componentType: ComponentType.StringSelect, time: 30000 });
-
-      const selectedLang = interaction.values[0];
-      userLangPrefs.set(userId, selectedLang);
-
-      await interaction.deferUpdate();
-
-      const translated = await translateText(original, selectedLang);
-      if (!translated || translated.toLowerCase() === original.toLowerCase()) {
-        const msg = await message.channel.send(`⚠️ No se pudo traducir.`);
-        setTimeout(() => msg.delete().catch(() => {}), 5000);
-        return;
-      }
-
-      const rowChangeLang = new ActionRowBuilder()
-        .addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`change-lang-${userId}`)
-            .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === selectedLang)?.label || selectedLang}`)
-            .addOptions(LANGUAGES)
-            .setMinValues(1)
-            .setMaxValues(1)
-        );
-
-      await message.channel.send({
-        content: `📥 **Traducción (${LANGUAGES.find(l => l.value === selectedLang)?.label || selectedLang}):** ${translated}`,
-        components: [rowChangeLang]
-      });
-
-    } catch {
-      const msg = await message.reply('⏳ Tiempo agotado. Usa el comando nuevamente.');
-      setTimeout(() => msg.delete().catch(() => {}), 5000);
-    }
+  const result = await translateText(original, langPref);
+  if (!result || !result.translated) {
+    await sendTranslatedWarning(message.channel, userId, '⚠️ No se pudo traducir.');
+    return;
   }
+
+  if (result.detected && result.detected.toLowerCase() === langPref.toLowerCase()) {
+    await sendTranslatedWarning(message.channel, userId, '⚠️ No se puede traducir a tu propio idioma. Selecciona uno diferente.');
+    return;
+  }
+
+  const rowChangeLang = new ActionRowBuilder()
+    .addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`change-lang-${userId}`)
+        .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === langPref)?.label || langPref}`)
+        .addOptions(LANGUAGES)
+        .setMinValues(1)
+        .setMaxValues(1)
+    );
+
+  await message.channel.send({
+    content: `📥 **Traducción (${LANGUAGES.find(l => l.value === langPref)?.label || langPref}):** ${result.translated}`,
+    components: [rowChangeLang]
+  });
 });
 
 client.on('interactionCreate', async interaction => {
@@ -163,6 +118,42 @@ client.on('interactionCreate', async interaction => {
     await interaction.update({
       content: `✅ Idioma actualizado a **${LANGUAGES.find(l => l.value === newLang)?.label || newLang}**.`,
       components: []
+    });
+  }
+
+  if (interaction.customId.startsWith('select-lang-')) {
+    const selectedLang = interaction.values[0];
+    userLangPrefs.set(userId, selectedLang);
+
+    await interaction.deferUpdate();
+
+    const message = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+    const original = message.content;
+
+    const result = await translateText(original, selectedLang);
+    if (!result || !result.translated) {
+      await sendTranslatedWarning(interaction.channel, userId, '⚠️ No se pudo traducir.');
+      return;
+    }
+
+    if (result.detected && result.detected.toLowerCase() === selectedLang.toLowerCase()) {
+      await sendTranslatedWarning(interaction.channel, userId, '⚠️ No se puede traducir a tu propio idioma. Selecciona uno diferente.');
+      return;
+    }
+
+    const rowChangeLang = new ActionRowBuilder()
+      .addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`change-lang-${userId}`)
+          .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === selectedLang)?.label || selectedLang}`)
+          .addOptions(LANGUAGES)
+          .setMinValues(1)
+          .setMaxValues(1)
+      );
+
+    await interaction.channel.send({
+      content: `📥 **Traducción (${LANGUAGES.find(l => l.value === selectedLang)?.label || selectedLang}):** ${result.translated}`,
+      components: [rowChangeLang]
     });
   }
 });
