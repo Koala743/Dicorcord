@@ -50,7 +50,7 @@ const trans = {
     translationTitle: '📥 Traducción',
     deleteLabel: 'Eliminar mensaje',
     langSaved: '🎉 Idioma guardado exitosamente.',
-    enterAmount: 'Por favor ingresa la cantidad de mensajes a eliminar:',
+    enterAmount: 'Por favor ingresa la cantidad de mensajes a eliminar (1-100):',
     deleteSuccess: '✅ Mensajes eliminados correctamente.',
     deleteInvalid: '⚠️ Por favor ingresa un número válido entre 1 y 100.'
   },
@@ -62,7 +62,7 @@ const trans = {
     translationTitle: '📥 Translation',
     deleteLabel: 'Delete message',
     langSaved: '🎉 Language saved successfully.',
-    enterAmount: 'Please enter the amount of messages to delete:',
+    enterAmount: 'Please enter the amount of messages to delete (1-100):',
     deleteSuccess: '✅ Messages deleted successfully.',
     deleteInvalid: '⚠️ Please enter a valid number between 1 and 100.'
   }
@@ -137,11 +137,8 @@ client.on('messageCreate', async m => {
 
     m.reply({ content: 'Selecciona idioma para guardar:', components:[new ActionRowBuilder().addComponents(sel)], ephemeral:true });
 
-  } else if (contentLower.startsWith('.dt')) {
-    // .DT command: show modal to ask number of messages to delete
-    if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
-
-    // Show modal to user
+  } else if (contentLower === '.dt') {
+    // .DT command: open modal to input amount (no need to reply)
     const modal = new ModalBuilder()
       .setCustomId(`deleteModal-${m.author.id}`)
       .setTitle('Eliminar mensajes');
@@ -156,16 +153,16 @@ client.on('messageCreate', async m => {
     const row = new ActionRowBuilder().addComponents(input);
     modal.addComponents(row);
 
-    await m.channel.sendTyping();
-    await m.reply({ content: '📝 Abriendo cuadro para cantidad...', ephemeral: true });
-    await m.awaitMessageComponent({ componentType: 'BUTTON', time: 1000 }).catch(() => {});
-    return m.client.application?.commands ? await m.client.application.commands : null;
-
-    return m.showModal(modal); // show modal to user, must be from interaction, workaround below
+    // Show modal requires interaction, so respond ephemeral with instructions
+    try {
+      // We need interaction to show modal, but we have a message event here.
+      // Workaround: reply asking to use slash command or react with instructions
+      // Or alternatively, listen for .DT as slash command (recommended)
+      await m.reply({ content: '❌ El comando `.DT` debe usarse como un comando slash para mostrar el cuadro.', ephemeral: true });
+    } catch {}
   }
 });
 
-// Interaction handler for modal and buttons
 client.on('interactionCreate', async interaction => {
   const uid = interaction.user.id;
 
@@ -177,14 +174,14 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.isStringSelectMenu()) {
-    const [action, uid2] = interaction.customId.split('-');
+    const [_, uid2] = interaction.customId.split('-');
     if (uid !== uid2) return interaction.reply({ content: 'No es tu menú.', ephemeral: true });
 
     const v = interaction.values[0];
     prefs[uid] = v;
     save();
 
-    await interaction.update({ content: `${LANGUAGES.find(l => l.value === v).emoji} ${T(uid,'langSaved')}`, components: [], ephemeral: true });
+    await interaction.update({ content: `${LANGUAGES.find(l=>l.value===v).emoji} ${T(uid,'langSaved')}`, components: [], ephemeral: true });
     const note = await interaction.followUp({ content: '🎉 Listo! Usa `.TD` ahora.', ephemeral: true });
     setTimeout(() => note.delete().catch(() => {}), 5000);
     return;
@@ -200,12 +197,24 @@ client.on('interactionCreate', async interaction => {
         return;
       }
 
-      // Delete amount messages, including command message
-      const fetched = await interaction.channel.messages.fetch({ limit: amount });
       try {
+        // Fetch and delete messages
+        const fetched = await interaction.channel.messages.fetch({ limit: amount });
         await interaction.channel.bulkDelete(fetched, true);
-        await interaction.reply({ content: T(uid, 'deleteSuccess'), ephemeral: true });
-      } catch (e) {
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Mensajes eliminados')
+          .setColor('#2ecc71')
+          .setDescription(`Se eliminaron ${amount} mensajes en el canal <#${interaction.channel.id}>.`)
+          .setFooter({ text: `Usuario: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+
+        setTimeout(() => {
+          interaction.deleteReply().catch(() => {});
+        }, 5000);
+      } catch (error) {
         await interaction.reply({ content: '⚠️ Error al eliminar mensajes.', ephemeral: true });
       }
     }
