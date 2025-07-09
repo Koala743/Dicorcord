@@ -45,7 +45,6 @@ const trans = {
     alreadyInLang: '⚠️ El mensaje ya está en tu idioma.',
     notYours: '⚠️ No puedes traducir tu propio idioma.',
     translationTitle: '📥 Traducción',
-    deleteLabel: 'Eliminar mensaje',
     langSaved: '🎉 Idioma guardado exitosamente.',
     dtSuccess: '✅ Mensajes eliminados exitosamente.',
     dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
@@ -59,7 +58,6 @@ const trans = {
     alreadyInLang: '⚠️ Message already in your language.',
     notYours: '⚠️ You cannot translate your own language.',
     translationTitle: '📥 Translation',
-    deleteLabel: 'Delete message',
     langSaved: '🎉 Language saved successfully.',
     dtSuccess: '✅ Messages deleted successfully.',
     dtFail: '❌ Could not delete messages. Do I have permissions?',
@@ -123,7 +121,6 @@ client.on('messageCreate', async (m) => {
     }
 
     const uid = m.author.id;
-    const lang = getLang(uid);
 
     const buttons = [5, 10, 25, 50, 100, 200, 300, 400].map((num) =>
       new ButtonBuilder()
@@ -144,7 +141,7 @@ client.on('messageCreate', async (m) => {
     });
   }
 
-  // .TD command (translation)
+  // .TD command (translation) without delete button
   if (content.toLowerCase().startsWith('.td')) {
     if (!CHANNELS.has(m.channel.id)) return;
 
@@ -167,14 +164,10 @@ client.on('messageCreate', async (m) => {
         .setColor('#00c7ff')
         .setTitle(`${LANGUAGES.find((l) => l.value === lang).emoji} ${T(uid, 'translationTitle')} (${LANGUAGES.find((l) => l.value === lang).label})`)
         .setDescription(res.text)
-        .setFooter({ text: '🌐 Traductor automático' });
+        .setFooter({ text: '🌐 Traductor automático' })
+        .setTimestamp();
 
-      const btn = new ButtonBuilder()
-        .setCustomId(`del-${uid}`)
-        .setLabel(T(uid, 'deleteLabel'))
-        .setStyle(ButtonStyle.Danger);
-
-      return m.reply({ embeds: [e], components: [new ActionRowBuilder().addComponents(btn)], ephemeral: true });
+      return m.reply({ embeds: [e], ephemeral: true });
     }
 
     await loading.delete().catch(() => {});
@@ -192,10 +185,6 @@ client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
 
   if (i.isButton()) {
-    if (i.customId === `del-${uid}`) {
-      await i.message.delete().catch(() => {});
-      return;
-    }
     if (i.customId.startsWith(`delAmount-${uid}-`)) {
       const amount = parseInt(i.customId.split('-')[2], 10);
       try {
