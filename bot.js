@@ -47,7 +47,8 @@ const translations = {
     alreadyInLang: '⚠️ El mensaje ya está en tu idioma. No se puede traducir.',
     notYours: '⚠️ No puedes traducir tu propio idioma.',
     translationTitle: '📥 Traducción',
-    deleteLabel: 'Eliminar mensaje'
+    deleteLabel: 'Eliminar mensaje',
+    langSaved: '✅ Idioma guardado exitosamente.'
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
@@ -55,7 +56,8 @@ const translations = {
     alreadyInLang: '⚠️ Message is already in your language. Cannot translate.',
     notYours: '⚠️ You cannot translate your own language.',
     translationTitle: '📥 Translation',
-    deleteLabel: 'Delete message'
+    deleteLabel: 'Delete message',
+    langSaved: '✅ Language saved successfully.'
   }
 };
 
@@ -92,6 +94,13 @@ async function translateText(text, targetLang) {
   return null;
 }
 
+async function sendWarning(interactionOrMessage, text) {
+  const reply = await interactionOrMessage.reply({ content: text, ephemeral: true });
+  setTimeout(() => {
+    if (reply?.delete) reply.delete().catch(() => {});
+  }, 5000);
+}
+
 client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
   loadLangPrefs();
@@ -101,9 +110,7 @@ client.on('messageCreate', async msg => {
   if (msg.author.bot || !msg.content || !CHANNELS_TO_TRANSLATE.has(msg.channel.id)) return;
   if (!msg.content.toLowerCase().startsWith('.td')) return;
 
-  if (!msg.reference?.messageId) {
-    return msg.reply({ content: t(msg.author.id, 'mustReply'), ephemeral: true });
-  }
+  if (!msg.reference?.messageId) return sendWarning(msg, t(msg.author.id, 'mustReply'));
 
   const ref = await msg.channel.messages.fetch(msg.reference.messageId);
   const original = ref.content;
@@ -113,10 +120,10 @@ client.on('messageCreate', async msg => {
   if (userLangPrefs[uid]) {
     const res = await translateText(original, langPref);
     if (!res || res.text.toLowerCase() === original.toLowerCase()) {
-      return msg.reply({ content: t(uid, 'alreadyInLang'), ephemeral: true });
+      return sendWarning(msg, t(uid, 'alreadyInLang'));
     }
     if (res.from === langPref) {
-      return msg.reply({ content: t(uid, 'notYours'), ephemeral: true });
+      return sendWarning(msg, t(uid, 'notYours'));
     }
 
     const embed = new EmbedBuilder()
@@ -137,11 +144,15 @@ client.on('messageCreate', async msg => {
 
   const select = new StringSelectMenuBuilder()
     .setCustomId(`select-lang-${uid}`)
-    .setPlaceholder('🌍 Selecciona idioma')
-    .addOptions(LANGUAGES.map(l => ({ label: l.label, value: l.value, emoji: l.emoji })));
+    .setPlaceholder('🌍 Selecciona idioma de traducción')
+    .addOptions(LANGUAGES.map(l => ({
+      label: l.label,
+      value: l.value,
+      emoji: l.emoji
+    })));
 
   const row = new ActionRowBuilder().addComponents(select);
-  return msg.reply({ content: 'Selecciona idioma de traducción:', components: [row], ephemeral: true });
+  return msg.reply({ content: 'Selecciona idioma para guardar:', components: [row], ephemeral: true });
 });
 
 client.on('interactionCreate', async i => {
@@ -161,11 +172,16 @@ client.on('interactionCreate', async i => {
     userLangPrefs[uid] = sel;
     saveLangPrefs();
 
+    const emoji = LANGUAGES.find(l => l.value === sel)?.emoji || '🌍';
+
     await i.update({
-      content: `✅ Idioma guardado: **${LANGUAGES.find(l => l.value === sel).label}**.`,
+      content: `${emoji} ${t(uid, 'langSaved')}`,
       components: [],
       ephemeral: true
     });
+
+    const msg = await i.followUp({ content: '🎉 Idioma listo. Usa `.TD` para traducir.', ephemeral: true });
+    setTimeout(() => msg.delete().catch(() => {}), 5000);
   }
 });
 
