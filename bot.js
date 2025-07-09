@@ -1,145 +1,147 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js'); const axios = require('axios');
+const { 
+  Client, 
+  GatewayIntentBits,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ComponentType,
+  Events,
+  RESTPostAPIApplicationCommandsJSONBody
+} = require('discord.js');
+const axios = require('axios');
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
-const client = new Client({ intents: [ GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers ] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
 
-const CHANNELS_TO_TRANSLATE = new Set([ '1381953561008541920', '1386131661942554685', '1299860715884249088' ]);
+const CHANNELS_TO_TRANSLATE = new Set([
+  '1381953561008541920',
+  '1386131661942554685',
+  '1299860715884249088'
+]);
 
-const USERNAMES_TO_KICK = new Set([ 'darkness', 'vandaam_', 'dakigd', 'barnettmrz', 'ultiog', 'chilledbybreezy', 'iftee.', 'ghxst_walker', 'hikaishin', 'mixxlethereal', 'darknessrose6', 'yoursecondfan', 'z9gg0606', 'whoisaeiou' ]);
+const userLangPrefs = new Map(); // userId => langCode
 
-const userPreferredLanguages = new Map();
+const LANGUAGES = [
+  { label: 'Español', value: 'es' },
+  { label: 'Inglés', value: 'en' },
+  { label: 'Francés', value: 'fr' },
+  { label: 'Alemán', value: 'de' },
+  { label: 'Portugués', value: 'pt' },
+  { label: 'Italiano', value: 'it' },
+  { label: 'Ruso', value: 'ru' },
+  { label: 'Japonés', value: 'ja' },
+  { label: 'Coreano', value: 'ko' },
+  { label: 'Chino (Simplificado)', value: 'zh-CN' },
+  // agrega más si quieres
+];
 
-async function translateWithLingva(text, targetLang = 'es') { try { const url = https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}; const res = await axios.get(url); if (res.data && res.data.translation) return res.data.translation; return null; } catch { return null; } }
-
-async function detectLanguage(text) { try { const url = https://lingva.ml/api/v1/auto/_/${encodeURIComponent(text)}; const res = await axios.get(url); if (res.data && res.data.info && res.data.info.detectedLanguage) { return res.data.info.detectedLanguage; } return 'es'; } catch { return 'es'; } }
-
-async function detectUserPreferredLanguage(channel, userId) { try { const messages = await channel.messages.fetch({ limit: 50 }); const userMessages = messages .filter(msg => msg.author.id === userId && msg.content.trim().length > 0) .map(msg => msg.content.trim());
-
-const counts = {};
-
-for (const text of userMessages) {
-  const lang = await detectLanguage(text);
-  counts[lang] = (counts[lang] || 0) + 1;
-}
-
-let topLang = 'es';
-let max = 0;
-for (const lang in counts) {
-  if (counts[lang] > max) {
-    max = counts[lang];
-    topLang = lang;
+async function translateText(text, targetLang) {
+  try {
+    const url = `https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`;
+    const res = await axios.get(url);
+    if (res.data && res.data.translation) return res.data.translation;
+    return null;
+  } catch {
+    return null;
   }
 }
 
-return topLang;
-
-} catch { return 'es'; } }
-
-client.once('ready', async () => { console.log(✅ Bot conectado como ${client.user.tag});
-
-const guilds = client.guilds.cache;
-
-for (const [guildId, guild] of guilds) { try { await guild.members.fetch(); guild.members.cache.forEach(member => { const username = member.user.username.toLowerCase(); if (USERNAMES_TO_KICK.has(username)) { member.kick('Expulsado automáticamente por estar en lista negra') .then(() => console.log(🚫 Expulsado: ${username})) .catch(err => console.log(❌ No se pudo expulsar a ${username}: ${err.message})); } }); } catch (err) { console.log(⚠️ Error en guild ${guild.name}: ${err.message}); } } });
-
-client.on('messageCreate', async (message) => { if ( message.author.bot || !message.content || !CHANNELS_TO_TRANSLATE.has(message.channel.id) ) return;
-
-const original = message.content.trim(); const words = original.split(/\s+/); const maxWordLength = Math.max(...words.map(w => w.length)); if (maxWordLength < 3) return;
-
-const sinTexto = original .replace(/<a?:\w+:\d+>/g, '') .replace(/[\p{Emoji}\p{Punctuation}\p{Symbol}\s]/gu, '');
-
-if (sinTexto.length === 0 || original.length < 2) return;
-
-if (original.toLowerCase().startsWith('.td')) return;
-
-if (maxWordLength >= 3 && maxWordLength <= 5) { const translated = await translateWithLingva(original); if (translated && translated.toLowerCase() !== original.toLowerCase()) { const reply = await message.reply(📥 **Traducción al español:** ${translated}); setTimeout(() => reply.delete().catch(() => {}), 5000); } } });
-
-client.on('messageCreate', async (message) => { if ( message.author.bot || !message.content.toLowerCase().startsWith('.td') || !message.reference || !CHANNELS_TO_TRANSLATE.has(message.channel.id) ) return;
-
-try { const referenced = await message.channel.messages.fetch(message.reference.messageId); const originalText = referenced.content.trim(); if (!originalText) return;
-
-const languageMenu = new ActionRowBuilder().addComponents(
-  new StringSelectMenuBuilder()
-    .setCustomId('select-lang')
-    .setPlaceholder('🌐 Selecciona un idioma de destino')
-    .addOptions([
-      { label: 'Español', value: 'es' },
-      { label: 'Inglés', value: 'en' },
-      { label: 'Portugués', value: 'pt' },
-      { label: 'Francés', value: 'fr' },
-      { label: 'Alemán', value: 'de' },
-      { label: 'Italiano', value: 'it' },
-      { label: 'Japonés', value: 'ja' }
-    ])
-);
-
-const menuMsg = await message.reply({
-  content: 'Selecciona el idioma al que deseas traducir:',
-  components: [languageMenu]
+client.once('ready', () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
 });
 
-const collector = menuMsg.createMessageComponentCollector({
-  componentType: ComponentType.StringSelect,
-  time: 15000,
-  max: 1
-});
+client.on('messageCreate', async (message) => {
+  if (
+    message.author.bot || 
+    !message.content || 
+    !CHANNELS_TO_TRANSLATE.has(message.channel.id)
+  ) return;
 
-collector.on('collect', async (interaction) => {
-  const targetLang = interaction.values[0];
-  const translated = await translateWithLingva(originalText, targetLang);
-  if (translated) {
-    userPreferredLanguages.set(message.author.id, targetLang);
-    await interaction.reply(`📥 **Traducción (${targetLang.toUpperCase()}):** ${translated}`);
-  } else {
-    await interaction.reply('❌ No se pudo traducir el mensaje.');
+  if (!message.content.toLowerCase().startsWith('.td')) return;
+
+  if (!message.reference || !message.reference.messageId) {
+    message.reply('⚠️ Por favor usa el comando respondiendo a un mensaje.');
+    return;
   }
-});
 
-collector.on('end', async (collected) => {
-  await menuMsg.edit({ components: [] }).catch(() => {});
-  if (collected.size === 0) {
-    let userLang = userPreferredLanguages.get(message.author.id);
-    if (!userLang) {
-      userLang = await detectUserPreferredLanguage(message.channel, message.author.id);
-      userPreferredLanguages.set(message.author.id, userLang);
+  const langPref = userLangPrefs.get(message.author.id) || 'es';
+
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`select-lang-${message.author.id}`)
+        .setPlaceholder('Selecciona el idioma de destino')
+        .addOptions(LANGUAGES)
+        .setMinValues(1)
+        .setMaxValues(1)
+    );
+
+  const promptMsg = await message.reply({
+    content: 'Selecciona el idioma al que quieres traducir el mensaje:',
+    components: [row]
+  });
+
+  const filter = i => i.user.id === message.author.id && i.customId === `select-lang-${message.author.id}`;
+
+  try {
+    const interaction = await promptMsg.awaitMessageComponent({ filter, componentType: ComponentType.StringSelect, time: 30000 });
+
+    const targetLang = interaction.values[0];
+    userLangPrefs.set(message.author.id, targetLang);
+
+    await interaction.deferUpdate();
+
+    const refMsg = await message.channel.messages.fetch(message.reference.messageId);
+    const original = refMsg.content;
+
+    const translated = await translateText(original, targetLang);
+
+    if (!translated || translated.toLowerCase() === original.toLowerCase()) {
+      await message.channel.send(`⚠️ No se pudo traducir o el texto ya está en el idioma seleccionado.`);
+      return;
     }
 
-    const translation = await translateWithLingva(originalText, userLang);
-    if (translation) {
-      const langChangeMenu = new ActionRowBuilder().addComponents(
+    const rowChangeLang = new ActionRowBuilder()
+      .addComponents(
         new StringSelectMenuBuilder()
-          .setCustomId(`lang-change-${message.author.id}`)
-          .setPlaceholder('⬇️ Cambiar idioma')
-          .addOptions([
-            { label: 'Español', value: 'es' },
-            { label: 'Inglés', value: 'en' },
-            { label: 'Portugués', value: 'pt' },
-            { label: 'Francés', value: 'fr' },
-            { label: 'Alemán', value: 'de' },
-            { label: 'Italiano', value: 'it' },
-            { label: 'Japonés', value: 'ja' }
-          ])
+          .setCustomId(`change-lang-${message.author.id}`)
+          .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === targetLang)?.label || targetLang}. Cambiar idioma`)
+          .addOptions(LANGUAGES)
+          .setMinValues(1)
+          .setMaxValues(1)
       );
 
-      await message.reply({
-        content: `📥 **Traducción (${userLang.toUpperCase()}):** ${translation}`,
-        components: [langChangeMenu]
-      });
-    }
+    await message.channel.send({
+      content: `📥 **Traducción (${LANGUAGES.find(l => l.value === targetLang)?.label || targetLang}):** ${translated}`,
+      components: [rowChangeLang]
+    });
+
+  } catch {
+    message.reply('⏳ Tiempo de selección agotado. Por favor usa el comando nuevamente.');
   }
 });
 
-} catch { return; } });
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isStringSelectMenu()) return;
 
-client.on('interactionCreate', async (interaction) => { if (!interaction.isStringSelectMenu()) return;
+  const userId = interaction.customId.split('-').pop();
+  if (interaction.user.id !== userId) {
+    await interaction.reply({ content: 'Este menú no es para ti.', ephemeral: true });
+    return;
+  }
 
-if (interaction.customId.startsWith('lang-change-')) { const userId = interaction.customId.split('-').pop(); if (interaction.user.id !== userId) { return interaction.reply({ content: '❌ Solo tú puedes cambiar tu idioma.', ephemeral: true }); }
+  if (interaction.customId.startsWith('change-lang-')) {
+    const targetLang = interaction.values[0];
+    userLangPrefs.set(userId, targetLang);
 
-const newLang = interaction.values[0];
-userPreferredLanguages.set(userId, newLang);
-await interaction.reply({ content: `✅ Idioma cambiado a **${newLang.toUpperCase()}** para tus futuras traducciones.`, ephemeral: true });
-
-} });
+    await interaction.update({ content: `Idioma cambiado a **${LANGUAGES.find(l => l.value === targetLang)?.label || targetLang}**. Usa .TD en respuesta para traducir mensajes.`, components: [] });
+  }
+});
 
 client.login(DISCORD_TOKEN);
-
