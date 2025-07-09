@@ -1,79 +1,142 @@
-// 📁 langPrefs.json debe existir con {}
+const {
+  Client,
+  GatewayIntentBits,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ComponentType
+} = require('discord.js');
+const axios = require('axios');
+const fs = require('fs');
 
-const { Client, GatewayIntentBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType } = require('discord.js'); const axios = require('axios'); const fs = require('fs');
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
 
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const CHANNELS = new Set([
+  '1381953561008541920',
+  '1386131661942554685',
+  '1299860715884249088'
+]);
 
-const client = new Client({ intents: [ GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent ] });
+const LANGUAGES = [
+  { label: 'Español', value: 'es', emoji: '🇪🇸' },
+  { label: 'Inglés', value: 'en', emoji: '🇬🇧' },
+  { label: 'Francés', value: 'fr', emoji: '🇫🇷' },
+  { label: 'Alemán', value: 'de', emoji: '🇩🇪' },
+  { label: 'Portugués', value: 'pt', emoji: '🇵🇹' },
+  { label: 'Italiano', value: 'it', emoji: '🇮🇹' },
+  { label: 'Ruso', value: 'ru', emoji: '🇷🇺' },
+  { label: 'Japonés', value: 'ja', emoji: '🇯🇵' },
+  { label: 'Coreano', value: 'ko', emoji: '🇰🇷' },
+  { label: 'Chino (Simpl.)', value: 'zh-CN', emoji: '🇨🇳' }
+];
 
-const CHANNELS_TO_TRANSLATE = new Set([ '1381953561008541920', '1386131661942554685', '1299860715884249088' ]);
+const trans = {
+  es: {
+    mustReply: '⚠️ Usa el comando respondiendo a un mensaje.',
+    timeout: '⏳ Tiempo agotado. Usa el comando nuevamente.',
+    alreadyInLang: '⚠️ El mensaje ya está en tu idioma.',
+    notYours: '⚠️ No puedes traducir tu propio idioma.',
+    translationTitle: '📥 Traducción',
+    deleteLabel: 'Eliminar mensaje',
+    langSaved: '🎉 Idioma guardado exitosamente.'
+  },
+  en: {
+    mustReply: '⚠️ Use the command by replying to a message.',
+    timeout: '⏳ Time ran out. Use the command again.',
+    alreadyInLang: '⚠️ Message already in your language.',
+    notYours: '⚠️ You cannot translate your own language.',
+    translationTitle: '📥 Translation',
+    deleteLabel: 'Delete message',
+    langSaved: '🎉 Language saved successfully.'
+  }
+};
 
-const LANGUAGES = [ { label: 'Español', value: 'es', emoji: '🇪🇸' }, { label: 'Inglés', value: 'en', emoji: '🇬🇧' }, { label: 'Francés', value: 'fr', emoji: '🇫🇷' }, { label: 'Alemán', value: 'de', emoji: '🇩🇪' }, { label: 'Portugués', value: 'pt', emoji: '🇵🇹' }, { label: 'Italiano', value: 'it', emoji: '🇮🇹' }, { label: 'Ruso', value: 'ru', emoji: '🇷🇺' }, { label: 'Japonés', value: 'ja', emoji: '🇯🇵' }, { label: 'Coreano', value: 'ko', emoji: '🇰🇷' }, { label: 'Chino (Simplificado)', value: 'zh-CN', emoji: '🇨🇳' } ];
+const PREFS = './langPrefs.json';
+let prefs = {};
 
-const translations = { es: { mustReply: '⚠️ Usa el comando respondiendo a un mensaje.', timeout: '⏳ Tiempo agotado. Usa el comando nuevamente.', alreadyInLang: '⚠️ El mensaje ya está en tu idioma.', notYours: '⚠️ No puedes traducir tu propio idioma.', translationTitle: '📥 Traducción', deleteLabel: 'Eliminar mensaje', langSaved: '🎉 Idioma guardado exitosamente.' }, en: { mustReply: '⚠️ Use the command by replying to a message.', timeout: '⏳ Time ran out. Use the command again.', alreadyInLang: '⚠️ Message is already in your language.', notYours: '⚠️ You cannot translate your own language.', translationTitle: '📥 Translation', deleteLabel: 'Delete message', langSaved: '🎉 Language saved successfully.' } };
+function load() { try { prefs = JSON.parse(fs.readFileSync(PREFS)); } catch { prefs = {}; } }
+function save() { fs.writeFileSync(PREFS, JSON.stringify(prefs,null,2)); }
+function getLang(u) { return prefs[u] || 'es'; }
+function T(u,k) { return trans[getLang(u)][k] || trans['es'][k]; }
 
-const LANG_PREFS_FILE = './langPrefs.json'; let userLangPrefs = {};
-
-function loadLangPrefs() { try { userLangPrefs = JSON.parse(fs.readFileSync(LANG_PREFS_FILE, 'utf-8')); } catch { userLangPrefs = {}; } }
-
-function saveLangPrefs() { fs.writeFileSync(LANG_PREFS_FILE, JSON.stringify(userLangPrefs, null, 2)); }
-
-function getUserLang(userId) { return userLangPrefs[userId] || 'es'; }
-
-function t(userId, key) { const lang = getUserLang(userId); return translations[lang]?.[key] || translations['es'][key]; }
-
-async function translateText(text, targetLang) { try { const url = https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}; const res = await axios.get(url); if (res.data?.translation) return { text: res.data.translation, from: res.data.from }; } catch {} return null; }
-
-async function sendTemporaryBanner(interactionOrMessage, text, color = 0xf39c12) { const embed = new EmbedBuilder().setColor(color).setDescription(text); const reply = await interactionOrMessage.reply({ embeds: [embed], ephemeral: true }); setTimeout(() => reply.delete().catch(() => {}), 5000); }
-
-client.once('ready', () => { console.log(✅ Bot conectado como ${client.user.tag}); loadLangPrefs(); });
-
-client.on('messageCreate', async msg => { if (msg.author.bot || !msg.content || !CHANNELS_TO_TRANSLATE.has(msg.channel.id)) return; if (!msg.content.toLowerCase().startsWith('.td')) return;
-
-if (!msg.reference?.messageId) return sendTemporaryBanner(msg, t(msg.author.id, 'mustReply'));
-
-const ref = await msg.channel.messages.fetch(msg.reference.messageId); const original = ref.content; const uid = msg.author.id; const langPref = getUserLang(uid);
-
-const thinking = await msg.reply({ content: '⌛ Traduciendo...', ephemeral: true });
-
-if (userLangPrefs[uid]) { const res = await translateText(original, langPref); if (!res || res.text.toLowerCase() === original.toLowerCase()) { return thinking.edit({ content: t(uid, 'alreadyInLang') }); } if (res.from === langPref) { return thinking.edit({ content: t(uid, 'notYours') }); }
-
-const embed = new EmbedBuilder()
-  .setColor('#00c7ff')
-  .setTitle(`${LANGUAGES.find(l => l.value === langPref)?.emoji} ${t(uid, 'translationTitle')}`)
-  .setDescription(res.text)
-  .setFooter({ text: '🌐 Traductor automático', iconURL: client.user.displayAvatarURL() });
-
-const btnDel = new ButtonBuilder()
-  .setCustomId(`del-${uid}`)
-  .setLabel(t(uid, 'deleteLabel'))
-  .setStyle(ButtonStyle.Danger);
-
-const row = new ActionRowBuilder().addComponents(btnDel);
-
-return thinking.edit({ content: '', embeds: [embed], components: [row] });
-
+async function translate(t, lang) {
+  try {
+    const r = await axios.get(`https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(t)}`);
+    if (r.data?.translation) return { text: r.data.translation, from: r.data.from };
+  } catch {}
+  return null;
 }
 
-const select = new StringSelectMenuBuilder() .setCustomId(select-lang-${uid}) .setPlaceholder('🌍 Selecciona idioma') .addOptions(LANGUAGES.map(l => ({ label: l.label, value: l.value, emoji: l.emoji })));
+client.once('ready', () => { load(); });
 
-const row = new ActionRowBuilder().addComponents(select); return thinking.edit({ content: '🌍 Elige tu idioma para traducir:', components: [row] }); });
+client.on('messageCreate', async m => {
+  if (m.author.bot || !m.content || !CHANNELS.has(m.channel.id)) return;
+  if (!m.content.toLowerCase().startsWith('.td')) return;
 
-client.on('interactionCreate', async i => { const uid = i.user.id;
+  if (!m.reference?.messageId) return m.reply({ content: T(m.author.id,'mustReply'), ephemeral: true });
 
-if (i.isButton() && i.customId === del-${uid}) { await i.message.delete().catch(() => {}); return; }
+  const ref = await m.channel.messages.fetch(m.reference.messageId);
+  const txt = ref.content, uid = m.author.id;
 
-if (!i.isStringSelectMenu()) return; const [action, , userId] = i.customId.split('-'); if (userId !== uid) return sendTemporaryBanner(i, 'Este menú no es para ti.');
+  const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
 
-if (action === 'select' || action === 'change') { const sel = i.values[0]; userLangPrefs[uid] = sel; saveLangPrefs();
+  const lang = getLang(uid);
+  if (prefs[uid]) {
+    const res = await translate(txt, lang);
+    await loading.delete().catch(()=>{});
+    if (!res) return m.reply({ content: T(uid,'timeout'), ephemeral: true });
+    if (res.from === lang) return m.reply({ content: T(uid,'alreadyInLang'), ephemeral: true });
 
-const emoji = LANGUAGES.find(l => l.value === sel)?.emoji || '🌍';
-await i.update({ content: `${emoji} ${t(uid, 'langSaved')}`, components: [] });
+    const e = new EmbedBuilder()
+      .setColor('#00c7ff')
+      .setTitle(`${LANGUAGES.find(l=>l.value===lang).emoji} ${T(uid,'translationTitle')} (${LANGUAGES.find(l=>l.value===lang).label})`)
+      .setDescription(res.text)
+      .setFooter({ text: '🌐 Traductor automático' });
 
-const msg = await i.followUp({ content: '🎉 Idioma configurado. Usa `.TD` para traducir.', ephemeral: true });
-setTimeout(() => msg.delete().catch(() => {}), 5000);
+    const btn = new ButtonBuilder()
+      .setCustomId(`del-${uid}`)
+      .setLabel(T(uid,'deleteLabel'))
+      .setStyle(ButtonStyle.Danger);
 
-} });
+    return m.reply({ embeds:[e], components:[new ActionRowBuilder().addComponents(btn)], ephemeral:true });
+  }
 
-client.login(DISCORD_TOKEN);
+  await loading.delete().catch(()=>{});
 
+  const sel = new StringSelectMenuBuilder()
+    .setCustomId(`select-${uid}`)
+    .setPlaceholder('🌍 Selecciona idioma')
+    .addOptions(LANGUAGES.map(l=>({ label:l.label, value:l.value, emoji:l.emoji })));
+
+  m.reply({ content: 'Selecciona idioma para guardar:', components:[new ActionRowBuilder().addComponents(sel)], ephemeral:true });
+});
+
+client.on('interactionCreate', async i => {
+  const uid = i.user.id;
+
+  if (i.isButton() && i.customId === `del-${uid}`) {
+    await i.message.delete().catch(()=>{});
+    return;
+  }
+
+  if (!i.isStringSelectMenu()) return;
+  const [ _, uid2 ] = i.customId.split('-');
+  if (uid !== uid2) return i.reply({ content:'No es tu menú.', ephemeral:true });
+
+  const v = i.values[0];
+  prefs[uid] = v; save();
+  await i.update({ content:`${LANGUAGES.find(l=>l.value===v).emoji} ${T(uid,'langSaved')}`, components:[], ephemeral:true });
+
+  const note = await i.followUp({ content: '🎉 Listo! Usa `.TD` ahora.', ephemeral:true });
+  setTimeout(() => note.delete().catch(()=>{}), 5000);
+});
+
+client.login(process.env.DISCORD_TOKEN);
