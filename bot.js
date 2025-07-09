@@ -9,10 +9,17 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  InteractionType
+  InteractionType,
+  REST,
+  Routes,
+  SlashCommandBuilder,
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
+
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID; // tu client id del bot
+const GUILD_ID = process.env.GUILD_ID;   // para registrar comandos en servidor específico (mejor para test)
 
 const client = new Client({
   intents: [
@@ -52,7 +59,9 @@ const trans = {
     langSaved: '🎉 Idioma guardado exitosamente.',
     enterAmount: 'Por favor ingresa la cantidad de mensajes a eliminar (1-100):',
     deleteSuccess: '✅ Mensajes eliminados correctamente.',
-    deleteInvalid: '⚠️ Por favor ingresa un número válido entre 1 y 100.'
+    deleteInvalid: '⚠️ Por favor ingresa un número válido entre 1 y 100.',
+    deleteError: '⚠️ Error al eliminar mensajes.',
+    deleteEmbedTitle: '✅ Mensajes eliminados'
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
@@ -64,7 +73,9 @@ const trans = {
     langSaved: '🎉 Language saved successfully.',
     enterAmount: 'Please enter the amount of messages to delete (1-100):',
     deleteSuccess: '✅ Messages deleted successfully.',
-    deleteInvalid: '⚠️ Please enter a valid number between 1 and 100.'
+    deleteInvalid: '⚠️ Please enter a valid number between 1 and 100.',
+    deleteError: '⚠️ Error deleting messages.',
+    deleteEmbedTitle: '✅ Messages deleted'
   }
 };
 
@@ -91,9 +102,25 @@ async function sendWarning(interactionOrMessage, text) {
   }, 5000);
 }
 
-client.once('ready', () => { 
+client.once('ready', async () => { 
   console.log(`✅ Bot conectado como ${client.user.tag}`);
   load();
+
+  // Registro comando slash /dt en guild (para pruebas rápidas)
+  const rest = new REST({ version: '10' }).setToken(TOKEN);
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: [
+        new SlashCommandBuilder()
+          .setName('dt')
+          .setDescription('Eliminar mensajes del canal')
+      ].map(cmd => cmd.toJSON()) }
+    );
+    console.log('✅ Comando slash /dt registrado');
+  } catch (e) {
+    console.error('❌ Error al registrar comando slash:', e);
+  }
 });
 
 client.on('messageCreate', async m => {
@@ -136,35 +163,63 @@ client.on('messageCreate', async m => {
       .addOptions(LANGUAGES.map(l=>({ label:l.label, value:l.value, emoji:l.emoji })));
 
     m.reply({ content: 'Selecciona idioma para guardar:', components:[new ActionRowBuilder().addComponents(sel)], ephemeral:true });
-
-  } else if (contentLower === '.dt') {
-    // .DT command: open modal to input amount (no need to reply)
-    const modal = new ModalBuilder()
-      .setCustomId(`deleteModal-${m.author.id}`)
-      .setTitle('Eliminar mensajes');
-
-    const input = new TextInputBuilder()
-      .setCustomId('amountInput')
-      .setLabel(T(m.author.id, 'enterAmount'))
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('1-100')
-      .setRequired(true);
-
-    const row = new ActionRowBuilder().addComponents(input);
-    modal.addComponents(row);
-
-    // Show modal requires interaction, so respond ephemeral with instructions
-    try {
-      // We need interaction to show modal, but we have a message event here.
-      // Workaround: reply asking to use slash command or react with instructions
-      // Or alternatively, listen for .DT as slash command (recommended)
-      await m.reply({ content: '❌ El comando `.DT` debe usarse como un comando slash para mostrar el cuadro.', ephemeral: true });
-    } catch {}
   }
 });
 
 client.on('interactionCreate', async interaction => {
   const uid = interaction.user.id;
+
+  if (interaction.isCommand()) {
+    if (interaction.commandName === 'dt') {
+      const modal = new ModalBuilder()
+        .setCustomId(`deleteModal-${uid}`)
+        .setTitle('Eliminar mensajes');
+
+      const input = new TextInputBuilder()
+        .setCustomId('amountInput')
+        .setLabel(T(uid, 'enterAmount'))
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('1-100')
+        .setRequired(true);
+
+      const row = new ActionRowBuilder().addComponents(input);
+      modal.addComponents(row);
+
+      await interaction.showModal(modal);
+    }
+  }
+
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === `deleteModal-${uid}`) {
+      const amountStr = interaction.fields.getTextInputValue('amountInput');
+      const amount = parseInt(amountStr, 10);
+
+      if (isNaN(amount) || amount < 1 || amount > 100) {
+        await interaction.reply({ content: T(uid, 'deleteInvalid'), ephemeral: true });
+        return;
+      }
+
+      try {
+        const fetched = await interaction.channel.messages.fetch({ limit: amount });
+        await interaction.channel.bulkDelete(fetched, true);
+
+        const embed = new EmbedBuilder()
+          .setTitle(T(uid, 'deleteEmbedTitle'))
+          .setColor('#2ecc71')
+          .setDescription(`Se eliminaron ${amount} mensajes en el canal <#${interaction.channel.id}>.`)
+          .setFooter({ text: `Usuario: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+
+        setTimeout(() => {
+          interaction.deleteReply().catch(() => {});
+        }, 5000);
+      } catch (error) {
+        await interaction.reply({ content: T(uid, 'deleteError'), ephemeral: true });
+      }
+    }
+  }
 
   if (interaction.isButton()) {
     if (interaction.customId === `del-${uid}`) {
@@ -186,39 +241,6 @@ client.on('interactionCreate', async interaction => {
     setTimeout(() => note.delete().catch(() => {}), 5000);
     return;
   }
-
-  if (interaction.type === InteractionType.ModalSubmit) {
-    if (interaction.customId === `deleteModal-${uid}`) {
-      const amountStr = interaction.fields.getTextInputValue('amountInput');
-      const amount = parseInt(amountStr, 10);
-
-      if (isNaN(amount) || amount < 1 || amount > 100) {
-        await interaction.reply({ content: T(uid, 'deleteInvalid'), ephemeral: true });
-        return;
-      }
-
-      try {
-        // Fetch and delete messages
-        const fetched = await interaction.channel.messages.fetch({ limit: amount });
-        await interaction.channel.bulkDelete(fetched, true);
-
-        const embed = new EmbedBuilder()
-          .setTitle('✅ Mensajes eliminados')
-          .setColor('#2ecc71')
-          .setDescription(`Se eliminaron ${amount} mensajes en el canal <#${interaction.channel.id}>.`)
-          .setFooter({ text: `Usuario: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
-          .setTimestamp();
-
-        await interaction.reply({ embeds: [embed], ephemeral: true });
-
-        setTimeout(() => {
-          interaction.deleteReply().catch(() => {});
-        }, 5000);
-      } catch (error) {
-        await interaction.reply({ content: '⚠️ Error al eliminar mensajes.', ephemeral: true });
-      }
-    }
-  }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(TOKEN);
