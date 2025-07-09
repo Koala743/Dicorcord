@@ -93,6 +93,7 @@ async function translateText(text, targetLang) {
 }
 
 client.once('ready', () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
   loadLangPrefs();
 });
 
@@ -122,7 +123,7 @@ client.on('messageCreate', async msg => {
       .setColor('#00c7ff')
       .setTitle(`${LANGUAGES.find(l=>l.value===langPref)?.emoji} ${t(uid,'translationTitle')} (${LANGUAGES.find(l=>l.value===langPref).label})`)
       .setDescription(res.text)
-      .setFooter({ text: 'Traductor automático' });
+      .setFooter({ text: '🌐 Traductor automático', iconURL: client.user.displayAvatarURL() });
 
     const btnDel = new ButtonBuilder()
       .setCustomId(`del-${uid}`)
@@ -147,7 +148,8 @@ client.on('interactionCreate', async i => {
   const uid = i.user.id;
 
   if (i.isButton() && i.customId === `del-${uid}`) {
-    return i.update({ content: '✅ Mensaje eliminado.', embeds: [], components: [], ephemeral: true });
+    await i.message.delete().catch(() => {});
+    return;
   }
 
   if (!i.isStringSelectMenu()) return;
@@ -159,7 +161,11 @@ client.on('interactionCreate', async i => {
     userLangPrefs[uid] = sel;
     saveLangPrefs();
 
-    await i.update({ content: `✅ Idioma guardado: **${LANGUAGES.find(l=>l.value===sel).label}**. Usa .TD respondiendo`, components: [], ephemeral: true });
+    await i.update({
+      content: `✅ Idioma guardado: **${LANGUAGES.find(l => l.value === sel).label}**.`,
+      components: [],
+      ephemeral: true
+    });
   }
 });
 
