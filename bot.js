@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js');
 const axios = require('axios');
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -35,9 +35,9 @@ const USERNAMES_TO_KICK = new Set([
   'whoisaeiou'
 ]);
 
-async function translateWithLingva(text) {
+async function translateWithLingva(text, targetLang = 'es') {
   try {
-    const url = `https://lingva.ml/api/v1/auto/es/${encodeURIComponent(text)}`;
+    const url = `https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`;
     const res = await axios.get(url);
     if (res.data && res.data.translation) return res.data.translation;
     return null;
@@ -69,10 +69,13 @@ client.once('ready', async () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.content || !CHANNELS_TO_TRANSLATE.has(message.channel.id)) return;
+  if (
+    message.author.bot ||
+    !message.content ||
+    !CHANNELS_TO_TRANSLATE.has(message.channel.id)
+  ) return;
 
   const original = message.content.trim();
-
   const words = original.split(/\s+/);
   const maxWordLength = Math.max(...words.map(w => w.length));
   if (maxWordLength < 3) return;
@@ -83,7 +86,7 @@ client.on('messageCreate', async (message) => {
 
   if (sinTexto.length === 0 || original.length < 2) return;
 
-  if (original.toLowerCase().startsWith('.tg')) return;
+  if (original.toLowerCase().startsWith('.td')) return;
 
   if (maxWordLength >= 3 && maxWordLength <= 5) {
     const translated = await translateWithLingva(original);
@@ -97,23 +100,56 @@ client.on('messageCreate', async (message) => {
 client.on('messageCreate', async (message) => {
   if (
     message.author.bot ||
-    !message.content ||
+    !message.content.toLowerCase().startsWith('.td') ||
+    !message.reference ||
     !CHANNELS_TO_TRANSLATE.has(message.channel.id)
   ) return;
 
-  if (!message.content.toLowerCase().startsWith('.tg')) return;
-
-  if (!message.reference || !message.reference.messageId) return;
-
   try {
-    const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
-    const original = referencedMessage.content.trim();
-    if (!original) return;
+    const referenced = await message.channel.messages.fetch(message.reference.messageId);
+    const originalText = referenced.content.trim();
+    if (!originalText) return;
 
-    const translated = await translateWithLingva(original);
-    if (translated && translated.toLowerCase() !== original.toLowerCase()) {
-      await message.reply(`📥 **Traducción al español:** ${translated}`);
-    }
+    const languageMenu = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select-lang')
+        .setPlaceholder('🌐 Selecciona un idioma de destino')
+        .addOptions([
+          { label: 'Español', value: 'es' },
+          { label: 'Inglés', value: 'en' },
+          { label: 'Portugués', value: 'pt' },
+          { label: 'Francés', value: 'fr' },
+          { label: 'Alemán', value: 'de' },
+          { label: 'Italiano', value: 'it' },
+          { label: 'Japonés', value: 'ja' }
+        ])
+    );
+
+    const menuMsg = await message.reply({
+      content: 'Selecciona el idioma al que deseas traducir:',
+      components: [languageMenu]
+    });
+
+    const collector = menuMsg.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 15000,
+      max: 1
+    });
+
+    collector.on('collect', async (interaction) => {
+      const targetLang = interaction.values[0];
+      const translated = await translateWithLingva(originalText, targetLang);
+      if (translated) {
+        await interaction.reply(`📥 **Traducción (${targetLang.toUpperCase()}):** ${translated}`);
+      } else {
+        await interaction.reply('❌ No se pudo traducir el mensaje.');
+      }
+    });
+
+    collector.on('end', () => {
+      menuMsg.edit({ components: [] }).catch(() => {});
+    });
+
   } catch {
     return;
   }
