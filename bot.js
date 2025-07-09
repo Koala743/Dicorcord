@@ -3,9 +3,7 @@ const {
   GatewayIntentBits,
   ActionRowBuilder,
   StringSelectMenuBuilder,
-  ComponentType,
-  Events,
-  RESTPostAPIApplicationCommandsJSONBody
+  ComponentType
 } = require('discord.js');
 const axios = require('axios');
 
@@ -25,7 +23,7 @@ const CHANNELS_TO_TRANSLATE = new Set([
   '1299860715884249088'
 ]);
 
-const userLangPrefs = new Map(); // userId => langCode
+const userLangPrefs = new Map();
 
 const LANGUAGES = [
   { label: 'Español', value: 'es' },
@@ -37,8 +35,7 @@ const LANGUAGES = [
   { label: 'Ruso', value: 'ru' },
   { label: 'Japonés', value: 'ja' },
   { label: 'Coreano', value: 'ko' },
-  { label: 'Chino (Simplificado)', value: 'zh-CN' },
-  // agrega más si quieres
+  { label: 'Chino (Simplificado)', value: 'zh-CN' }
 ];
 
 async function translateText(text, targetLang) {
@@ -57,73 +54,92 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (
-    message.author.bot || 
-    !message.content || 
-    !CHANNELS_TO_TRANSLATE.has(message.channel.id)
-  ) return;
+  if (message.author.bot || !message.content || !CHANNELS_TO_TRANSLATE.has(message.channel.id)) return;
 
   if (!message.content.toLowerCase().startsWith('.td')) return;
 
   if (!message.reference || !message.reference.messageId) {
-    message.reply('⚠️ Por favor usa el comando respondiendo a un mensaje.');
+    message.reply('⚠️ Usa el comando respondiendo a un mensaje.');
     return;
   }
 
-  const langPref = userLangPrefs.get(message.author.id) || 'es';
+  const refMsg = await message.channel.messages.fetch(message.reference.messageId);
+  const original = refMsg.content;
 
-  const row = new ActionRowBuilder()
-    .addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(`select-lang-${message.author.id}`)
-        .setPlaceholder('Selecciona el idioma de destino')
-        .addOptions(LANGUAGES)
-        .setMinValues(1)
-        .setMaxValues(1)
-    );
+  const userId = message.author.id;
+  const langPref = userLangPrefs.get(userId);
 
-  const promptMsg = await message.reply({
-    content: 'Selecciona el idioma al que quieres traducir el mensaje:',
-    components: [row]
-  });
-
-  const filter = i => i.user.id === message.author.id && i.customId === `select-lang-${message.author.id}`;
-
-  try {
-    const interaction = await promptMsg.awaitMessageComponent({ filter, componentType: ComponentType.StringSelect, time: 30000 });
-
-    const targetLang = interaction.values[0];
-    userLangPrefs.set(message.author.id, targetLang);
-
-    await interaction.deferUpdate();
-
-    const refMsg = await message.channel.messages.fetch(message.reference.messageId);
-    const original = refMsg.content;
-
-    const translated = await translateText(original, targetLang);
-
+  if (langPref) {
+    const translated = await translateText(original, langPref);
     if (!translated || translated.toLowerCase() === original.toLowerCase()) {
-      await message.channel.send(`⚠️ No se pudo traducir o el texto ya está en el idioma seleccionado.`);
+      await message.channel.send(`⚠️ No se pudo traducir.`);
       return;
     }
 
     const rowChangeLang = new ActionRowBuilder()
       .addComponents(
         new StringSelectMenuBuilder()
-          .setCustomId(`change-lang-${message.author.id}`)
-          .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === targetLang)?.label || targetLang}. Cambiar idioma`)
+          .setCustomId(`change-lang-${userId}`)
+          .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === langPref)?.label || langPref}`)
           .addOptions(LANGUAGES)
           .setMinValues(1)
           .setMaxValues(1)
       );
 
     await message.channel.send({
-      content: `📥 **Traducción (${LANGUAGES.find(l => l.value === targetLang)?.label || targetLang}):** ${translated}`,
+      content: `📥 **Traducción (${LANGUAGES.find(l => l.value === langPref)?.label || langPref}):** ${translated}`,
       components: [rowChangeLang]
     });
+  } else {
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`select-lang-${userId}`)
+          .setPlaceholder('Selecciona el idioma de destino')
+          .addOptions(LANGUAGES)
+          .setMinValues(1)
+          .setMaxValues(1)
+      );
 
-  } catch {
-    message.reply('⏳ Tiempo de selección agotado. Por favor usa el comando nuevamente.');
+    const promptMsg = await message.reply({
+      content: 'Selecciona el idioma para traducir:',
+      components: [row]
+    });
+
+    const filter = i => i.user.id === userId && i.customId === `select-lang-${userId}`;
+
+    try {
+      const interaction = await promptMsg.awaitMessageComponent({ filter, componentType: ComponentType.StringSelect, time: 30000 });
+
+      const selectedLang = interaction.values[0];
+      userLangPrefs.set(userId, selectedLang);
+
+      await interaction.deferUpdate();
+
+      const translated = await translateText(original, selectedLang);
+      if (!translated || translated.toLowerCase() === original.toLowerCase()) {
+        await message.channel.send(`⚠️ No se pudo traducir.`);
+        return;
+      }
+
+      const rowChangeLang = new ActionRowBuilder()
+        .addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`change-lang-${userId}`)
+            .setPlaceholder(`Idioma actual: ${LANGUAGES.find(l => l.value === selectedLang)?.label || selectedLang}`)
+            .addOptions(LANGUAGES)
+            .setMinValues(1)
+            .setMaxValues(1)
+        );
+
+      await message.channel.send({
+        content: `📥 **Traducción (${LANGUAGES.find(l => l.value === selectedLang)?.label || selectedLang}):** ${translated}`,
+        components: [rowChangeLang]
+      });
+
+    } catch {
+      message.reply('⏳ Tiempo agotado. Usa el comando nuevamente.');
+    }
   }
 });
 
@@ -137,10 +153,13 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.customId.startsWith('change-lang-')) {
-    const targetLang = interaction.values[0];
-    userLangPrefs.set(userId, targetLang);
+    const newLang = interaction.values[0];
+    userLangPrefs.set(userId, newLang);
 
-    await interaction.update({ content: `Idioma cambiado a **${LANGUAGES.find(l => l.value === targetLang)?.label || targetLang}**. Usa .TD en respuesta para traducir mensajes.`, components: [] });
+    await interaction.update({
+      content: `✅ Idioma actualizado a **${LANGUAGES.find(l => l.value === newLang)?.label || newLang}**.`,
+      components: []
+    });
   }
 });
 
