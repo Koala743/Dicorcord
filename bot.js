@@ -6,7 +6,6 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  ComponentType,
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
@@ -44,26 +43,22 @@ const trans = {
     timeout: '⏳ Tiempo agotado. Usa el comando nuevamente.',
     alreadyInLang: '⚠️ El mensaje ya está en tu idioma.',
     notYours: '⚠️ No puedes traducir tu propio idioma.',
-    translationTitle: '📥 Traducción',
     langSaved: '🎉 Idioma guardado exitosamente.',
     dtSuccess: '✅ Mensajes eliminados exitosamente.',
     dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
     dtChannelNotAllowed: '⚠️ No puedes usar `.DT` en este canal.',
     dtChooseAmount: '🗑️ Selecciona la cantidad de mensajes a eliminar:',
-    dtTimeout: '⏳ Tiempo para seleccionar expirado.',
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
     timeout: '⏳ Time ran out. Use the command again.',
     alreadyInLang: '⚠️ Message already in your language.',
     notYours: '⚠️ You cannot translate your own language.',
-    translationTitle: '📥 Translation',
     langSaved: '🎉 Language saved successfully.',
     dtSuccess: '✅ Messages deleted successfully.',
     dtFail: '❌ Could not delete messages. Do I have permissions?',
     dtChannelNotAllowed: '⚠️ You cannot use `.DT` in this channel.',
     dtChooseAmount: '🗑️ Select the amount of messages to delete:',
-    dtTimeout: '⏳ Selection time expired.',
   },
 };
 
@@ -114,7 +109,6 @@ client.on('messageCreate', async (m) => {
 
   const content = m.content.trim();
 
-  // .DT command (delete messages) with buttons to select amount
   if (content.toLowerCase().startsWith('.dt')) {
     if (!CHANNELS.has(m.channel.id)) {
       return sendWarning(m, T(m.author.id, 'dtChannelNotAllowed'));
@@ -126,7 +120,7 @@ client.on('messageCreate', async (m) => {
       new ButtonBuilder()
         .setCustomId(`delAmount-${uid}-${num}`)
         .setLabel(num.toString())
-        .setStyle(ButtonStyle.Secondary)
+        .setStyle('Secondary')
     );
 
     const rows = [];
@@ -141,7 +135,6 @@ client.on('messageCreate', async (m) => {
     });
   }
 
-  // .TD command (translation) without delete button
   if (content.toLowerCase().startsWith('.td')) {
     if (!CHANNELS.has(m.channel.id)) return;
 
@@ -162,10 +155,7 @@ client.on('messageCreate', async (m) => {
 
       const e = new EmbedBuilder()
         .setColor('#00c7ff')
-        .setTitle(`${LANGUAGES.find((l) => l.value === lang).emoji} ${T(uid, 'translationTitle')} (${LANGUAGES.find((l) => l.value === lang).label})`)
-        .setDescription(res.text)
-        .setFooter({ text: '🌐 Traductor automático' })
-        .setTimestamp();
+        .setDescription(`${LANGUAGES.find((l) => l.value === lang).emoji} : ${res.text}`);
 
       return m.reply({ embeds: [e], ephemeral: true });
     }
