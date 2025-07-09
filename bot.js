@@ -59,7 +59,8 @@ client.on('messageCreate', async (message) => {
   if (!message.content.toLowerCase().startsWith('.td')) return;
 
   if (!message.reference || !message.reference.messageId) {
-    message.reply('⚠️ Usa el comando respondiendo a un mensaje.');
+    const msg = await message.reply('⚠️ Usa el comando respondiendo a un mensaje.');
+    setTimeout(() => msg.delete().catch(() => {}), 5000);
     return;
   }
 
@@ -72,7 +73,8 @@ client.on('messageCreate', async (message) => {
   if (langPref) {
     const translated = await translateText(original, langPref);
     if (!translated || translated.toLowerCase() === original.toLowerCase()) {
-      await message.channel.send(`⚠️ No se pudo traducir.`);
+      const msg = await message.channel.send(`⚠️ No se pudo traducir.`);
+      setTimeout(() => msg.delete().catch(() => {}), 5000);
       return;
     }
 
@@ -118,7 +120,8 @@ client.on('messageCreate', async (message) => {
 
       const translated = await translateText(original, selectedLang);
       if (!translated || translated.toLowerCase() === original.toLowerCase()) {
-        await message.channel.send(`⚠️ No se pudo traducir.`);
+        const msg = await message.channel.send(`⚠️ No se pudo traducir.`);
+        setTimeout(() => msg.delete().catch(() => {}), 5000);
         return;
       }
 
@@ -138,7 +141,8 @@ client.on('messageCreate', async (message) => {
       });
 
     } catch {
-      message.reply('⏳ Tiempo agotado. Usa el comando nuevamente.');
+      const msg = await message.reply('⏳ Tiempo agotado. Usa el comando nuevamente.');
+      setTimeout(() => msg.delete().catch(() => {}), 5000);
     }
   }
 });
