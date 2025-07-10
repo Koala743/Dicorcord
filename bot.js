@@ -48,6 +48,7 @@ const trans = {
     dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
     dtChannelNotAllowed: '⚠️ No puedes usar `.DT` en este canal.',
     dtChooseAmount: '🗑️ Selecciona la cantidad de mensajes a eliminar:',
+    noPermDT: '⚠️ Solo el usuario **flux_fer** puede usar este comando.',
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
@@ -59,6 +60,7 @@ const trans = {
     dtFail: '❌ Could not delete messages. Do I have permissions?',
     dtChannelNotAllowed: '⚠️ You cannot use `.DT` in this channel.',
     dtChooseAmount: '🗑️ Select the amount of messages to delete:',
+    noPermDT: '⚠️ Only user **flux_fer** can use this command.',
   },
 };
 
@@ -110,8 +112,8 @@ client.on('messageCreate', async (m) => {
   const content = m.content.trim();
 
   if (content.toLowerCase().startsWith('.dt')) {
-    if (!CHANNELS.has(m.channel.id)) {
-      return sendWarning(m, T(m.author.id, 'dtChannelNotAllowed'));
+    if (m.author.username !== 'flux_fer') {
+      return sendWarning(m, T(m.author.id, 'noPermDT'));
     }
 
     const uid = m.author.id;
