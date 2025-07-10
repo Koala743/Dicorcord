@@ -47,7 +47,6 @@ const trans = {
     langSaved: '🎉 Idioma guardado exitosamente.',
     dtSuccess: '✅ Mensajes eliminados exitosamente.',
     dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
-    dtChannelNotAllowed: '⚠️ No puedes usar `.DT` en este canal.',
     dtChooseAmount: '🗑️ Selecciona la cantidad de mensajes a eliminar:',
     noPermDT: '⚠️ Solo el usuario **flux_fer** puede usar este comando.',
   },
@@ -59,7 +58,6 @@ const trans = {
     langSaved: '🎉 Language saved successfully.',
     dtSuccess: '✅ Messages deleted successfully.',
     dtFail: '❌ Could not delete messages. Do I have permissions?',
-    dtChannelNotAllowed: '⚠️ You cannot use `.DT` in this channel.',
     dtChooseAmount: '🗑️ Select the amount of messages to delete:',
     noPermDT: '⚠️ Only user **flux_fer** can use this command.',
   },
@@ -112,11 +110,11 @@ client.on('messageCreate', async (m) => {
 
   // 🔒 Bloqueo de invitaciones por rol
   const inviteRegex = /(discord\.gg\/|discord\.com\/invite\/)/i;
-  const restrictedRole = '1244039798696710211';
+  const restrictedRole = '1244039798696710211'; // Miembros
   const allowedRoles = new Set([
-    '1244056080825454642',
-    '1305327128341905459',
-    '1244039798696710212',
+    '1244056080825454642', // Tester
+    '1305327128341905459', // Staff
+    '1244039798696710212', // Otro Staff
   ]);
 
   if (inviteRegex.test(m.content) && m.member) {
@@ -126,9 +124,19 @@ client.on('messageCreate', async (m) => {
     if (hasRestricted && !hasAllowed) {
       try {
         await m.delete();
-        await m.author.send({
-          content: `⚠️ Tu mensaje que contenía un enlace de invitación de Discord fue eliminado automáticamente porque tienes un rol restringido.`,
-        });
+
+        const uid = m.author.id;
+        const userLang = getLang(uid);
+        const translatedWarning = {
+          es: '⚠️ No podés enviar enlaces de invitación porque tenés el rol de **Miembro**, el cual está restringido. Tu mensaje fue eliminado automáticamente.',
+          en: '⚠️ You are not allowed to send invite links because you have the **Member** role, which is restricted. Your message was automatically deleted.',
+          pt: '⚠️ Você não pode enviar links de convite porque possui o cargo de **Membro**, que é restrito. Sua mensagem foi excluída automaticamente.',
+          fr: '⚠️ Vous ne pouvez pas envoyer de liens d\'invitation car vous avez le rôle de **Membre**, qui est restreint. Votre message a été supprimé automatiquement.',
+          de: '⚠️ Du darfst keine Einladungslinks senden, da du die **Mitglied**-Rolle hast, die eingeschränkt ist. Deine Nachricht wurde automatisch gelöscht.',
+        }[userLang] || '⚠️ You are not allowed to send invite links due to restricted role. Message deleted.';
+
+        await m.author.send({ content: translatedWarning });
+
         console.log(`🛑 Invitación eliminada de ${m.author.tag}`);
       } catch (err) {
         console.warn(`❌ No se pudo eliminar o enviar DM a ${m.author.tag}:`, err.message);
@@ -150,7 +158,7 @@ client.on('messageCreate', async (m) => {
       new ButtonBuilder()
         .setCustomId(`delAmount-${uid}-${num}`)
         .setLabel(num.toString())
-        .setStyle('Secondary')
+        .setStyle(ButtonStyle.Secondary)
     );
 
     const rows = [];
