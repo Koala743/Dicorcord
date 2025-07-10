@@ -15,6 +15,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
@@ -109,6 +110,33 @@ client.once('ready', () => {
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
+  // 🔒 Bloqueo de invitaciones por rol
+  const inviteRegex = /(discord\.gg\/|discord\.com\/invite\/)/i;
+  const restrictedRole = '1244039798696710211';
+  const allowedRoles = new Set([
+    '1244056080825454642',
+    '1305327128341905459',
+    '1244039798696710212',
+  ]);
+
+  if (inviteRegex.test(m.content) && m.member) {
+    const hasRestricted = m.member.roles.cache.has(restrictedRole);
+    const hasAllowed = m.member.roles.cache.some(r => allowedRoles.has(r.id));
+
+    if (hasRestricted && !hasAllowed) {
+      try {
+        await m.delete();
+        await m.author.send({
+          content: `⚠️ Tu mensaje que contenía un enlace de invitación de Discord fue eliminado automáticamente porque tienes un rol restringido.`,
+        });
+        console.log(`🛑 Invitación eliminada de ${m.author.tag}`);
+      } catch (err) {
+        console.warn(`❌ No se pudo eliminar o enviar DM a ${m.author.tag}:`, err.message);
+      }
+      return;
+    }
+  }
+
   const content = m.content.trim();
 
   if (content.toLowerCase().startsWith('.dt')) {
@@ -169,7 +197,11 @@ client.on('messageCreate', async (m) => {
       .setPlaceholder('🌍 Selecciona idioma')
       .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
 
-    m.reply({ content: 'Selecciona idioma para guardar:', components: [new ActionRowBuilder().addComponents(sel)], ephemeral: true });
+    m.reply({
+      content: 'Selecciona idioma para guardar:',
+      components: [new ActionRowBuilder().addComponents(sel)],
+      ephemeral: true,
+    });
   }
 });
 
@@ -197,7 +229,11 @@ client.on('interactionCreate', async (i) => {
   const v = i.values[0];
   prefs[uid] = v;
   save();
-  await i.update({ content: `${LANGUAGES.find((l) => l.value === v).emoji} ${T(uid, 'langSaved')}`, components: [], ephemeral: true });
+  await i.update({
+    content: `${LANGUAGES.find((l) => l.value === v).emoji} ${T(uid, 'langSaved')}`,
+    components: [],
+    ephemeral: true,
+  });
 
   const note = await i.followUp({ content: '🎉 Listo! Usa `.TD` ahora.', ephemeral: true });
   setTimeout(() => note.delete().catch(() => {}), 5000);
