@@ -211,21 +211,32 @@ client.on('messageCreate', async (m) => {
 
   const chat = activeChats.get(m.channel.id);
   if (chat) {
-    const { users } = chat;
-    if (users.includes(m.author.id)) {
-      const otherUserId = users.find((u) => u !== m.author.id);
-      const fromLang = getLang(m.author.id);
-      const toLang = getLang(otherUserId);
-      if (fromLang !== toLang) {
-        const res = await translate(m.content, toLang);
-        if (res && res.text) {
-          m.channel.send({
-            content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
-          });
-        }
+  const { users } = chat;
+  if (users.includes(m.author.id)) {
+    const otherUserId = users.find((u) => u !== m.author.id);
+    const fromLang = getLang(m.author.id);
+    const toLang = getLang(otherUserId);
+
+    const raw = m.content.trim();
+
+    if (
+      !raw ||
+      m.stickers.size > 0 ||
+      /^<a?:.+?:\d+>$/.test(raw) ||
+      /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) ||
+      /^\.\w{1,4}$/i.test(raw)
+    ) return;
+
+    if (fromLang !== toLang) {
+      const res = await translate(raw, toLang);
+      if (res && res.text) {
+        m.channel.send({
+          content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
+        });
       }
     }
   }
+}
 
   if (m.content.toLowerCase().startsWith('.chat')) {
     const mention = m.mentions.users.first();
