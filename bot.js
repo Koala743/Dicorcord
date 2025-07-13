@@ -6,10 +6,6 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  InteractionType,
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
@@ -56,9 +52,9 @@ const trans = {
     chatActivated: '💬 Chat de traducción automática ACTIVADO para los usuarios seleccionados.',
     chatDeactivated: '🛑 Chat de traducción automática FINALIZADO.',
     chatNoSession: '❌ No hay chat activo para finalizar.',
-    chatSelectUsers: '🌐 Selecciona los dos usuarios para iniciar el chat de traducción automática:',
+    chatSelectUsers: '🌐 Selecciona con quién quieres hablar (tú ya estás incluido):',
     notAuthorized: '⚠️ No eres el usuario autorizado para usar este comando.',
-    selectTwoUsers: '⚠️ Debes seleccionar exactamente dos usuarios.',
+    selectOneUser: '⚠️ Debes seleccionar exactamente un usuario para chatear.',
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
@@ -73,9 +69,9 @@ const trans = {
     chatActivated: '💬 Auto-translate chat ACTIVATED for selected users.',
     chatDeactivated: '🛑 Auto-translate chat STOPPED.',
     chatNoSession: '❌ No active chat session to stop.',
-    chatSelectUsers: '🌐 Select two users to start auto-translate chat:',
+    chatSelectUsers: '🌐 Select who you want to chat with (you are included):',
     notAuthorized: '⚠️ You are not authorized to use this command.',
-    selectTwoUsers: '⚠️ You must select exactly two users.',
+    selectOneUser: '⚠️ You must select exactly one user to chat with.',
   },
 };
 
@@ -116,11 +112,6 @@ async function sendWarning(interactionOrMessage, text) {
   }, 5000);
 }
 
-// -------------- NUEVO: Gestión de chat de traducción automática --------------
-
-// Estructura para guardar chats activos:
-// key: canalId
-// value: { users: [userId1, userId2] }
 const activeChats = new Map();
 
 client.once('ready', () => {
@@ -131,13 +122,12 @@ client.once('ready', () => {
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
-  // Bloqueo de invitaciones por rol
   const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i;
-  const restrictedRole = '1244039798696710211'; // Miembros
+  const restrictedRole = '1244039798696710211';
   const allowedRoles = new Set([
-    '1244056080825454642', // Tester
-    '1305327128341905459', // Staff
-    '1244039798696710212', // Otro Staff
+    '1244056080825454642',
+    '1305327128341905459',
+    '1244039798696710212',
   ]);
 
   if (inviteRegex.test(m.content) && m.member) {
@@ -158,15 +148,11 @@ client.on('messageCreate', async (m) => {
           }[userLang] || '⚠️ You are not allowed to send invite links due to restricted role. Message deleted.';
 
         await m.author.send({ content: translatedWarning });
-        console.log(`🛑 Invitación eliminada de ${m.author.tag}`);
-      } catch (err) {
-        console.warn(`❌ No se pudo eliminar o enviar DM a ${m.author.tag}:`, err.message);
-      }
+      } catch {}
       return;
     }
   }
 
-  // Comando .dt para borrar mensajes (botones)
   if (m.content.toLowerCase().startsWith('.dt')) {
     if (m.author.username !== 'flux_fer') {
       return sendWarning(m, T(m.author.id, 'noPermDT'));
@@ -189,7 +175,6 @@ client.on('messageCreate', async (m) => {
     });
   }
 
-  // Comando .td para traducción manual
   if (m.content.toLowerCase().startsWith('.td')) {
     if (!CHANNELS.has(m.channel.id)) return;
     if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
@@ -224,25 +209,16 @@ client.on('messageCreate', async (m) => {
     });
   }
 
-  // --- NUEVO: Traducción automática entre 2 usuarios en sesión activa ---
-  // Comprobamos si hay chat activo en este canal
   const chat = activeChats.get(m.channel.id);
   if (chat) {
     const { users } = chat;
-    // Solo actuamos si el autor es uno de los 2 usuarios en chat
     if (users.includes(m.author.id)) {
-      // Buscamos el otro usuario para traducir su mensaje
       const otherUserId = users.find((u) => u !== m.author.id);
-      // Obtenemos idiomas de ambos usuarios
       const fromLang = getLang(m.author.id);
       const toLang = getLang(otherUserId);
-
-      // Si los idiomas son iguales, no hace falta traducir
       if (fromLang !== toLang) {
-        // Traducimos el mensaje al idioma del otro
         const res = await translate(m.content, toLang);
         if (res && res.text) {
-          // Enviamos traducción en el canal, mencionando que es traducción para el otro usuario
           m.channel.send({
             content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
           });
@@ -251,36 +227,49 @@ client.on('messageCreate', async (m) => {
     }
   }
 
-  // Comando .Chat para iniciar chat traducido entre 2 usuarios
   if (m.content.toLowerCase().startsWith('.chat')) {
-    // Solo permito al usuario flux_fer activar chat automático (puedes cambiar)
     if (m.author.username !== 'flux_fer') return sendWarning(m, T(m.author.id, 'notAuthorized'));
-
-    // Creamos menú para seleccionar usuarios
-    // Límite 25 opciones max (discord)
-    // Sacamos usuarios del guild para selección
     const guild = m.guild;
     if (!guild) return;
 
-    // Recopilamos usuarios en el servidor
     const members = await guild.members.fetch();
-    const options = members
-      .filter((mem) => !mem.user.bot)
-      .map((mem) => ({
-        label: mem.user.username,
-        description: mem.user.tag,
-        value: mem.user.id,
-      }))
-      .slice(0, 25);
 
-    if (options.length < 2)
-      return m.reply('No hay suficientes usuarios para seleccionar.');
+    // Crear un mapa userId -> lastMessageTimestamp (por defecto 0)
+    // Obtenemos mensajes recientes en el canal para medir actividad
+    const channelMessages = await m.channel.messages.fetch({ limit: 100 });
+    const activityMap = new Map();
+    for (const member of members.values()) {
+      activityMap.set(member.id, 0);
+    }
+    channelMessages.forEach((msg) => {
+      if (activityMap.has(msg.author.id)) {
+        const prev = activityMap.get(msg.author.id);
+        if (msg.createdTimestamp > prev) {
+          activityMap.set(msg.author.id, msg.createdTimestamp);
+        }
+      }
+    });
+
+    // Ordenar miembros por última actividad (descendente)
+    const sortedMembers = members
+      .filter((mem) => !mem.user.bot && mem.id !== m.author.id)
+      .sort((a, b) => (activityMap.get(b.id) || 0) - (activityMap.get(a.id) || 0));
+
+    const options = sortedMembers.slice(0, 24).map((mem) => ({
+      label: mem.nickname || mem.user.username,
+      description: mem.user.tag,
+      value: mem.id,
+      emoji: mem.user.displayAvatarURL({ extension: 'png' }) ? undefined : undefined,
+    }));
+
+    if (options.length === 0)
+      return m.reply('No hay usuarios para seleccionar.');
 
     const select = new StringSelectMenuBuilder()
       .setCustomId(`chatSelect-${m.author.id}`)
-      .setPlaceholder('Selecciona 2 usuarios')
-      .setMinValues(2)
-      .setMaxValues(2)
+      .setPlaceholder('Selecciona con quién quieres hablar')
+      .setMinValues(1)
+      .setMaxValues(1)
       .addOptions(options);
 
     const row = new ActionRowBuilder().addComponents(select);
@@ -292,7 +281,6 @@ client.on('messageCreate', async (m) => {
     });
   }
 
-  // Comando .Dchat para finalizar chat automático
   if (m.content.toLowerCase().startsWith('.dchat')) {
     if (m.author.username !== 'flux_fer') return sendWarning(m, T(m.author.id, 'notAuthorized'));
     if (activeChats.has(m.channel.id)) {
@@ -322,7 +310,6 @@ client.on('interactionCreate', async (i) => {
   }
 
   if (i.isStringSelectMenu()) {
-    // Selector de idioma para .td
     if (i.customId.startsWith('select-')) {
       const [_, uid2] = i.customId.split('-');
       if (uid !== uid2) return i.reply({ content: 'No es tu menú.', ephemeral: true });
@@ -341,16 +328,16 @@ client.on('interactionCreate', async (i) => {
       return;
     }
 
-    // Selector para iniciar chat automático .Chat
     if (i.customId.startsWith('chatSelect-')) {
       const [_, authorId] = i.customId.split('-');
       if (uid !== authorId) return i.reply({ content: 'No es tu menú.', ephemeral: true });
 
-      if (i.values.length !== 2)
-        return i.reply({ content: T(uid, 'selectTwoUsers'), ephemeral: true });
+      if (i.values.length !== 1)
+        return i.reply({ content: T(uid, 'selectOneUser'), ephemeral: true });
 
-      // Guardamos la sesión de chat automático en ese canal
-      activeChats.set(i.channel.id, { users: i.values });
+      const selectedUser = i.values[0];
+      const chatUsers = [uid, selectedUser];
+      activeChats.set(i.channel.id, { users: chatUsers });
 
       await i.update({
         content: T(uid, 'chatActivated'),
