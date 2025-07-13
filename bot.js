@@ -228,14 +228,11 @@ client.on('messageCreate', async (m) => {
   }
 
   if (m.content.toLowerCase().startsWith('.chat')) {
-    if (m.author.username !== 'flux_fer') return sendWarning(m, T(m.author.id, 'notAuthorized'));
     const guild = m.guild;
     if (!guild) return;
 
     const members = await guild.members.fetch();
 
-    // Crear un mapa userId -> lastMessageTimestamp (por defecto 0)
-    // Obtenemos mensajes recientes en el canal para medir actividad
     const channelMessages = await m.channel.messages.fetch({ limit: 100 });
     const activityMap = new Map();
     for (const member of members.values()) {
@@ -250,29 +247,25 @@ client.on('messageCreate', async (m) => {
       }
     });
 
-    // Ordenar miembros por última actividad (descendente)
     const sortedMembers = members
       .filter((mem) => !mem.user.bot && mem.id !== m.author.id)
       .sort((a, b) => (activityMap.get(b.id) || 0) - (activityMap.get(a.id) || 0));
 
-    const options = sortedMembers.slice(0, 24).map((mem) => ({
-      label: mem.nickname || mem.user.username,
-      description: mem.user.tag,
-      value: mem.id,
-      emoji: mem.user.displayAvatarURL({ extension: 'png' }) ? undefined : undefined,
-    }));
-
-    if (options.length === 0)
-      return m.reply('No hay usuarios para seleccionar.');
-
-    const select = new StringSelectMenuBuilder()
-      .setCustomId(`chatSelect-${m.author.id}`)
-      .setPlaceholder('Selecciona con quién quieres hablar')
-      .setMinValues(1)
-      .setMaxValues(1)
-      .addOptions(options);
-
-    const row = new ActionRowBuilder().addComponents(select);
+    const row = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`chatSelect-${m.author.id}`)
+        .setPlaceholder('Selecciona con quién quieres hablar')
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions(
+          sortedMembers.slice(0, 24).map((mem) => ({
+            label: mem.nickname || mem.user.username,
+            description: mem.user.tag,
+            value: mem.id,
+            emoji: null,
+          }))
+        )
+    );
 
     return m.reply({
       content: T(m.author.id, 'chatSelectUsers'),
@@ -282,7 +275,8 @@ client.on('messageCreate', async (m) => {
   }
 
   if (m.content.toLowerCase().startsWith('.dchat')) {
-    if (m.author.username !== 'flux_fer') return sendWarning(m, T(m.author.id, 'notAuthorized'));
+    if (m.author.username !== 'flux_fer')
+      return sendWarning(m, T(m.author.id, 'notAuthorized'));
     if (activeChats.has(m.channel.id)) {
       activeChats.delete(m.channel.id);
       return m.reply({ content: T(m.author.id, 'chatDeactivated'), ephemeral: true });
@@ -339,10 +333,25 @@ client.on('interactionCreate', async (i) => {
       const chatUsers = [uid, selectedUser];
       activeChats.set(i.channel.id, { users: chatUsers });
 
+      const guild = i.guild;
+      const member1 = await guild.members.fetch(uid);
+      const member2 = await guild.members.fetch(selectedUser);
+
+      const embed = new EmbedBuilder()
+        .setTitle('💬 Chat Automático Iniciado')
+        .setDescription(
+          `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}>\n**${member2.nickname || member2.user.username}** <@${member2.id}>`
+        )
+        .setThumbnail(member1.user.displayAvatarURL({ extension: 'png', size: 64 }))
+        .setImage(member2.user.displayAvatarURL({ extension: 'png', size: 64 }))
+        .setColor('#00c7ff')
+        .setTimestamp();
+
       await i.update({
-        content: T(uid, 'chatActivated'),
+        content: null,
         components: [],
-        ephemeral: true,
+        embeds: [embed],
+        ephemeral: false,
       });
       return;
     }
