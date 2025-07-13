@@ -228,50 +228,24 @@ client.on('messageCreate', async (m) => {
   }
 
   if (m.content.toLowerCase().startsWith('.chat')) {
-    const guild = m.guild;
-    if (!guild) return;
-
-    const members = await guild.members.fetch();
-
-    const channelMessages = await m.channel.messages.fetch({ limit: 100 });
-    const activityMap = new Map();
-    for (const member of members.values()) {
-      activityMap.set(member.id, 0);
-    }
-    channelMessages.forEach((msg) => {
-      if (activityMap.has(msg.author.id)) {
-        const prev = activityMap.get(msg.author.id);
-        if (msg.createdTimestamp > prev) {
-          activityMap.set(msg.author.id, msg.createdTimestamp);
-        }
-      }
-    });
-
-    const sortedMembers = members
-      .filter((mem) => !mem.user.bot && mem.id !== m.author.id)
-      .sort((a, b) => (activityMap.get(b.id) || 0) - (activityMap.get(a.id) || 0));
-
-    const row = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(`chatSelect-${m.author.id}`)
-        .setPlaceholder('Selecciona con quién quieres hablar')
-        .setMinValues(1)
-        .setMaxValues(1)
-        .addOptions(
-          sortedMembers.slice(0, 24).map((mem) => ({
-            label: mem.nickname || mem.user.username,
-            description: mem.user.tag,
-            value: mem.id,
-            emoji: null,
-          }))
-        )
-    );
-
-    return m.reply({
-      content: T(m.author.id, 'chatSelectUsers'),
-      components: [row],
-      ephemeral: true,
-    });
+    const mention = m.mentions.users.first();
+    if (!mention) return sendWarning(m, '❌ Debes mencionar al usuario con quien quieres chatear.');
+    const user1 = m.author;
+    const user2 = mention;
+    if (user1.id === user2.id) return sendWarning(m, '⚠️ No puedes iniciar un chat contigo mismo.');
+    activeChats.set(m.channel.id, { users: [user1.id, user2.id] });
+    const member1 = await m.guild.members.fetch(user1.id);
+    const member2 = await m.guild.members.fetch(user2.id);
+    const embed = new EmbedBuilder()
+      .setTitle('💬 Chat Automático Iniciado')
+      .setDescription(
+        `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}>\n**${member2.nickname || member2.user.username}** <@${member2.id}>`
+      )
+      .setThumbnail(member1.user.displayAvatarURL({ extension: 'png', size: 64 }))
+      .setImage(member2.user.displayAvatarURL({ extension: 'png', size: 64 }))
+      .setColor('#00c7ff')
+      .setTimestamp();
+    return m.channel.send({ embeds: [embed] });
   }
 
   if (m.content.toLowerCase().startsWith('.dchat')) {
@@ -288,7 +262,6 @@ client.on('messageCreate', async (m) => {
 
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
-
   if (i.isButton()) {
     if (i.customId.startsWith(`delAmount-${uid}-`)) {
       const amount = parseInt(i.customId.split('-')[2], 10);
@@ -307,7 +280,6 @@ client.on('interactionCreate', async (i) => {
     if (i.customId.startsWith('select-')) {
       const [_, uid2] = i.customId.split('-');
       if (uid !== uid2) return i.reply({ content: 'No es tu menú.', ephemeral: true });
-
       const v = i.values[0];
       prefs[uid] = v;
       save();
@@ -316,43 +288,8 @@ client.on('interactionCreate', async (i) => {
         components: [],
         ephemeral: true,
       });
-
       const note = await i.followUp({ content: '🎉 Listo! Usa `.TD` ahora.', ephemeral: true });
       setTimeout(() => note.delete().catch(() => {}), 5000);
-      return;
-    }
-
-    if (i.customId.startsWith('chatSelect-')) {
-      const [_, authorId] = i.customId.split('-');
-      if (uid !== authorId) return i.reply({ content: 'No es tu menú.', ephemeral: true });
-
-      if (i.values.length !== 1)
-        return i.reply({ content: T(uid, 'selectOneUser'), ephemeral: true });
-
-      const selectedUser = i.values[0];
-      const chatUsers = [uid, selectedUser];
-      activeChats.set(i.channel.id, { users: chatUsers });
-
-      const guild = i.guild;
-      const member1 = await guild.members.fetch(uid);
-      const member2 = await guild.members.fetch(selectedUser);
-
-      const embed = new EmbedBuilder()
-        .setTitle('💬 Chat Automático Iniciado')
-        .setDescription(
-          `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}>\n**${member2.nickname || member2.user.username}** <@${member2.id}>`
-        )
-        .setThumbnail(member1.user.displayAvatarURL({ extension: 'png', size: 64 }))
-        .setImage(member2.user.displayAvatarURL({ extension: 'png', size: 64 }))
-        .setColor('#00c7ff')
-        .setTimestamp();
-
-      await i.update({
-        content: null,
-        components: [],
-        embeds: [embed],
-        ephemeral: false,
-      });
       return;
     }
   }
