@@ -47,7 +47,6 @@ const trans = {
 
 const PREFS = './langPrefs.json';
 let prefs = {};
-
 function load() {
   try {
     prefs = JSON.parse(fs.readFileSync(PREFS));
@@ -55,15 +54,12 @@ function load() {
     prefs = {};
   }
 }
-
 function save() {
   fs.writeFileSync(PREFS, JSON.stringify(prefs, null, 2));
 }
-
 function getLang(u) {
   return prefs[u] || 'es';
 }
-
 function T(u, k) {
   return trans.es[k] || '';
 }
@@ -92,13 +88,14 @@ client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
   const urlRegex = /https?:\/\/[^\s]+/i;
+
   if (urlRegex.test(m.content)) {
     try {
       const member = await m.guild.members.fetch(m.author.id);
       const allowedRoles = new Set([
-        '1305327128341905459',
-        '1244056080825454642',
-        '1244039798696710212'
+        '1305327128341905459', // Staff
+        '1244056080825454642', // Fundador
+        '1244039798696710212'  // Tester
       ]);
       const hasAllowedRole = member.roles.cache.some(r => allowedRoles.has(r.id));
       if (!hasAllowedRole) {
@@ -109,62 +106,46 @@ client.on('messageCreate', async (m) => {
   }
 
   if (!m.content.startsWith('.')) return;
+
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
 
   if (command === 'web') {
     const query = args.join(' ');
     if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
 
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=25`;
-
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=10`;
     try {
       const res = await axios.get(url);
       let items = res.data.items || [];
-
-      items = items.filter((img, i, arr) =>
-        img.link &&
-        img.link.startsWith('http') &&
-        !arr.slice(0, i).some(x => x.link === img.link)
-      );
-
+      items = items.filter(img => img.link && img.link.startsWith('http'));
       if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));
 
-      let index = 0;
-      let validImage = null;
-      for (let i = 0; i < items.length; i++) {
-        try {
-          const test = await axios.get(items[i].link, { timeout: 3000 });
-          if (test.status === 200) {
-            index = i;
-            validImage = items[i];
-            break;
-          }
-        } catch { continue; }
-      }
-
-      if (!validImage) return m.reply(T(m.author.id, 'noValidImages'));
-
-      imageSearchCache.set(m.author.id, { items, index, query });
+      imageSearchCache.set(m.author.id, { items, index: 0, query });
 
       const embed = new EmbedBuilder()
-        .setTitle(`📷 Resultado para: ${query}`)
-        .setImage(validImage.link)
-        .setURL(validImage.link)
-        .setFooter({ text: `Imagen ${index + 1} de ${items.length}` })
+        .setTitle(`📷 Resultados para: ${query}`)
+        .setImage(items[0].link)
+        .setDescription(`[Link de la imagen](${items[0].link})`)
+        .setFooter({ text: `Imagen 1 de ${items.length}` })
         .setColor('#00c7ff');
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(index === 0),
-        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(index === items.length - 1)
+        new ButtonBuilder()
+          .setCustomId('prevImage')
+          .setLabel('⬅️')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId('nextImage')
+          .setLabel('➡️')
+          .setStyle(ButtonStyle.Primary)
       );
 
       await m.channel.send({ embeds: [embed], components: [row] });
-
     } catch (err) {
       const errMsg = err.response?.data?.error?.message || err.message;
       return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
     }
-
     return;
   }
 
@@ -213,6 +194,7 @@ client.on('messageCreate', async (m) => {
 
 client.on('interactionCreate', async (i) => {
   if (!i.isButton()) return;
+
   const uid = i.user.id;
   const cache = imageSearchCache.get(uid);
   if (!cache) return i.deferUpdate();
@@ -220,26 +202,12 @@ client.on('interactionCreate', async (i) => {
   if (i.customId === 'prevImage' && cache.index > 0) cache.index--;
   if (i.customId === 'nextImage' && cache.index < cache.items.length - 1) cache.index++;
 
-  let img = null;
-  for (let i = cache.index; i < cache.items.length; i++) {
-    try {
-      const test = await axios.get(cache.items[i].link, { timeout: 3000 });
-      if (test.status === 200) {
-        cache.index = i;
-        img = cache.items[i];
-        break;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  if (!img) return i.update({ content: '❌ No se pudieron cargar más imágenes válidas.', embeds: [], components: [] });
+  const img = cache.items[cache.index];
 
   const embed = new EmbedBuilder()
-    .setTitle(`📷 Resultado para: ${cache.query}`)
+    .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
-    .setURL(img.link)
+    .setDescription(`[Link de la imagen](${img.link})`)
     .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
     .setColor('#00c7ff');
 
@@ -247,8 +215,16 @@ client.on('interactionCreate', async (i) => {
     embeds: [embed],
     components: [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(cache.index === 0),
-        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(cache.index === cache.items.length - 1)
+        new ButtonBuilder()
+          .setCustomId('prevImage')
+          .setLabel('⬅️')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(cache.index === 0),
+        new ButtonBuilder()
+          .setCustomId('nextImage')
+          .setLabel('➡️')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(cache.index === cache.items.length - 1)
       )
     ]
   });
