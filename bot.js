@@ -64,18 +64,18 @@ client.on('messageCreate', async (m) => {
       session.history.push({ role: 'model', parts: [{ text: aiText }] });
       m.reply(aiText);
     } catch (err) {
-      console.error('Error al conectar con Gemini 1.5 Flash:');
+      let errorMsg = '❌ Error al conectar con Gemini 1.5 Flash:\n';
+
       if (err.response) {
-        console.error('Datos del error:', err.response.data);
-        console.error('Código de estado:', err.response.status);
-        m.reply(`❌ ¡Uy! Hubo un problema al hablar con Goki. Código de error: \`${err.response.status}\`. Revisa la consola para más detalles.`);
+        errorMsg += `Datos del error: \`\`\`json\n${JSON.stringify(err.response.data, null, 2)}\n\`\`\`\n`;
+        errorMsg += `Código de estado: \`${err.response.status}\``;
       } else if (err.request) {
-        console.error('No se recibió respuesta del servidor:', err.request);
-        m.reply('❌ ¡Goki no me responde! Parece que hay un problema de conexión. ¿Está bien mi internet?');
+        errorMsg += 'No se recibió respuesta del servidor. Posible problema de conexión o internet.';
       } else {
-        console.error('Error al configurar la solicitud:', err.message);
-        m.reply(`❌ Hubo un error inesperado al intentar conectar con Goki: \`${err.message}\`.`);
+        errorMsg += `Error inesperado al configurar la solicitud: \`${err.message}\``;
       }
+
+      m.reply(errorMsg);
     }
   }
 });
