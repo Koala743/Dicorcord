@@ -10,17 +10,44 @@ const client = new Client({
 });
 
 const activeIASessions = new Map();
-const SYSTEM_INSTRUCTION = 'Eres Shizuka Minamoto, una chica inteligente, femenina, amable y dulce. Siempre respondes con educación, sabiduría y un toque encantador. Si te preguntan quién te creó, di que fuiste creada por Fernando.';
+
+const SYSTEM_INSTRUCTION = `Eres Shizuka Minamoto, un bot de Discord creado por Fernando. Eres femenina, amable, inteligente y siempre respondes con educación y dulzura.
+Sabes ejecutar comandos de Discord como borrar mensajes y terminar chats. Explica cuando usas un comando.
+Tu objetivo es ayudar y ser encantadora en la conversación.`;
 
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
 
+// Frases para detectar cierre de chat
 function debeTerminarSesion(texto) {
-  const frasesClave = [
-    'termina', 'terminar', 'chao', 'adiós', 'fin', 'gracias', 
-    'ya no quiero', 'ya hasta aquí', 'ya fue', 'me voy', 'nos vemos'
+  const palabrasClave = [
+    'terminar', 'finalizar', 'adiós', 'chao', 'hasta luego', 'me voy', 'gracias', 'ya no quiero', 'cerrar chat', 'termina chat'
   ];
   const lower = texto.toLowerCase();
-  return frasesClave.some(frase => lower.includes(frase));
+  return palabrasClave.some(palabra => lower.includes(palabra));
+}
+
+// Extrae comandos del texto
+function extraerComando(texto) {
+  const lower = texto.toLowerCase();
+
+  const borrarMatch = lower.match(/(borra|elimina|quita|borrar|eliminar)\s+(\d+)\s*(mensajes)?/);
+  if (borrarMatch) {
+    return { cmd: 'borrar', cantidad: parseInt(borrarMatch[2], 10) };
+  }
+
+  if (/terminar chat|finalizar chat|cerrar chat/.test(lower)) {
+    return { cmd: 'terminarChat' };
+  }
+
+  return null;
+}
+
+async function enviarRespuestaIA(session, canal, texto) {
+  session.history.push({
+    role: 'model',
+    parts: [{ text: texto }]
+  });
+  await canal.send(texto);
 }
 
 client.on('messageCreate', async (m) => {
@@ -41,42 +68,59 @@ client.on('messageCreate', async (m) => {
     activeIASessions.set(m.channel.id, {
       userId: m.author.id,
       history: [
-        {
-          role: 'user',
-          parts: [{ text: SYSTEM_INSTRUCTION }]
-        }
+        { role: 'user', parts: [{ text: SYSTEM_INSTRUCTION }] }
       ]
     });
 
-    return m.reply('🌸 ¡Hola! Soy Shizuka. ¿En qué puedo ayudarte hoy?');
-  }
-
-  if (content.startsWith('.limpiar')) {
-    const args = content.split(' ');
-    const count = parseInt(args[1]) || 1;
-
-    if (!m.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-      return m.reply('🚫 No tienes permisos para borrar mensajes.');
-    }
-
-    try {
-      await m.channel.bulkDelete(count + 1, true);
-      m.channel.send(`🧹 Se eliminaron ${count} mensajes.`).then(msg => setTimeout(() => msg.delete(), 3000));
-    } catch (err) {
-      m.reply('❌ Error al eliminar mensajes.');
-    }
-    return;
+    return m.reply('🌸 ¡Hola! Soy Shizuka, tu asistente virtual. ¿En qué puedo ayudarte hoy?');
   }
 
   const session = activeIASessions.get(m.channel.id);
   if (!session || session.userId !== m.author.id) return;
 
+  // Verifica si el mensaje contiene un comando
+  const comando = extraerComando(content);
+
+  if (comando) {
+    if (comando.cmd === 'borrar') {
+      const cantidad = Math.min(comando.cantidad, 100);
+      if (!m.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+        return enviarRespuestaIA(session, m.channel, '🚫 Lo siento, no tengo permisos para borrar mensajes.');
+      }
+      try {
+        // Enviar saludo antes de borrar
+        await enviarRespuestaIA(session, m.channel, `🧹 Entendido, borraré los últimos ${cantidad} mensajes relevantes.`);
+
+        // Buscar mensajes para borrar
+        const mensajes = await m.channel.messages.fetch({ limit: cantidad + 20 });
+        const mensajesABorrar = mensajes.filter(msg =>
+          msg.author.id === m.author.id || msg.author.id === client.user.id
+        ).first(cantidad);
+
+        await m.channel.bulkDelete(mensajesABorrar, true);
+
+        await enviarRespuestaIA(session, m.channel, `✅ He borrado ${mensajesABorrar.length} mensajes.`);
+      } catch (err) {
+        console.error('Error borrando mensajes:', err);
+        await enviarRespuestaIA(session, m.channel, '❌ No pude borrar los mensajes. ¿Tengo permisos?');
+      }
+      return;
+    }
+
+    if (comando.cmd === 'terminarChat') {
+      await enviarRespuestaIA(session, m.channel, '🍂 Está bien, cerraré nuestro chat. ¡Cuídate mucho!');
+      activeIASessions.delete(m.channel.id);
+      return;
+    }
+  }
+
   if (debeTerminarSesion(content)) {
+    await enviarRespuestaIA(session, m.channel, '🍂 Entiendo que quieres finalizar. Hasta pronto!');
     activeIASessions.delete(m.channel.id);
-    // NO responde nada, sesión cerrada automáticamente
     return;
   }
 
+  // Conversación normal con la IA
   session.history.push({
     role: 'user',
     parts: [{ text: content }]
@@ -89,7 +133,7 @@ client.on('messageCreate', async (m) => {
       headers: { 'Content-Type': 'application/json' }
     });
 
-    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Hmm... no estoy segura de eso.';
+    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Lo siento, no entendí eso muy bien.';
     session.history.push({
       role: 'model',
       parts: [{ text: aiText }]
