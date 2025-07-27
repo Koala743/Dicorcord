@@ -1,43 +1,26 @@
-const {
-  Client,
-  GatewayIntentBits,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
-} = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-  ],
+  intents: [ GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers ]
 });
 
-const CHANNELS = new Set([
-  '1381953561008541920',
-  '1386131661942554685',
-  '1299860715884249088',
-]);
+const CHANNELS = new Set([ '1381953561008541920', '1386131661942554685', '1299860715884249088' ]);
 
 const LANGUAGES = [
   { label: 'Español', value: 'es', emoji: '🇪🇸' },
-  { label: 'Inglés', value: 'en', emoji: '🇺🇸' },
-  { label: 'Portugués', value: 'pt', emoji: '🇧🇷' },
+  { label: 'Inglés', value: 'en', emoji: '🇬🇧' },
   { label: 'Francés', value: 'fr', emoji: '🇫🇷' },
   { label: 'Alemán', value: 'de', emoji: '🇩🇪' },
+  { label: 'Portugués', value: 'pt', emoji: '🇵🇹' },
   { label: 'Italiano', value: 'it', emoji: '🇮🇹' },
   { label: 'Ruso', value: 'ru', emoji: '🇷🇺' },
   { label: 'Japonés', value: 'ja', emoji: '🇯🇵' },
-  { label: 'Chino', value: 'zh', emoji: '🇨🇳' },
+  { label: 'Chino (Simpl.)', value: 'zh-CN', emoji: '🇨🇳' },
   { label: 'Coreano', value: 'ko', emoji: '🇰🇷' },
   { label: 'Árabe', value: 'ar', emoji: '🇸🇦' },
-  { label: 'Hindi', value: 'hi', emoji: '🇮🇳' },
+  { label: 'Hindi', value: 'hi', emoji: '🇮🇳' }
 ];
 
 const trans = {
@@ -48,13 +31,14 @@ const trans = {
     notAuthorized: '⚠️ No eres el usuario autorizado.',
     noSearchQuery: '⚠️ Debes proporcionar texto para buscar.',
     noImagesFound: '❌ No se encontraron imágenes para esa búsqueda.',
-  },
+    noValidImages: '❌ No se encontraron imágenes válidas.'
+  }
 };
 
 const PREFS = './langPrefs.json';
 let prefs = {};
 function load() {
-  try { prefs = JSON.parse(fs.readFileSync(PREFS)); } catch { prefs = {}; }
+  try { prefs = JSON.parse(fs.readFileSync(PREFS)); } catch { prefs = {} }
 }
 function save() { fs.writeFileSync(PREFS, JSON.stringify(prefs, null, 2)); }
 function getLang(u) { return prefs[u] || 'es'; }
@@ -62,13 +46,9 @@ function T(u, k) { return trans.es[k] || ''; }
 
 async function translate(text, lang) {
   try {
-    const r = await axios.get(
-      `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`
-    );
+    const r = await axios.get(`https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`);
     return r.data?.translation ? { text: r.data.translation, from: r.data.from } : null;
-  } catch {
-    return null;
-  }
+  } catch { return null }
 }
 
 const activeChats = new Map();
@@ -96,15 +76,13 @@ client.on('messageCreate', async (m) => {
 
     try {
       const res = await axios.get(url);
-      const items = res.data.items;
-      if (!items || items.length === 0) {
-        console.error('Respuesta Google sin items:', res.data);
-        return m.reply(T(uid, 'noImagesFound'));
-      }
+      let items = res.data.items || [];
+      items = items.filter(img => img.link && img.link.startsWith('http'));
+      if (!items.length) return m.reply(T(uid, 'noValidImages'));
 
       imageSearchCache.set(uid, { items, index: 0, query });
       const embed = new EmbedBuilder()
-        .setTitle(`Resultados para: ${query}`)
+        .setTitle(`📷 Resultados para: ${query}`)
         .setImage(items[0].link)
         .setFooter({ text: `Imagen 1 de ${items.length}` })
         .setColor('#00c7ff');
@@ -123,10 +101,10 @@ client.on('messageCreate', async (m) => {
 
       await m.channel.send({ embeds: [embed], components: [row] });
     } catch (err) {
-      console.error('Error petición Google:', err.response?.data || err.message);
       const errMsg = err.response?.data?.error?.message || err.message;
       return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
     }
+    return;
   }
 
   if (command === 'td') {
@@ -168,7 +146,7 @@ client.on('messageCreate', async (m) => {
       activeChats.delete(m.channel.id);
       return m.reply(T(uid, 'chatDeactivated'));
     }
-    return m.reply(T(uid, 'chatNoSession'));
+    return m.reply(T(uid, 'mustReply'));
   }
 });
 
@@ -177,14 +155,11 @@ client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
   const cache = imageSearchCache.get(uid);
   if (!cache) return i.deferUpdate();
-  if (i.customId === 'prevImage') {
-    if (cache.index > 0) cache.index--;
-  } else if (i.customId === 'nextImage') {
-    if (cache.index < cache.items.length - 1) cache.index++;
-  }
+  if (i.customId === 'prevImage' && cache.index > 0) cache.index--;
+  if (i.customId === 'nextImage' && cache.index < cache.items.length - 1) cache.index++;
   const img = cache.items[cache.index];
   const embed = new EmbedBuilder()
-    .setTitle(`Resultados para: ${cache.query}`)
+    .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
     .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
     .setColor('#00c7ff');
@@ -202,8 +177,8 @@ client.on('interactionCreate', async (i) => {
           .setLabel('➡️')
           .setStyle(ButtonStyle.Primary)
           .setDisabled(cache.index === cache.items.length - 1)
-      ),
-    ],
+      )
+    ]
   });
 });
 
