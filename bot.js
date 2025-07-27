@@ -1,26 +1,34 @@
-require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const fetch = require('node-fetch');
 
+// API Key de Gemini (¡incrustada directamente aquí!)
 const GEMINI_API_KEY = 'AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN; // La de Discord puede seguir viniendo de .env
+
+if (!GEMINI_API_KEY) {
+  console.error('❌ Falta la clave de Gemini.');
+  process.exit(1);
+}
+if (!DISCORD_TOKEN) {
+  console.error('❌ Falta el token de Discord.');
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
 client.once('ready', () => {
-  console.log(`✅ Bot conectado como ${client.user.tag}`);
+  console.log(`🤖 Bot activo como ${client.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  const mensajeUsuario = message.content.trim();
+  const userMessage = message.content.trim();
+  if (!userMessage) return;
 
-  if (!mensajeUsuario) return;
-
-  // Mensaje de "pensando"
-  const pensando = await message.channel.send("🔥 Espera cariño... estoy pensando cómo responderte...");
+  const thinking = await message.channel.send("🤔 Pensando...");
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
@@ -33,9 +41,7 @@ client.on('messageCreate', async (message) => {
       {
         parts: [
           {
-            text:
-              "Responde como una chica atrevida, coqueta, sensual y divertida, estilo +18. Sé provocativa pero dulce. Usa frases como: 'mmm, eso me gusta...', 'ay qué travieso eres', 'te portaste mal, ¿eh?'. Siempre responde con picardía, ternura y un toque seductor.\n\nUsuario: " +
-              mensajeUsuario,
+            text: "Eres una inteligencia artificial útil, clara y educada. Responde de forma informativa, útil y precisa. Te llamas AsistenteIA.\n\nUsuario: " + userMessage,
           },
         ],
       },
@@ -49,16 +55,21 @@ client.on('messageCreate', async (message) => {
       body,
     });
 
-    const data = await response.json();
-    const respuestaIA =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      '😳 Ups... no supe cómo responder eso, inténtalo otra vez...';
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Error en la API de Gemini:', response.status, errorData);
+      await thinking.edit(`⚠️ Error: ${response.status} - ${errorData?.error?.message || 'Error desconocido'}`);
+      return;
+    }
 
-    await pensando.edit(respuestaIA);
+    const data = await response.json();
+    const respuestaIA = data?.candidates?.[0]?.content?.parts?.[0]?.text || "❓ No logré entender tu pregunta.";
+
+    await thinking.edit(respuestaIA);
   } catch (error) {
-    console.error(error);
-    await pensando.edit('😓 Ay no... no pude responder esta vez.');
+    console.error("Error al comunicar con Gemini:", error);
+    await thinking.edit("⚠️ Ocurrió un error al procesar tu pregunta.");
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(DISCORD_TOKEN);
