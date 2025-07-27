@@ -92,7 +92,6 @@ client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
   const urlRegex = /https?:\/\/[^\s]+/i;
-
   if (urlRegex.test(m.content)) {
     try {
       const member = await m.guild.members.fetch(m.author.id);
@@ -121,6 +120,7 @@ client.on('messageCreate', async (m) => {
     try {
       const res = await axios.get(url);
       let items = res.data.items || [];
+
       items = items.filter((img, i, arr) =>
         img.link &&
         img.link.startsWith('http') &&
@@ -147,7 +147,7 @@ client.on('messageCreate', async (m) => {
       imageSearchCache.set(m.author.id, { items, index, query });
 
       const embed = new EmbedBuilder()
-        .setTitle(`📷 Resultados para: ${query}`)
+        .setTitle(`📷 Resultado para: ${query}`)
         .setImage(validImage.link)
         .setURL(validImage.link)
         .setFooter({ text: `Imagen ${index + 1} de ${items.length}` })
@@ -164,6 +164,7 @@ client.on('messageCreate', async (m) => {
       const errMsg = err.response?.data?.error?.message || err.message;
       return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
     }
+
     return;
   }
 
@@ -236,7 +237,7 @@ client.on('interactionCreate', async (i) => {
   if (!img) return i.update({ content: '❌ No se pudieron cargar más imágenes válidas.', embeds: [], components: [] });
 
   const embed = new EmbedBuilder()
-    .setTitle(`📷 Resultados para: ${cache.query}`)
+    .setTitle(`📷 Resultado para: ${cache.query}`)
     .setImage(img.link)
     .setURL(img.link)
     .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
