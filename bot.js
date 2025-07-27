@@ -15,53 +15,49 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  const prefix = '!pregunta';
-  if (message.content.toLowerCase().startsWith(prefix)) {
-    const pregunta = message.content.slice(prefix.length).trim();
+  const mensajeUsuario = message.content.trim();
 
-    if (!pregunta) {
-      return message.reply("😏 Escribe algo atrevido después de `!pregunta`... no seas tímido 💋");
-    }
+  if (!mensajeUsuario) return;
 
-    await message.channel.send("🔥 Espera cariño... estoy pensando cómo responderte...");
+  // Mensaje de "pensando"
+  const pensando = await message.channel.send("🔥 Espera cariño... estoy pensando cómo responderte...");
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-    const headers = {
-      "Content-Type": "application/json",
-    };
+  const headers = {
+    "Content-Type": "application/json",
+  };
 
-    const body = JSON.stringify({
-      contents: [
-        {
-          parts: [
-            {
-              text:
-                "Responde como una chica atrevida, coqueta y divertida, con un estilo +18, seductor, travieso y directo. Sé provocativa pero simpática. Usa frases como: 'mmm, eso me gusta...', 'ay qué travieso eres', 'te portaste mal, ¿eh?'. Ayuda con cariño y picardía.\n\nUsuario: " +
-                pregunta,
-            },
-          ],
-        },
-      ],
+  const body = JSON.stringify({
+    contents: [
+      {
+        parts: [
+          {
+            text:
+              "Responde como una chica atrevida, coqueta, sensual y divertida, estilo +18. Sé provocativa pero dulce. Usa frases como: 'mmm, eso me gusta...', 'ay qué travieso eres', 'te portaste mal, ¿eh?'. Siempre responde con picardía, ternura y un toque seductor.\n\nUsuario: " +
+              mensajeUsuario,
+          },
+        ],
+      },
+    ],
+  });
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
     });
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body,
-      });
+    const data = await response.json();
+    const respuestaIA =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      '😳 Ups... no supe cómo responder eso, inténtalo otra vez...';
 
-      const data = await response.json();
-      const respuestaIA =
-        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        '😳 Ups... no supe cómo responder eso, inténtalo otra vez...';
-
-      message.channel.send(respuestaIA);
-    } catch (error) {
-      console.error(error);
-      message.reply('😓 Ay no... algo salió mal con mi conexión, vuelve a intentar.');
-    }
+    await pensando.edit(respuestaIA);
+  } catch (error) {
+    console.error(error);
+    await pensando.edit('😓 Ay no... no pude responder esta vez.');
   }
 });
 
