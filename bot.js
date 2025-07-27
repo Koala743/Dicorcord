@@ -91,27 +91,50 @@ client.on('messageCreate', async (m) => {
     const query = args.join(' ');
     if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
 
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=10`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=25`;
 
     try {
       const res = await axios.get(url);
-      let items = res.data.items || [];
-      items = items.filter(img => img.link && img.link.startsWith('http'));
-      if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));
+      let rawItems = res.data.items || [];
 
-      imageSearchCache.set(m.author.id, { items, index: 0, query });
+      const uniqueLinks = new Set();
+      rawItems = rawItems.filter(img =>
+        img.link &&
+        img.image?.contextLink &&
+        img.link.startsWith('http') &&
+        !uniqueLinks.has(img.link) &&
+        uniqueLinks.add(img.link)
+      );
+
+      const validImages = [];
+      for (const img of rawItems) {
+        try {
+          const head = await axios.head(img.link, { timeout: 3000 });
+          if (head.status === 200 && head.headers['content-type']?.startsWith('image')) {
+            validImages.push(img);
+          }
+        } catch {}
+      }
+
+      if (!validImages.length) return m.reply('❌ No se encontraron imágenes válidas para mostrar.');
+
+      imageSearchCache.set(m.author.id, { items: validImages, index: 0, query });
+
+      const first = validImages[0];
       const embed = new EmbedBuilder()
         .setTitle(`📷 Resultados para: ${query}`)
-        .setImage(items[0].link)
-        .setFooter({ text: `Imagen 1 de ${items.length}` })
+        .setImage(first.link)
+        .setDescription(`[📎 Ver imagen directa](${first.link})\n[🌐 Página original](${first.image.contextLink})`)
+        .setFooter({ text: `Imagen 1 de ${validImages.length}` })
         .setColor('#00c7ff');
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validImages.length <= 1)
       );
 
       await m.channel.send({ embeds: [embed], components: [row] });
+
     } catch (err) {
       const errMsg = err.response?.data?.error?.message || err.message;
       return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
@@ -167,14 +190,19 @@ client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
   const cache = imageSearchCache.get(uid);
   if (!cache) return i.deferUpdate();
+
   if (i.customId === 'prevImage' && cache.index > 0) cache.index--;
   if (i.customId === 'nextImage' && cache.index < cache.items.length - 1) cache.index++;
+
   const img = cache.items[cache.index];
+
   const embed = new EmbedBuilder()
     .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
+    .setDescription(`[📎 Ver imagen directa](${img.link})\n[🌐 Página original](${img.image.contextLink})`)
     .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
     .setColor('#00c7ff');
+
   await i.update({
     embeds: [embed],
     components: [
