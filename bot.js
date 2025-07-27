@@ -90,12 +90,45 @@ const activeChats = new Map();
 
 const imageSearchCache = new Map();
 
-const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY'; // Tu API Key aquí
-const GOOGLE_CX = '34fe95d6cf39d4dd4'; // Tu ID de motor personalizado aquí
+const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
+const GOOGLE_CX = '34fe95d6cf39d4dd4';
 
 client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
   load();
+});
+
+client.on('messageCreate', async (m) => {
+  if (m.author.bot || !m.content) return;
+
+  const chat = activeChats.get(m.channel.id);
+  if (chat) {
+    const { users } = chat;
+    if (users.includes(m.author.id)) {
+      const otherUserId = users.find((u) => u !== m.author.id);
+      const fromLang = getLang(m.author.id);
+      const toLang = getLang(otherUserId);
+
+      const raw = m.content.trim();
+      if (
+        !raw ||
+        m.stickers.size > 0 ||
+        /^<a?:.+?:\d+>$/.test(raw) ||
+        /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) ||
+        /^\.\w{1,4}$/i.test(raw)
+      )
+        return;
+
+      if (fromLang !== toLang) {
+        const res = await translate(raw, toLang);
+        if (res && res.text) {
+          m.channel.send({
+            content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
+          });
+        }
+      }
+    }
+  }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -301,39 +334,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.on('messageCreate', async (m) => {
-  if (m.author.bot || !m.content) return;
-
-  const chat = activeChats.get(m.channel.id);
-  if (chat) {
-    const { users } = chat;
-    if (users.includes(m.author.id)) {
-      const otherUserId = users.find((u) => u !== m.author.id);
-      const fromLang = getLang(m.author.id);
-      const toLang = getLang(otherUserId);
-
-      const raw = m.content.trim();
-      if (
-        !raw ||
-        m.stickers.size > 0 ||
-        /^<a?:.+?:\d+>$/.test(raw) ||
-        /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) ||
-        /^\.\w{1,4}$/i.test(raw)
-      )
-        return;
-
-      if (fromLang !== toLang) {
-        const res = await translate(raw, toLang);
-        if (res && res.text) {
-          m.channel.send({
-            content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
-          });
-        }
-      }
-    }
-  }
-});
-
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   const uid = interaction.user.id;
@@ -359,4 +359,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login('TU_DISCORD_TOKEN_AQUI');
+client.login(process.env.DISCORD_TOKEN);
