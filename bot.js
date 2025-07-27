@@ -54,21 +54,6 @@ const trans = {
     noSearchQuery: '⚠️ Debes proporcionar texto para buscar.',
     noImagesFound: '❌ No se encontraron imágenes para esa búsqueda.',
   },
-  en: {
-    mustReply: '⚠️ Use the command with a valid message.',
-    timeout: '⏳ Time ran out. Use the command again.',
-    alreadyInLang: '⚠️ Message already in your language.',
-    notYours: "⚠️ You can't translate your own language.",
-    langSaved: '🎉 Language saved successfully.',
-    chatActivated: '💬 Auto-translate chat ACTIVATED for selected users.',
-    chatDeactivated: '🛑 Auto-translate chat STOPPED.',
-    chatNoSession: '❌ No active chat session to stop.',
-    chatSelectUsers: '🌐 Select who you want to chat with (you are included):',
-    notAuthorized: '⚠️ You are not authorized to use this command.',
-    selectOneUser: '⚠️ You must select exactly one user to chat with.',
-    noSearchQuery: '⚠️ You must provide text to search.',
-    noImagesFound: '❌ No images found for that search.',
-  },
 };
 
 const PREFS = './langPrefs.json';
@@ -88,7 +73,7 @@ function getLang(u) {
   return prefs[u] || 'es';
 }
 function T(u, k) {
-  return trans[getLang(u)]?.[k] || trans['es'][k];
+  return trans['es'][k] || '';
 }
 
 async function translate(t, lang) {
@@ -105,8 +90,8 @@ const activeChats = new Map();
 
 const imageSearchCache = new Map();
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY; // Pon tu API Key aquí
-const GOOGLE_CX = process.env.GOOGLE_CX; // Pon tu ID de motor personalizado aquí
+const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY'; // Tu API Key aquí
+const GOOGLE_CX = '34fe95d6cf39d4dd4'; // Tu ID de motor personalizado aquí
 
 client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
@@ -374,4 +359,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login('TU_DISCORD_TOKEN_AQUI');
