@@ -108,7 +108,7 @@ client.on('messageCreate', async (m) => {
     const query = args.join(' ');
     if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
 
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=25`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=50`;
     try {
       const res = await axios.get(url);
       let items = res.data.items || [];
