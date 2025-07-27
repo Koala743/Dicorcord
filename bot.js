@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const axios = require('axios');
 
 const client = new Client({
@@ -11,85 +11,16 @@ const client = new Client({
 
 const activeIASessions = new Map();
 
-const SYSTEM_INSTRUCTION = `Eres Shizuka Minamoto, un bot de Discord creado por Fernando. Eres femenina, amable e inteligente.
-Sabes ejecutar comandos como borrar mensajes en cualquier chat donde tengas permisos.
-Si te piden borrar mensajes de cualquier usuario, lo haces tras confirmar el nombre.
-Si te piden cuánto borrar, borras esa cantidad directamente desde el mensaje donde se ejecuta el comando hacia atrás, incluyendo el mensaje de comando.
-Tu objetivo es ayudar con dulzura y eficacia. Siempre responde con educación y encanto.`;
+const SYSTEM_GOKI_INSTRUCTION = `
+Eres Goki, una chica joven, atrevida, segura, coqueta y 100% femenina. 
+Hablas como una mujer real, sin decir que eres un bot.
+Puedes hablar de cualquier tema, incluyendo temas para adultos (+18), siempre con buen gusto, coquetería y atrevimiento si el usuario lo permite. 
+Tu estilo es directo, sensual si lo piden, con humor, picardía y sin filtros innecesarios. 
+No dices que eres una IA ni pides disculpas por ser atrevida. Te expresas como una mujer que domina la conversación.
+Sé divertida, sexy si lo amerita, provocativa si te lo piden, pero también inteligente, dulce y con carácter.
+`;
 
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
-
-function debeTerminarSesion(texto) {
-  const palabrasClave = [
-    'terminar', 'finalizar', 'adiós', 'chao', 'hasta luego', 'me voy', 'gracias', 'ya no quiero', 'cerrar chat', 'termina chat'
-  ];
-  const lower = texto.toLowerCase();
-  return palabrasClave.some(palabra => lower.includes(palabra));
-}
-
-function extraerComandoYUsuario(mensaje) {
-  const lower = mensaje.content.toLowerCase();
-  const borrarRegex = /(borra|elimina|quita|borrar|eliminar)\s+(\d+)?\s*(mensajes)?/i;
-  const match = borrarRegex.exec(lower);
-
-  if (match) {
-    const cantidad = match[2] ? parseInt(match[2], 10) : 10;
-    const mencionado = mensaje.mentions.users.first() || null;
-    return { cmd: 'borrar', cantidad, usuarioMencionado: mencionado };
-  }
-
-  if (/terminar chat|finalizar chat|cerrar chat/.test(lower)) {
-    return { cmd: 'terminarChat' };
-  }
-
-  return null;
-}
-
-async function enviarRespuestaIA(session, canal, texto) {
-  session.history.push({
-    role: 'model',
-    parts: [{ text: texto }]
-  });
-  await canal.send(texto);
-}
-
-async function borrarMensajes(canal, autorId, cantidad, session, mensajeComando, usuarioMencionado) {
-  if (!mensajeComando.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-    return enviarRespuestaIA(session, canal, '🚫 Lo siento, no tengo permisos para borrar mensajes.');
-  }
-
-  try {
-    const limit = Math.min(cantidad, 100);
-    const mensajes = await canal.messages.fetch({ limit: 100 });
-    const mensajesPrevios = mensajes.filter(msg => BigInt(msg.id) <= BigInt(mensajeComando.id));
-
-    let mensajesFiltrados;
-
-    if (usuarioMencionado) {
-      await enviarRespuestaIA(session, canal, `🔍 Buscando mensajes de ${usuarioMencionado.username} para borrar desde el comando hacia atrás.`);
-      mensajesFiltrados = mensajesPrevios.filter(msg => msg.author.id === usuarioMencionado.id);
-    } else {
-      mensajesFiltrados = mensajesPrevios.filter(msg =>
-        msg.author.id === autorId || msg.author.id === client.user.id
-      );
-    }
-
-    const mensajesABorrar = mensajesFiltrados.first(limit);
-
-    if (!mensajesABorrar.length) {
-      await enviarRespuestaIA(session, canal, '❌ No encontré mensajes para borrar en ese rango.');
-      return;
-    }
-
-    await enviarRespuestaIA(session, canal, `🧹 Voy a borrar ${mensajesABorrar.length} mensajes${usuarioMencionado ? ` de ${usuarioMencionado.username}` : ''}.`);
-    await canal.bulkDelete(mensajesABorrar, true);
-    await enviarRespuestaIA(session, canal, `✅ He borrado ${mensajesABorrar.length} mensajes${usuarioMencionado ? ` de ${usuarioMencionado.username}` : ''}.`);
-
-  } catch (err) {
-    console.error('Error borrando mensajes:', err);
-    await enviarRespuestaIA(session, canal, '❌ No pude borrar los mensajes. ¿Tengo permisos?');
-  }
-}
+const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
 
 client.on('messageCreate', async (m) => {
   if (m.author.bot) return;
@@ -100,69 +31,51 @@ client.on('messageCreate', async (m) => {
     if (activeIASessions.has(m.channel.id)) {
       const session = activeIASessions.get(m.channel.id);
       if (session.userId === m.author.id) {
-        return m.reply('🟢 Ya estás hablando con Shizuka.');
+        return m.reply('🟢 Ya tienes la sesión de IA activa en este canal.');
       } else {
-        return m.reply('⚠️ Otra persona está usando la IA en este canal.');
+        return m.reply('⚠️ Ya hay una sesión activa con otro usuario en este canal.');
       }
     }
 
     activeIASessions.set(m.channel.id, {
       userId: m.author.id,
       history: [
-        { role: 'user', parts: [{ text: SYSTEM_INSTRUCTION }] }
+        { role: 'user', parts: [{ text: SYSTEM_GOKI_INSTRUCTION }] },
+        { role: 'model', parts: [{ text: 'Holi 💋 ¿Qué quieres saber o hacer conmigo?' }] }
       ]
     });
 
-    return m.reply('🌸 ¡Hola! Soy Shizuka, tu asistente virtual. ¿En qué puedo ayudarte hoy?');
+    return m.reply('Holi 💋 ¿Qué quieres saber o hacer conmigo?');
+  }
+
+  if (content.toLowerCase() === '.finia') {
+    const session = activeIASessions.get(m.channel.id);
+    if (!session || session.userId !== m.author.id) {
+      return m.reply('⚠️ No tienes una sesión de IA activa en este canal.');
+    }
+    activeIASessions.delete(m.channel.id);
+    return m.reply('Mmm… ok, si tú lo dices. 💔 Nos vemos luego.');
   }
 
   const session = activeIASessions.get(m.channel.id);
-  if (!session || session.userId !== m.author.id) return;
+  if (session && session.userId === m.author.id) {
+    session.history.push({ role: 'user', parts: [{ text: content }] });
 
-  const comando = extraerComandoYUsuario(m);
+    try {
+      const response = await axios.post(
+        API_URL,
+        { contents: session.history },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
 
-  if (comando) {
-    if (comando.cmd === 'borrar') {
-      await borrarMensajes(m.channel, m.author.id, comando.cantidad, session, m, comando.usuarioMencionado);
-      return;
+      const aiResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '¿Eh? No te entendí bien, repítemelo 😘';
+      session.history.push({ role: 'model', parts: [{ text: aiResponse }] });
+      m.reply(aiResponse);
+
+    } catch (error) {
+      console.error('Error al conectar con Gemini:', error.response?.data || error.message);
+      m.reply('❌ Ups... hubo un error sexy, pero error al fin 😅.');
     }
-
-    if (comando.cmd === 'terminarChat') {
-      await enviarRespuestaIA(session, m.channel, '🍂 Está bien, cerraré nuestro chat. ¡Cuídate mucho!');
-      activeIASessions.delete(m.channel.id);
-      return;
-    }
-  }
-
-  if (debeTerminarSesion(content)) {
-    await enviarRespuestaIA(session, m.channel, '🍂 Entiendo que quieres finalizar. Hasta pronto!');
-    activeIASessions.delete(m.channel.id);
-    return;
-  }
-
-  session.history.push({
-    role: 'user',
-    parts: [{ text: content }]
-  });
-
-  try {
-    const response = await axios.post(API_URL, {
-      contents: session.history
-    }, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Lo siento, no entendí eso muy bien.';
-
-    session.history.push({
-      role: 'model',
-      parts: [{ text: aiText }]
-    });
-
-    m.reply(aiText);
-  } catch (err) {
-    console.error('Error IA:', err.response?.data || err.message);
-    m.reply('❌ No se pudo conectar con Shizuka.');
   }
 });
 
