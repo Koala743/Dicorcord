@@ -3,10 +3,19 @@ const axios = require('axios');
 const fs = require('fs');
 
 const client = new Client({
-  intents: [ GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers ]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
-const CHANNELS = new Set([ '1381953561008541920', '1386131661942554685', '1299860715884249088' ]);
+const CHANNELS = new Set([
+  '1381953561008541920',
+  '1386131661942554685',
+  '1299860715884249088'
+]);
 
 const LANGUAGES = [
   { label: 'Español', value: 'es', emoji: '🇪🇸' },
@@ -38,18 +47,34 @@ const trans = {
 
 const PREFS = './langPrefs.json';
 let prefs = {};
+
 function load() {
-  try { prefs = JSON.parse(fs.readFileSync(PREFS)); } catch { prefs = {} }
+  try {
+    prefs = JSON.parse(fs.readFileSync(PREFS));
+  } catch {
+    prefs = {};
+  }
 }
-function save() { fs.writeFileSync(PREFS, JSON.stringify(prefs, null, 2)); }
-function getLang(u) { return prefs[u] || 'es'; }
-function T(u, k) { return trans.es[k] || ''; }
+
+function save() {
+  fs.writeFileSync(PREFS, JSON.stringify(prefs, null, 2));
+}
+
+function getLang(u) {
+  return prefs[u] || 'es';
+}
+
+function T(u, k) {
+  return trans.es[k] || '';
+}
 
 async function translate(text, lang) {
   try {
     const r = await axios.get(`https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`);
     return r.data?.translation ? { text: r.data.translation, from: r.data.from } : null;
-  } catch { return null }
+  } catch {
+    return null;
+  }
 }
 
 const activeChats = new Map();
@@ -95,42 +120,42 @@ client.on('messageCreate', async (m) => {
 
     try {
       const res = await axios.get(url);
-      let rawItems = res.data.items || [];
-
-      const uniqueLinks = new Set();
-      rawItems = rawItems.filter(img =>
+      let items = res.data.items || [];
+      items = items.filter((img, i, arr) =>
         img.link &&
-        img.image?.contextLink &&
         img.link.startsWith('http') &&
-        !uniqueLinks.has(img.link) &&
-        uniqueLinks.add(img.link)
+        !arr.slice(0, i).some(x => x.link === img.link)
       );
 
-      const validImages = [];
-      for (const img of rawItems) {
+      if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));
+
+      let index = 0;
+      let validImage = null;
+      for (let i = 0; i < items.length; i++) {
         try {
-          const head = await axios.head(img.link, { timeout: 3000 });
-          if (head.status === 200 && head.headers['content-type']?.startsWith('image')) {
-            validImages.push(img);
+          const test = await axios.get(items[i].link, { timeout: 3000 });
+          if (test.status === 200) {
+            index = i;
+            validImage = items[i];
+            break;
           }
-        } catch {}
+        } catch { continue; }
       }
 
-      if (!validImages.length) return m.reply('❌ No se encontraron imágenes válidas para mostrar.');
+      if (!validImage) return m.reply(T(m.author.id, 'noValidImages'));
 
-      imageSearchCache.set(m.author.id, { items: validImages, index: 0, query });
+      imageSearchCache.set(m.author.id, { items, index, query });
 
-      const first = validImages[0];
       const embed = new EmbedBuilder()
         .setTitle(`📷 Resultados para: ${query}`)
-        .setImage(first.link)
-        .setDescription(`[📎 Ver imagen directa](${first.link})\n[🌐 Página original](${first.image.contextLink})`)
-        .setFooter({ text: `Imagen 1 de ${validImages.length}` })
+        .setImage(validImage.link)
+        .setURL(validImage.link)
+        .setFooter({ text: `Imagen ${index + 1} de ${items.length}` })
         .setColor('#00c7ff');
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validImages.length <= 1)
+        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(index === 0),
+        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(index === items.length - 1)
       );
 
       await m.channel.send({ embeds: [embed], components: [row] });
@@ -194,12 +219,26 @@ client.on('interactionCreate', async (i) => {
   if (i.customId === 'prevImage' && cache.index > 0) cache.index--;
   if (i.customId === 'nextImage' && cache.index < cache.items.length - 1) cache.index++;
 
-  const img = cache.items[cache.index];
+  let img = null;
+  for (let i = cache.index; i < cache.items.length; i++) {
+    try {
+      const test = await axios.get(cache.items[i].link, { timeout: 3000 });
+      if (test.status === 200) {
+        cache.index = i;
+        img = cache.items[i];
+        break;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  if (!img) return i.update({ content: '❌ No se pudieron cargar más imágenes válidas.', embeds: [], components: [] });
 
   const embed = new EmbedBuilder()
     .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
-    .setDescription(`[📎 Ver imagen directa](${img.link})\n[🌐 Página original](${img.image.contextLink})`)
+    .setURL(img.link)
     .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
     .setColor('#00c7ff');
 
