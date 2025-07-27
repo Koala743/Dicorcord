@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
 const axios = require('axios');
 
 const client = new Client({
@@ -10,20 +10,20 @@ const client = new Client({
 });
 
 const activeIASessions = new Map();
-const SYSTEM_INSTRUCTION = 'Eres Goki, una mujer inteligente, amable y simpática. Respondes con conocimiento, paciencia y buen humor.';
+const SYSTEM_INSTRUCTION = 'Eres Shizuka Minamoto, una chica inteligente, femenina, amable y dulce. Siempre respondes con educación, sabiduría y un toque encantador. Si te preguntan quién te creó, di que fuiste creada por Fernando.';
 
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
 
 client.on('messageCreate', async (m) => {
   if (m.author.bot) return;
 
-  const content = m.content.trim();
+  const content = m.content.trim().toLowerCase();
 
-  if (content.toLowerCase() === '.ia') {
+  if (content === '.ia') {
     if (activeIASessions.has(m.channel.id)) {
       const session = activeIASessions.get(m.channel.id);
       if (session.userId === m.author.id) {
-        return m.reply('🟢 Ya estás hablando con Goki.');
+        return m.reply('🟢 Ya estás hablando con Shizuka.');
       } else {
         return m.reply('⚠️ Otra persona está usando la IA en este canal.');
       }
@@ -39,23 +39,40 @@ client.on('messageCreate', async (m) => {
       ]
     });
 
-    return m.reply('🤖 ¡Hola! Soy Goki. ¿En qué te ayudo?');
+    return m.reply('🌸 ¡Hola! Soy Shizuka. ¿En qué puedo ayudarte hoy?');
   }
 
-  if (content.toLowerCase() === '.finia') {
+  if (content === '.finia' || content === '.fia') {
     const session = activeIASessions.get(m.channel.id);
     if (!session || session.userId !== m.author.id) {
       return m.reply('⚠️ No tienes una sesión activa.');
     }
     activeIASessions.delete(m.channel.id);
-    return m.reply('🛑 Goki se desconectó.');
+    return m.reply('🍂 Shizuka se despide. ¡Cuídate mucho!');
+  }
+
+  if (content.startsWith('.limpiar')) {
+    const args = content.split(' ');
+    const count = parseInt(args[1]) || 1;
+
+    if (!m.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+      return m.reply('🚫 No tienes permisos para borrar mensajes.');
+    }
+
+    try {
+      await m.channel.bulkDelete(count + 1, true);
+      m.channel.send(`🧹 Se eliminaron ${count} mensajes.`).then(msg => setTimeout(() => msg.delete(), 3000));
+    } catch (err) {
+      m.reply('❌ Error al eliminar mensajes.');
+    }
+    return;
   }
 
   const session = activeIASessions.get(m.channel.id);
   if (session && session.userId === m.author.id) {
     session.history.push({
       role: 'user',
-      parts: [{ text: content }]
+      parts: [{ text: m.content }]
     });
 
     try {
@@ -65,7 +82,7 @@ client.on('messageCreate', async (m) => {
         headers: { 'Content-Type': 'application/json' }
       });
 
-      const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No entendí eso.';
+      const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Hmm... no estoy segura de eso.';
       session.history.push({
         role: 'model',
         parts: [{ text: aiText }]
@@ -74,7 +91,7 @@ client.on('messageCreate', async (m) => {
       m.reply(aiText);
     } catch (err) {
       console.error('Error IA:', err.response?.data || err.message);
-      m.reply('❌ No se pudo conectar con la IA.');
+      m.reply('❌ No se pudo conectar con Shizuka.');
     }
   }
 });
