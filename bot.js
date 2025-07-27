@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 
@@ -31,7 +31,8 @@ const trans = {
     notAuthorized: '⚠️ No eres el usuario autorizado.',
     noSearchQuery: '⚠️ Debes proporcionar texto para buscar.',
     noImagesFound: '❌ No se encontraron imágenes para esa búsqueda.',
-    noValidImages: '❌ No se encontraron imágenes válidas.'
+    noValidImages: '❌ No se encontraron imágenes válidas.',
+    chatDeactivated: '🛑 Chat automático desactivado.'
   }
 };
 
@@ -63,14 +64,32 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (m) => {
-  if (m.author.bot || !m.content || !m.content.startsWith('.')) return;
+  if (m.author.bot || !m.content) return;
 
+  const urlRegex = /https?:\/\/[^\s]+/i;
+
+  if (urlRegex.test(m.content)) {
+    try {
+      const member = await m.guild.members.fetch(m.author.id);
+      const allowedRoles = new Set([
+        '1305327128341905459',
+        '1244056080825454642',
+        '1244039798696710212'
+      ]);
+      const hasAllowedRole = member.roles.cache.some(r => allowedRoles.has(r.id));
+      if (!hasAllowedRole) {
+        await m.delete().catch(() => {});
+        return;
+      }
+    } catch {}
+  }
+
+  if (!m.content.startsWith('.')) return;
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
-  const uid = m.author.id;
 
   if (command === 'web') {
     const query = args.join(' ');
-    if (!query) return m.reply(T(uid, 'noSearchQuery'));
+    if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
 
     const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=10`;
 
@@ -78,9 +97,9 @@ client.on('messageCreate', async (m) => {
       const res = await axios.get(url);
       let items = res.data.items || [];
       items = items.filter(img => img.link && img.link.startsWith('http'));
-      if (!items.length) return m.reply(T(uid, 'noValidImages'));
+      if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));
 
-      imageSearchCache.set(uid, { items, index: 0, query });
+      imageSearchCache.set(m.author.id, { items, index: 0, query });
       const embed = new EmbedBuilder()
         .setTitle(`📷 Resultados para: ${query}`)
         .setImage(items[0].link)
@@ -88,15 +107,8 @@ client.on('messageCreate', async (m) => {
         .setColor('#00c7ff');
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('prevImage')
-          .setLabel('⬅️')
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(true),
-        new ButtonBuilder()
-          .setCustomId('nextImage')
-          .setLabel('➡️')
-          .setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
+        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary)
       );
 
       await m.channel.send({ embeds: [embed], components: [row] });
@@ -108,15 +120,15 @@ client.on('messageCreate', async (m) => {
   }
 
   if (command === 'td') {
-    if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(uid, 'mustReply'));
+    if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
     try {
       const ref = await m.channel.messages.fetch(m.reference.messageId);
-      const res = await translate(ref.content, getLang(uid));
-      if (!res) return m.reply(T(uid, 'timeout'));
-      if (res.from === getLang(uid)) return m.reply(T(uid, 'alreadyInLang'));
+      const res = await translate(ref.content, getLang(m.author.id));
+      if (!res) return m.reply(T(m.author.id, 'timeout'));
+      if (res.from === getLang(m.author.id)) return m.reply(T(m.author.id, 'alreadyInLang'));
       const embed = new EmbedBuilder()
         .setColor('#00c7ff')
-        .setDescription(`${LANGUAGES.find(l => l.value === getLang(uid)).emoji} : ${res.text}`);
+        .setDescription(`${LANGUAGES.find(l => l.value === getLang(m.author.id)).emoji} : ${res.text}`);
       return m.reply({ embeds: [embed] });
     } catch {
       return m.reply('No se pudo traducir el mensaje.');
@@ -126,9 +138,9 @@ client.on('messageCreate', async (m) => {
   if (command === 'chat') {
     if (m.mentions.users.size !== 1) return m.reply('Debes mencionar exactamente a un usuario.');
     const other = m.mentions.users.first();
-    if (other.id === uid) return m.reply('No puedes chatear contigo mismo.');
-    activeChats.set(m.channel.id, { users: [uid, other.id] });
-    const m1 = await m.guild.members.fetch(uid);
+    if (other.id === m.author.id) return m.reply('No puedes chatear contigo mismo.');
+    activeChats.set(m.channel.id, { users: [m.author.id, other.id] });
+    const m1 = await m.guild.members.fetch(m.author.id);
     const m2 = await m.guild.members.fetch(other.id);
     const embed = new EmbedBuilder()
       .setTitle('💬 Chat Automático Iniciado')
@@ -141,12 +153,12 @@ client.on('messageCreate', async (m) => {
   }
 
   if (command === 'dchat') {
-    if (m.author.username !== 'flux_fer') return m.reply(T(uid, 'notAuthorized'));
+    if (m.author.username !== 'flux_fer') return m.reply(T(m.author.id, 'notAuthorized'));
     if (activeChats.has(m.channel.id)) {
       activeChats.delete(m.channel.id);
-      return m.reply(T(uid, 'chatDeactivated'));
+      return m.reply(T(m.author.id, 'chatDeactivated'));
     }
-    return m.reply(T(uid, 'mustReply'));
+    return m.reply(T(m.author.id, 'mustReply'));
   }
 });
 
@@ -167,16 +179,8 @@ client.on('interactionCreate', async (i) => {
     embeds: [embed],
     components: [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('prevImage')
-          .setLabel('⬅️')
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(cache.index === 0),
-        new ButtonBuilder()
-          .setCustomId('nextImage')
-          .setLabel('➡️')
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(cache.index === cache.items.length - 1)
+        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(cache.index === 0),
+        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(cache.index === cache.items.length - 1)
       )
     ]
   });
