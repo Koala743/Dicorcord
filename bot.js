@@ -14,12 +14,21 @@ const SYSTEM_INSTRUCTION = 'Eres Shizuka Minamoto, una chica inteligente, femeni
 
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
 
+function debeTerminarSesion(texto) {
+  const frasesClave = [
+    'termina', 'terminar', 'chao', 'adiós', 'fin', 'gracias', 
+    'ya no quiero', 'ya hasta aquí', 'ya fue', 'me voy', 'nos vemos'
+  ];
+  const lower = texto.toLowerCase();
+  return frasesClave.some(frase => lower.includes(frase));
+}
+
 client.on('messageCreate', async (m) => {
   if (m.author.bot) return;
 
-  const content = m.content.trim().toLowerCase();
+  const content = m.content.trim();
 
-  if (content === '.ia') {
+  if (content.toLowerCase() === '.ia') {
     if (activeIASessions.has(m.channel.id)) {
       const session = activeIASessions.get(m.channel.id);
       if (session.userId === m.author.id) {
@@ -42,15 +51,6 @@ client.on('messageCreate', async (m) => {
     return m.reply('🌸 ¡Hola! Soy Shizuka. ¿En qué puedo ayudarte hoy?');
   }
 
-  if (content === '.finia' || content === '.fia') {
-    const session = activeIASessions.get(m.channel.id);
-    if (!session || session.userId !== m.author.id) {
-      return m.reply('⚠️ No tienes una sesión activa.');
-    }
-    activeIASessions.delete(m.channel.id);
-    return m.reply('🍂 Shizuka se despide. ¡Cuídate mucho!');
-  }
-
   if (content.startsWith('.limpiar')) {
     const args = content.split(' ');
     const count = parseInt(args[1]) || 1;
@@ -69,30 +69,36 @@ client.on('messageCreate', async (m) => {
   }
 
   const session = activeIASessions.get(m.channel.id);
-  if (session && session.userId === m.author.id) {
-    session.history.push({
-      role: 'user',
-      parts: [{ text: m.content }]
+  if (!session || session.userId !== m.author.id) return;
+
+  if (debeTerminarSesion(content)) {
+    activeIASessions.delete(m.channel.id);
+    // NO responde nada, sesión cerrada automáticamente
+    return;
+  }
+
+  session.history.push({
+    role: 'user',
+    parts: [{ text: content }]
+  });
+
+  try {
+    const response = await axios.post(API_URL, {
+      contents: session.history
+    }, {
+      headers: { 'Content-Type': 'application/json' }
     });
 
-    try {
-      const response = await axios.post(API_URL, {
-        contents: session.history
-      }, {
-        headers: { 'Content-Type': 'application/json' }
-      });
+    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Hmm... no estoy segura de eso.';
+    session.history.push({
+      role: 'model',
+      parts: [{ text: aiText }]
+    });
 
-      const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Hmm... no estoy segura de eso.';
-      session.history.push({
-        role: 'model',
-        parts: [{ text: aiText }]
-      });
-
-      m.reply(aiText);
-    } catch (err) {
-      console.error('Error IA:', err.response?.data || err.message);
-      m.reply('❌ No se pudo conectar con Shizuka.');
-    }
+    m.reply(aiText);
+  } catch (err) {
+    console.error('Error IA:', err.response?.data || err.message);
+    m.reply('❌ No se pudo conectar con Shizuka.');
   }
 });
 
