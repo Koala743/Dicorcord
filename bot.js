@@ -14,7 +14,6 @@ const SYSTEM_GOKI_INSTRUCTION =
   'Eres Goki, una mujer inteligente, amable y simpática. Explicas con claridad y buen humor.';
 
 const GEMINI_API_KEY = 'AIzaSyBqPCfTlkpk4SQ_PeaRghav13hINXEetC4';
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 client.on('messageCreate', async (m) => {
   if (m.author.bot) return;
@@ -52,18 +51,26 @@ client.on('messageCreate', async (m) => {
   if (session && session.userId === m.author.id) {
     session.history.push({ role: 'user', content });
 
-    const contentsForApi = session.history.map((msg) => ({
-      role: msg.role,
-      parts: [{ text: msg.content }],
-    }));
+    const payload = {
+      model: "gemini-2.0-flash",
+      prompt: {
+        messages: session.history.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+      },
+      temperature: 0.7,
+    };
 
     try {
-      const resp = await axios.post(API_URL, { contents: contentsForApi }, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const resp = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateMessage?key=${GEMINI_API_KEY}`,
+        payload,
+        { headers: { 'Content-Type': 'application/json' } }
+      );
 
       const aiText =
-        resp.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        resp.data?.candidates?.[0]?.message?.content ||
         'No entendí bien, ¿puedes repetir?';
       session.history.push({ role: 'assistant', content: aiText });
       m.reply(aiText);
