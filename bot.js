@@ -14,6 +14,10 @@ const ai = new GoogleGenerativeAI('AIzaSyBqPCfTlkpk4SQ_PeaRghav13hINXEetC4');
 const activeIASessions = new Map();
 const SYSTEM_GOKI_INSTRUCTION = 'Eres Goki, una mujer inteligente, amable y simpática. Explica con claridad y responde con buen humor.';
 
+client.once('ready', () => {
+  console.log(`Bot listo como ${client.user.tag}`);
+});
+
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
