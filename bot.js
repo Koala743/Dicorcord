@@ -27,8 +27,17 @@ const CHANNELS = new Set([
 
 const LANGUAGES = [
   { label: 'Español', value: 'es', emoji: '🇪🇸' },
-  { label: 'Inglés', value: 'en', emoji: '🇬🇧' },
-  // otros idiomas posibles...
+  { label: 'Inglés', value: 'en', emoji: '🇺🇸' },
+  { label: 'Portugués', value: 'pt', emoji: '🇧🇷' },
+  { label: 'Francés', value: 'fr', emoji: '🇫🇷' },
+  { label: 'Alemán', value: 'de', emoji: '🇩🇪' },
+  { label: 'Italiano', value: 'it', emoji: '🇮🇹' },
+  { label: 'Ruso', value: 'ru', emoji: '🇷🇺' },
+  { label: 'Japonés', value: 'ja', emoji: '🇯🇵' },
+  { label: 'Chino', value: 'zh', emoji: '🇨🇳' },
+  { label: 'Coreano', value: 'ko', emoji: '🇰🇷' },
+  { label: 'Árabe', value: 'ar', emoji: '🇸🇦' },
+  { label: 'Hindi', value: 'hi', emoji: '🇮🇳' },
 ];
 
 const trans = {
