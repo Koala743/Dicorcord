@@ -17,21 +17,6 @@ const CHANNELS = new Set([
   '1299860715884249088'
 ]);
 
-const LANGUAGES = [
-  { label: 'Español', value: 'es', emoji: '🇪🇸' },
-  { label: 'Inglés', value: 'en', emoji: '🇬🇧' },
-  { label: 'Francés', value: 'fr', emoji: '🇫🇷' },
-  { label: 'Alemán', value: 'de', emoji: '🇩🇪' },
-  { label: 'Portugués', value: 'pt', emoji: '🇵🇹' },
-  { label: 'Italiano', value: 'it', emoji: '🇮🇹' },
-  { label: 'Ruso', value: 'ru', emoji: '🇷🇺' },
-  { label: 'Japonés', value: 'ja', emoji: '🇯🇵' },
-  { label: 'Chino (Simpl.)', value: 'zh-CN', emoji: '🇨🇳' },
-  { label: 'Coreano', value: 'ko', emoji: '🇰🇷' },
-  { label: 'Árabe', value: 'ar', emoji: '🇸🇦' },
-  { label: 'Hindi', value: 'hi', emoji: '🇮🇳' }
-];
-
 const trans = {
   es: {
     mustReply: '⚠️ Usa el comando con un mensaje válido.',
@@ -64,7 +49,6 @@ function T(u, k) {
   return trans.es[k] || '';
 }
 
-// Función para validar que la URL de la imagen responde y es realmente imagen
 async function isImageUrlValid(url) {
   try {
     const res = await axios.head(url, { timeout: 5000 });
@@ -104,9 +88,9 @@ client.on('messageCreate', async (m) => {
     try {
       const member = await m.guild.members.fetch(m.author.id);
       const allowedRoles = new Set([
-        '1305327128341905459', // Staff
-        '1244056080825454642', // Fundador
-        '1244039798696710212'  // Tester
+        '1305327128341905459',
+        '1244056080825454642',
+        '1244039798696710212'
       ]);
       const hasAllowedRole = member.roles.cache.some(r => allowedRoles.has(r.id));
       if (!hasAllowedRole) {
@@ -124,14 +108,13 @@ client.on('messageCreate', async (m) => {
     const query = args.join(' ');
     if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
 
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=10`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=25`;
     try {
       const res = await axios.get(url);
       let items = res.data.items || [];
       items = items.filter(img => img.link && img.link.startsWith('http'));
       if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));
 
-      // Buscar primera imagen válida
       let validIndex = -1;
       for (let i = 0; i < items.length; i++) {
         if (await isImageUrlValid(items[i].link)) {
@@ -164,9 +147,8 @@ client.on('messageCreate', async (m) => {
       );
 
       await m.channel.send({ embeds: [embed], components: [row] });
-    } catch (err) {
-      const errMsg = err.response?.data?.error?.message || err.message;
-      return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
+    } catch {
+      return m.reply(T(m.author.id, 'noValidImages'));
     }
     return;
   }
@@ -180,7 +162,7 @@ client.on('messageCreate', async (m) => {
       if (res.from === getLang(m.author.id)) return m.reply(T(m.author.id, 'alreadyInLang'));
       const embed = new EmbedBuilder()
         .setColor('#00c7ff')
-        .setDescription(`${LANGUAGES.find(l => l.value === getLang(m.author.id)).emoji} : ${res.text}`);
+        .setDescription(`${res.text}`);
       return m.reply({ embeds: [embed] });
     } catch {
       return m.reply('No se pudo traducir el mensaje.');
@@ -225,7 +207,6 @@ client.on('interactionCreate', async (i) => {
   if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
   if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
 
-  // Buscar imagen válida desde newIndex hacia adelante o hacia atrás dependiendo del botón
   async function findValidImage(startIndex, direction) {
     let i = startIndex;
     while (i >= 0 && i < cache.items.length) {
@@ -235,19 +216,14 @@ client.on('interactionCreate', async (i) => {
     return -1;
   }
 
-  // direction: -1 para prev, +1 para next
   const direction = newIndex < cache.index ? -1 : 1;
   let validIndex = await findValidImage(newIndex, direction);
 
-  // Si no encontró en la dirección, intentar la actual posición
   if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
     validIndex = cache.index;
   }
 
-  if (validIndex === -1) {
-    // No hay imágenes válidas, no actualiza para evitar error
-    return i.deferUpdate();
-  }
+  if (validIndex === -1) return i.deferUpdate();
 
   cache.index = validIndex;
   const img = cache.items[validIndex];
