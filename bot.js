@@ -1,71 +1,74 @@
-const { Client, GatewayIntentBits } = require('discord.js');
-const axios = require('axios');
+import { Client, GatewayIntentBits } from 'discord.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    GatewayIntentBits.MessageContent,
+  ],
 });
+
+const ai = new GoogleGenerativeAI('AIzaSyBqPCfTlkpk4SQ_PeaRghav13hINXEetC4');
 
 const activeIASessions = new Map();
 const SYSTEM_GOKI_INSTRUCTION = 'Eres Goki, una mujer inteligente, amable y simpática. Explica con claridad y responde con buen humor.';
 
-const GEMINI_API_KEY = 'AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
 
-client.on('messageCreate', async (m) => {
-  if (m.author.bot) return;
-
-  const content = m.content.trim();
+  const content = message.content.trim();
 
   if (content.toLowerCase() === '.ia') {
-    if (activeIASessions.has(m.channel.id)) {
-      const sess = activeIASessions.get(m.channel.id);
-      if (sess.userId === m.author.id) return m.reply('🟢 Ya tienes la sesión activa.');
-      return m.reply('⚠️ Otro usuario ya está usando IA en este canal.');
+    if (activeIASessions.has(message.channel.id)) {
+      const session = activeIASessions.get(message.channel.id);
+      if (session.userId === message.author.id) {
+        return message.reply('🟢 Ya tienes la IA activa.');
+      } else {
+        return message.reply('⚠️ Otro usuario tiene la IA activa en este canal.');
+      }
     }
-    activeIASessions.set(m.channel.id, {
-      userId: m.author.id,
+    activeIASessions.set(message.channel.id, {
+      userId: message.author.id,
       history: [
         { role: 'system', content: SYSTEM_GOKI_INSTRUCTION },
-        { role: 'model', content: '¡Hola! Soy Goki, lista para ayudarte.' }
-      ]
+        { role: 'assistant', content: '¡Hola! Soy Goki, lista para ayudarte.' },
+      ],
     });
-    return m.reply('🤖 IA activada. ¡Habla conmigo!');
+    return message.reply('🤖 Goki activada. Puedes hablar conmigo.');
   }
 
   if (content.toLowerCase() === '.finia') {
-    const session = activeIASessions.get(m.channel.id);
-    if (!session || session.userId !== m.author.id)
-      return m.reply('⚠️ No tienes sesión activa.');
-    activeIASessions.delete(m.channel.id);
-    return m.reply('🛑 Sesión finalizada.');
+    const session = activeIASessions.get(message.channel.id);
+    if (!session || session.userId !== message.author.id) {
+      return message.reply('⚠️ No tienes sesión activa.');
+    }
+    activeIASessions.delete(message.channel.id);
+    return message.reply('🛑 Sesión finalizada.');
   }
 
-  const session = activeIASessions.get(m.channel.id);
-  if (session && session.userId === m.author.id) {
+  const session = activeIASessions.get(message.channel.id);
+  if (session && session.userId === message.author.id) {
     session.history.push({ role: 'user', content });
 
-    const contentsForApi = session.history.map(msg => ({
-      role: msg.role === 'model' ? 'assistant' : msg.role,
-      parts: [{ text: msg.content }]
-    }));
-
     try {
-      const resp = await axios.post(API_URL, { contents: contentsForApi }, {
-        headers: { 'Content-Type': 'application/json' }
+      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+      const result = await model.generateContent({
+        messages: session.history.map((msg) => ({
+          author: msg.role === 'system' ? 'system' : msg.role === 'assistant' ? 'bot' : 'user',
+          content: msg.content,
+        })),
       });
 
-      const aiText = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text
-        || 'No entendí bien, ¿puedes repetir?';
-      session.history.push({ role: 'assistant', content: aiText });
+      const text = (await result.response).text();
 
-      m.reply(aiText);
-    } catch (err) {
-      console.error('Error Gemini 2.5:', err.response?.data || err.message);
-      m.reply('❌ Error al conectar a Gemini 2.5‑Flash.');
+      session.history.push({ role: 'assistant', content: text });
+
+      message.reply(text);
+    } catch (error) {
+      console.error('Error con Gemini:', error);
+      message.reply('❌ Error al conectar con Gemini.');
     }
   }
 });
