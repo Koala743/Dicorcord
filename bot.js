@@ -64,6 +64,17 @@ function T(u, k) {
   return trans.es[k] || '';
 }
 
+// Función para validar que la URL de la imagen responde y es realmente imagen
+async function isImageUrlValid(url) {
+  try {
+    const res = await axios.head(url, { timeout: 5000 });
+    const contentType = res.headers['content-type'];
+    return res.status === 200 && contentType && contentType.startsWith('image/');
+  } catch {
+    return false;
+  }
+}
+
 async function translate(text, lang) {
   try {
     const r = await axios.get(`https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`);
@@ -120,13 +131,23 @@ client.on('messageCreate', async (m) => {
       items = items.filter(img => img.link && img.link.startsWith('http'));
       if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));
 
-      imageSearchCache.set(m.author.id, { items, index: 0, query });
+      // Buscar primera imagen válida
+      let validIndex = -1;
+      for (let i = 0; i < items.length; i++) {
+        if (await isImageUrlValid(items[i].link)) {
+          validIndex = i;
+          break;
+        }
+      }
+      if (validIndex === -1) return m.reply(T(m.author.id, 'noValidImages'));
+
+      imageSearchCache.set(m.author.id, { items, index: validIndex, query });
 
       const embed = new EmbedBuilder()
         .setTitle(`📷 Resultados para: ${query}`)
-        .setImage(items[0].link)
-        .setDescription(`[Link de la imagen](${items[0].link})`)
-        .setFooter({ text: `Imagen 1 de ${items.length}` })
+        .setImage(items[validIndex].link)
+        .setDescription(`[Link de la imagen](${items[validIndex].link})`)
+        .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length}` })
         .setColor('#00c7ff');
 
       const row = new ActionRowBuilder().addComponents(
@@ -134,11 +155,12 @@ client.on('messageCreate', async (m) => {
           .setCustomId('prevImage')
           .setLabel('⬅️')
           .setStyle(ButtonStyle.Primary)
-          .setDisabled(true),
+          .setDisabled(validIndex === 0),
         new ButtonBuilder()
           .setCustomId('nextImage')
           .setLabel('➡️')
           .setStyle(ButtonStyle.Primary)
+          .setDisabled(validIndex === items.length - 1)
       );
 
       await m.channel.send({ embeds: [embed], components: [row] });
@@ -199,16 +221,42 @@ client.on('interactionCreate', async (i) => {
   const cache = imageSearchCache.get(uid);
   if (!cache) return i.deferUpdate();
 
-  if (i.customId === 'prevImage' && cache.index > 0) cache.index--;
-  if (i.customId === 'nextImage' && cache.index < cache.items.length - 1) cache.index++;
+  let newIndex = cache.index;
+  if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
+  if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
 
-  const img = cache.items[cache.index];
+  // Buscar imagen válida desde newIndex hacia adelante o hacia atrás dependiendo del botón
+  async function findValidImage(startIndex, direction) {
+    let i = startIndex;
+    while (i >= 0 && i < cache.items.length) {
+      if (await isImageUrlValid(cache.items[i].link)) return i;
+      i += direction;
+    }
+    return -1;
+  }
+
+  // direction: -1 para prev, +1 para next
+  const direction = newIndex < cache.index ? -1 : 1;
+  let validIndex = await findValidImage(newIndex, direction);
+
+  // Si no encontró en la dirección, intentar la actual posición
+  if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
+    validIndex = cache.index;
+  }
+
+  if (validIndex === -1) {
+    // No hay imágenes válidas, no actualiza para evitar error
+    return i.deferUpdate();
+  }
+
+  cache.index = validIndex;
+  const img = cache.items[validIndex];
 
   const embed = new EmbedBuilder()
     .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
     .setDescription(`[Link de la imagen](${img.link})`)
-    .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
+    .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
     .setColor('#00c7ff');
 
   await i.update({
@@ -219,12 +267,12 @@ client.on('interactionCreate', async (i) => {
           .setCustomId('prevImage')
           .setLabel('⬅️')
           .setStyle(ButtonStyle.Primary)
-          .setDisabled(cache.index === 0),
+          .setDisabled(validIndex === 0),
         new ButtonBuilder()
           .setCustomId('nextImage')
           .setLabel('➡️')
           .setStyle(ButtonStyle.Primary)
-          .setDisabled(cache.index === cache.items.length - 1)
+          .setDisabled(validIndex === cache.items.length - 1)
       )
     ]
   });
