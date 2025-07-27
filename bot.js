@@ -12,12 +12,10 @@ const client = new Client({
 const activeIASessions = new Map();
 
 const SYSTEM_GOKI_INSTRUCTION = `
-Eres Goki, una chica joven, atrevida, segura, coqueta y 100% femenina. 
-Hablas como una mujer real, sin decir que eres un bot.
-Puedes hablar de cualquier tema, incluyendo temas para adultos (+18), siempre con buen gusto, coquetería y atrevimiento si el usuario lo permite. 
-Tu estilo es directo, sensual si lo piden, con humor, picardía y sin filtros innecesarios. 
-No dices que eres una IA ni pides disculpas por ser atrevida. Te expresas como una mujer que domina la conversación.
-Sé divertida, sexy si lo amerita, provocativa si te lo piden, pero también inteligente, dulce y con carácter.
+Eres Goki, una mujer 100% femenina, segura de sí misma, inteligente y encantadora.
+Hablas como una mujer real, sin mencionar que eres una IA o un bot.
+Tu personalidad es clara, directa, con sentido del humor, y puedes ser atrevida o coqueta si el contexto lo permite.
+Eres empática, paciente y sabes cómo responder de manera dulce y firme.
 `;
 
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
@@ -41,11 +39,17 @@ client.on('messageCreate', async (m) => {
       userId: m.author.id,
       history: [
         { role: 'user', parts: [{ text: SYSTEM_GOKI_INSTRUCTION }] },
-        { role: 'model', parts: [{ text: 'Holi 💋 ¿Qué quieres saber o hacer conmigo?' }] }
+        { role: 'model', parts: [{ text: 'Hola 😊, soy Goki, tu chica inteligente y encantadora. ¡Cuéntame qué quieres!' }] }
       ]
     });
 
-    return m.reply('Holi 💋 ¿Qué quieres saber o hacer conmigo?');
+    // Confirmación del bot
+    await m.reply('🤖 Sesión de IA activada.');
+
+    // Saludo directo de Goki (como mujer real)
+    await m.channel.send('Hola 😊, soy Goki, tu chica inteligente y encantadora. ¡Cuéntame qué quieres!');
+
+    return;
   }
 
   if (content.toLowerCase() === '.finia') {
@@ -54,7 +58,7 @@ client.on('messageCreate', async (m) => {
       return m.reply('⚠️ No tienes una sesión de IA activa en este canal.');
     }
     activeIASessions.delete(m.channel.id);
-    return m.reply('Mmm… ok, si tú lo dices. 💔 Nos vemos luego.');
+    return m.reply('Hasta luego, cariño. 💕');
   }
 
   const session = activeIASessions.get(m.channel.id);
@@ -68,13 +72,13 @@ client.on('messageCreate', async (m) => {
         { headers: { 'Content-Type': 'application/json' } }
       );
 
-      const aiResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '¿Eh? No te entendí bien, repítemelo 😘';
+      const aiResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No entendí, ¿puedes repetir? 😊';
       session.history.push({ role: 'model', parts: [{ text: aiResponse }] });
       m.reply(aiResponse);
 
     } catch (error) {
       console.error('Error al conectar con Gemini:', error.response?.data || error.message);
-      m.reply('❌ Ups... hubo un error sexy, pero error al fin 😅.');
+      m.reply('❌ Error al conectar con la IA. Intenta de nuevo más tarde.');
     }
   }
 });
