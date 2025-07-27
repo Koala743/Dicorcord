@@ -1,69 +1,68 @@
-const { Client, GatewayIntentBits } = require('discord.js')
-const axios = require('axios')
+require('dotenv').config();
+const { Client, GatewayIntentBits } = require('discord.js');
+const fetch = require('node-fetch');
+
+const GEMINI_API_KEY = 'AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-})
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+});
 
-const activeIASessions = new Map()
+client.once('ready', () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
+});
 
-const SYSTEM_GOKI_INSTRUCTION = 'Eres Goki, una mujer inteligente, amable y simpática. Respondes con conocimiento, paciencia y buen humor. Explica cosas claramente y sé amigable.'
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
 
-client.on('messageCreate', async (m) => {
-  if (m.author.bot) return
+  const prefix = '!pregunta';
+  if (message.content.toLowerCase().startsWith(prefix)) {
+    const pregunta = message.content.slice(prefix.length).trim();
 
-  const content = m.content.trim()
-
-  if (content.toLowerCase() === '.ia') {
-    if (activeIASessions.has(m.channel.id)) {
-      if (activeIASessions.get(m.channel.id).userId === m.author.id) {
-        return m.reply('🟢 Ya tienes la sesión de IA activa en este canal.')
-      } else {
-        return m.reply('⚠️ Ya hay una sesión activa con otro usuario en este canal.')
-      }
+    if (!pregunta) {
+      return message.reply("😏 Escribe algo atrevido después de `!pregunta`... no seas tímido 💋");
     }
-    activeIASessions.set(m.channel.id, {
-      userId: m.author.id,
-      history: [{ role: 'system', content: SYSTEM_GOKI_INSTRUCTION }]
-    })
-    return m.reply('🤖 Sesión de IA activada. ¡Habla conmigo cuando quieras!')
-  }
 
-  if (content.toLowerCase() === '.finia') {
-    const session = activeIASessions.get(m.channel.id)
-    if (!session || session.userId !== m.author.id) {
-      return m.reply('⚠️ No tienes una sesión de IA activa en este canal.')
-    }
-    activeIASessions.delete(m.channel.id)
-    return m.reply('🛑 Sesión de IA finalizada. ¡Hasta luego!')
-  }
+    await message.channel.send("🔥 Espera cariño... estoy pensando cómo responderte...");
 
-  const session = activeIASessions.get(m.channel.id)
-  if (session && session.userId === m.author.id) {
-    session.history.push({ role: 'user', content })
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-    const contents = session.history.map((msg) => ({
-      parts: [{ text: msg.content }]
-    }))
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    const body = JSON.stringify({
+      contents: [
+        {
+          parts: [
+            {
+              text:
+                "Responde como una chica atrevida, coqueta y divertida, con un estilo +18, seductor, travieso y directo. Sé provocativa pero simpática. Usa frases como: 'mmm, eso me gusta...', 'ay qué travieso eres', 'te portaste mal, ¿eh?'. Ayuda con cariño y picardía.\n\nUsuario: " +
+                pregunta,
+            },
+          ],
+        },
+      ],
+    });
 
     try {
-      const response = await axios.post(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260',
-        { contents },
-        { headers: { 'Content-Type': 'application/json' } }
-      )
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body,
+      });
 
-      const aiResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No entendí bien, ¿puedes repetir?'
-      session.history.push({ role: 'assistant', content: aiResponse })
-      m.reply(aiResponse)
-    } catch {
-      m.reply('❌ Hubo un error al conectar con la IA. Intenta más tarde.')
+      const data = await response.json();
+      const respuestaIA =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        '😳 Ups... no supe cómo responder eso, inténtalo otra vez...';
+
+      message.channel.send(respuestaIA);
+    } catch (error) {
+      console.error(error);
+      message.reply('😓 Ay no... algo salió mal con mi conexión, vuelve a intentar.');
     }
   }
-})
+});
 
-client.login(process.env.DISCORD_TOKEN)
+client.login(process.env.DISCORD_TOKEN);
