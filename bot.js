@@ -1,74 +1,45 @@
-const { Client, GatewayIntentBits } = require('discord.js');
-const fetch = require('node-fetch');
+import { config } from 'dotenv';
+import { Client, GatewayIntentBits } from 'discord.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// API Key de Gemini (¡incrustada directamente aquí!)
-const GEMINI_API_KEY = 'AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN; // La de Discord puede seguir viniendo de .env
+config(); // Carga variables de entorno desde .env
 
-if (!GEMINI_API_KEY) {
-  console.error('❌ Falta la clave de Gemini.');
-  process.exit(1);
-}
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260'; // fallback clave fija
+
 if (!DISCORD_TOKEN) {
-  console.error('❌ Falta el token de Discord.');
+  console.error('❌ Falta token de Discord');
   process.exit(1);
 }
+
+const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
 client.once('ready', () => {
-  console.log(`🤖 Bot activo como ${client.user.tag}`);
+  console.log(`🤖 Bot conectado como ${client.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  const userMessage = message.content.trim();
-  if (!userMessage) return;
+  const prompt = message.content.trim();
+  if (!prompt) return;
 
-  const thinking = await message.channel.send("🤔 Pensando...");
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-  const headers = {
-    "Content-Type": "application/json",
-  };
-
-  const body = JSON.stringify({
-    contents: [
-      {
-        parts: [
-          {
-            text: "Eres una inteligencia artificial útil, clara y educada. Responde de forma informativa, útil y precisa. Te llamas AsistenteIA.\n\nUsuario: " + userMessage,
-          },
-        ],
-      },
-    ],
-  });
+  const sentMsg = await message.channel.send('🤔 Pensando...');
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-    });
+    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Error en la API de Gemini:', response.status, errorData);
-      await thinking.edit(`⚠️ Error: ${response.status} - ${errorData?.error?.message || 'Error desconocido'}`);
-      return;
-    }
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
 
-    const data = await response.json();
-    const respuestaIA = data?.candidates?.[0]?.content?.parts?.[0]?.text || "❓ No logré entender tu pregunta.";
-
-    await thinking.edit(respuestaIA);
+    await sentMsg.edit(response.text());
   } catch (error) {
-    console.error("Error al comunicar con Gemini:", error);
-    await thinking.edit("⚠️ Ocurrió un error al procesar tu pregunta.");
+    console.error('Error generando respuesta:', error);
+    await sentMsg.edit('⚠️ Ocurrió un error al generar la respuesta.');
   }
 });
 
