@@ -11,13 +11,14 @@ const client = new Client({
 
 const activeIASessions = new Map();
 
-const SYSTEM_INSTRUCTION = `Eres Shizuka Minamoto, un bot de Discord creado por Fernando. Eres femenina, amable, inteligente y siempre respondes con educación y dulzura.
-Sabes ejecutar comandos de Discord como borrar mensajes y terminar chats. Explica cuando usas un comando.
-Tu objetivo es ayudar y ser encantadora en la conversación.`;
+const SYSTEM_INSTRUCTION = `Eres Shizuka Minamoto, un bot de Discord creado por Fernando. Eres femenina, amable e inteligente.
+Sabes ejecutar comandos como borrar mensajes en cualquier chat donde tengas permisos.
+Si te piden borrar mensajes de cualquier usuario, lo haces tras confirmar el nombre.
+Si te piden cuánto borrar, borras esa cantidad directamente.
+Tu objetivo es ayudar con dulzura y eficacia. Siempre responde con educación y encanto.`;
 
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260';
 
-// Frases para detectar cierre de chat
 function debeTerminarSesion(texto) {
   const palabrasClave = [
     'terminar', 'finalizar', 'adiós', 'chao', 'hasta luego', 'me voy', 'gracias', 'ya no quiero', 'cerrar chat', 'termina chat'
@@ -26,13 +27,16 @@ function debeTerminarSesion(texto) {
   return palabrasClave.some(palabra => lower.includes(palabra));
 }
 
-// Extrae comandos del texto
-function extraerComando(texto) {
-  const lower = texto.toLowerCase();
+function extraerComandoYUsuario(mensaje) {
+  const lower = mensaje.content.toLowerCase();
 
-  const borrarMatch = lower.match(/(borra|elimina|quita|borrar|eliminar)\s+(\d+)\s*(mensajes)?/);
-  if (borrarMatch) {
-    return { cmd: 'borrar', cantidad: parseInt(borrarMatch[2], 10) };
+  const borrarRegex = /(borra|elimina|quita|borrar|eliminar)\s+(\d+)?\s*(mensajes)?/i;
+  const match = borrarRegex.exec(lower);
+
+  if (match) {
+    const cantidad = match[2] ? parseInt(match[2], 10) : null;
+    const mencionado = mensaje.mentions.users.first() || null;
+    return { cmd: 'borrar', cantidad, usuarioMencionado: mencionado };
   }
 
   if (/terminar chat|finalizar chat|cerrar chat/.test(lower)) {
@@ -50,6 +54,45 @@ async function enviarRespuestaIA(session, canal, texto) {
   await canal.send(texto);
 }
 
+async function borrarMensajes(canal, autorId, cantidad, session, m, usuarioMencionado) {
+  if (!m.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+    return enviarRespuestaIA(session, canal, '🚫 Lo siento, no tengo permisos para borrar mensajes.');
+  }
+
+  try {
+    const limit = Math.min(cantidad || 50, 100);
+    const mensajes = await canal.messages.fetch({ limit: 100 });
+
+    let mensajesFiltrados;
+
+    if (usuarioMencionado) {
+      await enviarRespuestaIA(session, canal, `🔍 Buscando mensajes de ${usuarioMencionado.username} para borrar.`);
+      mensajesFiltrados = mensajes.filter(msg => msg.author.id === usuarioMencionado.id);
+    } else {
+      mensajesFiltrados = mensajes.filter(msg =>
+        msg.author.id === autorId || msg.author.id === client.user.id
+      );
+    }
+
+    const mensajesABorrar = mensajesFiltrados.first(limit);
+
+    if (!mensajesABorrar.length) {
+      await enviarRespuestaIA(session, canal, '❌ No encontré mensajes para borrar.');
+      return;
+    }
+
+    await enviarRespuestaIA(session, canal, `🧹 Voy a borrar ${mensajesABorrar.length} mensajes${usuarioMencionado ? ` de ${usuarioMencionado.username}` : ''}.`);
+
+    await canal.bulkDelete(mensajesABorrar, true);
+
+    await enviarRespuestaIA(session, canal, `✅ He borrado ${mensajesABorrar.length} mensajes${usuarioMencionado ? ` de ${usuarioMencionado.username}` : ''}.`);
+
+  } catch (err) {
+    console.error('Error borrando mensajes:', err);
+    await enviarRespuestaIA(session, canal, '❌ No pude borrar los mensajes. ¿Tengo permisos?');
+  }
+}
+
 client.on('messageCreate', async (m) => {
   if (m.author.bot) return;
 
@@ -59,9 +102,9 @@ client.on('messageCreate', async (m) => {
     if (activeIASessions.has(m.channel.id)) {
       const session = activeIASessions.get(m.channel.id);
       if (session.userId === m.author.id) {
-        return m.reply('🟢 Ya estás hablando con Shizuka.');
+        return enviarRespuestaIA(session, m.channel, '🟢 Ya estás hablando con Shizuka.');
       } else {
-        return m.reply('⚠️ Otra persona está usando la IA en este canal.');
+        return enviarRespuestaIA(session, m.channel, '⚠️ Otra persona está usando la IA en este canal.');
       }
     }
 
@@ -72,38 +115,17 @@ client.on('messageCreate', async (m) => {
       ]
     });
 
-    return m.reply('🌸 ¡Hola! Soy Shizuka, tu asistente virtual. ¿En qué puedo ayudarte hoy?');
+    return enviarRespuestaIA(activeIASessions.get(m.channel.id), m.channel, '🌸 ¡Hola! Soy Shizuka, tu asistente virtual. ¿En qué puedo ayudarte hoy?');
   }
 
   const session = activeIASessions.get(m.channel.id);
   if (!session || session.userId !== m.author.id) return;
 
-  // Verifica si el mensaje contiene un comando
-  const comando = extraerComando(content);
+  const comando = extraerComandoYUsuario(m);
 
   if (comando) {
     if (comando.cmd === 'borrar') {
-      const cantidad = Math.min(comando.cantidad, 100);
-      if (!m.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-        return enviarRespuestaIA(session, m.channel, '🚫 Lo siento, no tengo permisos para borrar mensajes.');
-      }
-      try {
-        // Enviar saludo antes de borrar
-        await enviarRespuestaIA(session, m.channel, `🧹 Entendido, borraré los últimos ${cantidad} mensajes relevantes.`);
-
-        // Buscar mensajes para borrar
-        const mensajes = await m.channel.messages.fetch({ limit: cantidad + 20 });
-        const mensajesABorrar = mensajes.filter(msg =>
-          msg.author.id === m.author.id || msg.author.id === client.user.id
-        ).first(cantidad);
-
-        await m.channel.bulkDelete(mensajesABorrar, true);
-
-        await enviarRespuestaIA(session, m.channel, `✅ He borrado ${mensajesABorrar.length} mensajes.`);
-      } catch (err) {
-        console.error('Error borrando mensajes:', err);
-        await enviarRespuestaIA(session, m.channel, '❌ No pude borrar los mensajes. ¿Tengo permisos?');
-      }
+      await borrarMensajes(m.channel, m.author.id, comando.cantidad, session, m, comando.usuarioMencionado);
       return;
     }
 
@@ -120,7 +142,6 @@ client.on('messageCreate', async (m) => {
     return;
   }
 
-  // Conversación normal con la IA
   session.history.push({
     role: 'user',
     parts: [{ text: content }]
@@ -139,10 +160,10 @@ client.on('messageCreate', async (m) => {
       parts: [{ text: aiText }]
     });
 
-    m.reply(aiText);
+    await enviarRespuestaIA(session, m.channel, aiText);
   } catch (err) {
     console.error('Error IA:', err.response?.data || err.message);
-    m.reply('❌ No se pudo conectar con Shizuka.');
+    await enviarRespuestaIA(session, m.channel, '❌ No se pudo conectar con Shizuka.');
   }
 });
 
