@@ -1,44 +1,43 @@
-import { config } from "dotenv";
-import { Client, GatewayIntentBits } from "discord.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-config();
-
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-if (!DISCORD_TOKEN || !GEMINI_API_KEY) {
-  console.error("❌ Falta token de Discord o API key de Gemini en .env");
-  process.exit(1);
-}
-
-const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
+const { Client, GatewayIntentBits } = require('discord.js');
+const { GoogleGenAI } = require('@google/genai');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
-client.once("ready", () => {
-  console.log(`🤖 Bot listo: ${client.user.tag}`);
+// Tu API KEY directamente en el código
+const ai = new GoogleGenAI({
+  apiKey: 'AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260',
 });
 
-client.on("messageCreate", async (message) => {
+// Token de tu bot (¡IMPORTANTE: reemplázalo!)
+const DISCORD_TOKEN = 'TU_DISCORD_BOT_TOKEN_AQUÍ';
+
+client.once('ready', () => {
+  console.log(`🤖 Bot conectado como ${client.user.tag}`);
+});
+
+client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  const prompt = message.content.trim();
-  if (!prompt) return;
+  if (message.content.toLowerCase().startsWith('.ai ')) {
+    const prompt = message.content.slice(4).trim();
 
-  const sentMsg = await message.channel.send("🤔 Pensando...");
+    if (!prompt) {
+      return message.reply('⚠️ Debes escribir algo para que la IA responda.');
+    }
 
-  try {
-    const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
+    try {
+      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
 
-    await sentMsg.edit(response.text());
-  } catch (error) {
-    console.error("Error al generar respuesta:", error);
-    await sentMsg.edit("⚠️ Error al generar respuesta.");
+      return message.reply(text || '⚠️ La IA no devolvió respuesta.');
+    } catch (err) {
+      console.error('Error con Gemini:', err);
+      return message.reply('❌ Error al contactar con la IA.');
+    }
   }
 });
 
