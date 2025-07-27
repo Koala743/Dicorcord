@@ -113,6 +113,12 @@ async function sendWarning(interactionOrMessage, text) {
 }
 
 const activeChats = new Map();
+const activeIASessions = new Map();
+
+const SYSTEM_GOKI_INSTRUCTION = `
+Eres Goki, una mujer inteligente, amable y simpática. Respondes con conocimiento, paciencia y buen humor.
+Explica cosas claramente y sé amigable.
+`;
 
 client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
@@ -176,7 +182,7 @@ client.on('messageCreate', async (m) => {
   }
 
   if (m.content.toLowerCase().startsWith('.td')) {
-    if (!CHANNELS.has(m.channel.id)) return;
+    if (!CHANNELS.has(m.channel.id)) return sendWarning(m, T(m.author.id, 'mustReply'));
     if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
     const ref = await m.channel.messages.fetch(m.reference.messageId);
     const txt = ref.content,
@@ -211,63 +217,82 @@ client.on('messageCreate', async (m) => {
 
   const chat = activeChats.get(m.channel.id);
   if (chat) {
-  const { users } = chat;
-  if (users.includes(m.author.id)) {
-    const otherUserId = users.find((u) => u !== m.author.id);
-    const fromLang = getLang(m.author.id);
-    const toLang = getLang(otherUserId);
+    const { users } = chat;
+    if (users.includes(m.author.id)) {
+      const otherUserId = users.find((u) => u !== m.author.id);
+      const fromLang = getLang(m.author.id);
+      const toLang = getLang(otherUserId);
 
-    const raw = m.content.trim();
+      const raw = m.content.trim();
 
-    if (
-      !raw ||
-      m.stickers.size > 0 ||
-      /^<a?:.+?:\d+>$/.test(raw) ||
-      /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) ||
-      /^\.\w{1,4}$/i.test(raw)
-    ) return;
+      if (
+        !raw ||
+        m.stickers.size > 0 ||
+        /^<a?:.+?:\d+>$/.test(raw) ||
+        /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) ||
+        /^\.\w{1,4}$/i.test(raw)
+      )
+        return;
 
-    if (fromLang !== toLang) {
-      const res = await translate(raw, toLang);
-      if (res && res.text) {
-        m.channel.send({
-          content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
-        });
+      if (fromLang !== toLang) {
+        const res = await translate(raw, toLang);
+        if (res && res.text) {
+          m.channel.send({
+            content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
+          });
+        }
       }
     }
   }
-}
 
-  if (m.content.toLowerCase().startsWith('.chat')) {
-    const mention = m.mentions.users.first();
-    if (!mention) return sendWarning(m, '❌ Debes mencionar al usuario con quien quieres chatear.');
-    const user1 = m.author;
-    const user2 = mention;
-    if (user1.id === user2.id) return sendWarning(m, '⚠️ No puedes iniciar un chat contigo mismo.');
-    activeChats.set(m.channel.id, { users: [user1.id, user2.id] });
-    const member1 = await m.guild.members.fetch(user1.id);
-    const member2 = await m.guild.members.fetch(user2.id);
-    const embed = new EmbedBuilder()
-      .setTitle('💬 Chat Automático Iniciado')
-      .setDescription(
-        `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}>\n**${member2.nickname || member2.user.username}** <@${member2.id}>`
-      )
-      .setThumbnail(member1.user.displayAvatarURL({ extension: 'png', size: 64 }))
-      .setImage(member2.user.displayAvatarURL({ extension: 'png', size: 64 }))
-      .setColor('#00c7ff')
-      .setTimestamp();
-    return m.channel.send({ embeds: [embed] });
+  if (m.content.toLowerCase() === '.ia') {
+    if (activeIASessions.has(m.channel.id)) {
+      if (activeIASessions.get(m.channel.id).userId === m.author.id) {
+        return m.reply('🟢 Ya tienes la sesión de IA activa en este canal.');
+      } else {
+        return m.reply('⚠️ Ya hay una sesión activa con otro usuario en este canal.');
+      }
+    }
+    activeIASessions.set(m.channel.id, {
+      userId: m.author.id,
+      history: [{ role: 'system', content: SYSTEM_GOKI_INSTRUCTION }],
+    });
+    return m.reply('🤖 Sesión de IA activada. ¡Habla conmigo cuando quieras!');
   }
 
-  if (m.content.toLowerCase().startsWith('.dchat')) {
-    if (m.author.username !== 'flux_fer')
-      return sendWarning(m, T(m.author.id, 'notAuthorized'));
-    if (activeChats.has(m.channel.id)) {
-      activeChats.delete(m.channel.id);
-      return m.reply({ content: T(m.author.id, 'chatDeactivated'), ephemeral: true });
-    } else {
-      return sendWarning(m, T(m.author.id, 'chatNoSession'));
+  if (m.content.toLowerCase() === '.finia') {
+    const session = activeIASessions.get(m.channel.id);
+    if (!session || session.userId !== m.author.id) {
+      return m.reply('⚠️ No tienes una sesión de IA activa en este canal.');
     }
+    activeIASessions.delete(m.channel.id);
+    return m.reply('🛑 Sesión de IA finalizada. ¡Hasta luego!');
+  }
+
+  const session = activeIASessions.get(m.channel.id);
+  if (session && session.userId === m.author.id) {
+    session.history.push({ role: 'user', content: m.content.trim() });
+
+    const contents = session.history.map((m) => ({
+      parts: [{ text: `${m.role === 'user' ? 'Usuario' : m.role}: ${m.content}` }],
+    }));
+
+    try {
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+        { contents },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+
+      const aiResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No entendí bien, ¿puedes repetir?';
+
+      session.history.push({ role: 'assistant', content: aiResponse });
+
+      m.reply(aiResponse);
+    } catch {
+      m.reply('❌ Hubo un error al conectar con la IA. Intenta más tarde.');
+    }
+    return;
   }
 });
 
