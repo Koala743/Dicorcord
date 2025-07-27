@@ -45,17 +45,13 @@ const trans = {
     alreadyInLang: '⚠️ El mensaje ya está en tu idioma.',
     notYours: '⚠️ No puedes traducir tu propio idioma.',
     langSaved: '🎉 Idioma guardado exitosamente.',
-    dtSuccess: '✅ Mensajes eliminados exitosamente.',
-    dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
-    dtChooseAmount: '🗑️ Selecciona la cantidad de mensajes a eliminar:',
-    noPermDT: '⚠️ Solo el usuario **flux_fer** puede usar este comando.',
     chatActivated: '💬 Chat de traducción automática ACTIVADO para los usuarios seleccionados.',
     chatDeactivated: '🛑 Chat de traducción automática FINALIZADO.',
     chatNoSession: '❌ No hay chat activo para finalizar.',
     chatSelectUsers: '🌐 Selecciona con quién quieres hablar (tú ya estás incluido):',
     notAuthorized: '⚠️ No eres el usuario autorizado para usar este comando.',
     selectOneUser: '⚠️ Debes seleccionar exactamente un usuario para chatear.',
-    noSearchQuery: '❌ Por favor, escribe algo para buscar con `.web <texto>`.',
+    noSearchQuery: '❌ Por favor, escribe algo para buscar con /web <texto>.',
     noImagesFound: '❌ No encontré imágenes para esa búsqueda.',
     noActiveSearch: '❌ No hay búsqueda activa para navegar.',
     firstImage: '⚠️ Ya estás en la primera imagen.',
@@ -67,17 +63,13 @@ const trans = {
     alreadyInLang: '⚠️ Message already in your language.',
     notYours: "⚠️ You can't translate your own language.",
     langSaved: '🎉 Language saved successfully.',
-    dtSuccess: '✅ Messages deleted successfully.',
-    dtFail: "❌ Couldn't delete messages. Do I have permissions?",
-    dtChooseAmount: '🗑️ Select the amount of messages to delete:',
-    noPermDT: '⚠️ Only user **flux_fer** can use this command.',
     chatActivated: '💬 Auto-translate chat ACTIVATED for selected users.',
     chatDeactivated: '🛑 Auto-translate chat STOPPED.',
     chatNoSession: '❌ No active chat session to stop.',
     chatSelectUsers: '🌐 Select who you want to chat with (you are included):',
     notAuthorized: '⚠️ You are not authorized to use this command.',
     selectOneUser: '⚠️ You must select exactly one user to chat with.',
-    noSearchQuery: '❌ Please type something to search with `.web <text>`.',
+    noSearchQuery: '❌ Please type something to search with /web <text>.',
     noImagesFound: '❌ No images found for that search.',
     noActiveSearch: '❌ No active search to navigate.',
     firstImage: '⚠️ You are already at the first image.',
@@ -166,29 +158,7 @@ client.on('messageCreate', async (m) => {
     }
   }
 
-  if (m.content.toLowerCase().startsWith('.dt')) {
-    if (m.author.username !== 'flux_fer') {
-      return sendWarning(m, T(m.author.id, 'noPermDT'));
-    }
-    const uid = m.author.id;
-    const buttons = [5, 10, 25, 50, 100, 200, 300, 400].map((num) =>
-      new ButtonBuilder()
-        .setCustomId(`delAmount-${uid}-${num}`)
-        .setLabel(num.toString())
-        .setStyle(ButtonStyle.Secondary)
-    );
-    const rows = [];
-    for (let i = 0; i < buttons.length; i += 5) {
-      rows.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));
-    }
-    return m.reply({
-      content: T(uid, 'dtChooseAmount'),
-      components: rows,
-      ephemeral: true,
-    });
-  }
-
-  if (m.content.toLowerCase().startsWith('.td')) {
+  if (m.content.toLowerCase().startsWith('/td')) {
     if (!CHANNELS.has(m.channel.id)) return;
     if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
     const ref = await m.channel.messages.fetch(m.reference.messageId);
@@ -252,7 +222,7 @@ client.on('messageCreate', async (m) => {
     }
   }
 
-  if (m.content.toLowerCase().startsWith('.chat')) {
+  if (m.content.toLowerCase().startsWith('/chat')) {
     const mention = m.mentions.users.first();
     if (!mention) return sendWarning(m, '❌ Debes mencionar al usuario con quien quieres chatear.');
     const user1 = m.author;
@@ -274,7 +244,7 @@ client.on('messageCreate', async (m) => {
     return m.channel.send({ embeds: [embed] });
   }
 
-  if (m.content.toLowerCase().startsWith('.dchat')) {
+  if (m.content.toLowerCase().startsWith('/dchat')) {
     if (m.author.username !== 'flux_fer')
       return sendWarning(m, T(m.author.id, 'notAuthorized'));
     if (activeChats.has(m.channel.id)) {
@@ -285,14 +255,14 @@ client.on('messageCreate', async (m) => {
     }
   }
 
-  if (m.content.toLowerCase().startsWith('.web')) {
+  if (m.content.toLowerCase().startsWith('/web')) {
     const uid = m.author.id;
     const query = m.content.slice(4).trim();
     if (!query) return sendWarning(m, T(uid, 'noSearchQuery'));
 
     const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(
       query
-    )}&num=5`;
+    )}&num=50`;
 
     try {
       const res = await axios.get(url);
@@ -331,18 +301,6 @@ client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
 
   if (i.isButton()) {
-    if (i.customId.startsWith(`delAmount-${uid}-`)) {
-      const amount = parseInt(i.customId.split('-')[2], 10);
-      try {
-        await i.deferReply({ ephemeral: true });
-        await i.channel.bulkDelete(amount + 1, true);
-        await i.editReply({ content: T(uid, 'dtSuccess') });
-      } catch {
-        await i.editReply({ content: T(uid, 'dtFail') });
-      }
-      return;
-    }
-
     if (!imageSearchCache.has(uid))
       return i.reply({ content: T(uid, 'noActiveSearch'), ephemeral: true });
 
@@ -350,13 +308,13 @@ client.on('interactionCreate', async (i) => {
     const { items, index, query } = cache;
 
     if (i.customId === 'nextImage') {
-      if (index < items.length - 1) {
+      if (cache.index < cache.items.length - 1) {
         cache.index++;
-        const image = items[cache.index];
+        const image = cache.items[cache.index];
         const embed = new EmbedBuilder()
           .setTitle(`Resultados para: ${query}`)
           .setImage(image.link)
-          .setFooter({ text: `Imagen ${cache.index + 1} de ${items.length}` })
+          .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
           .setColor('#00c7ff');
 
         const row = new ActionRowBuilder().addComponents(
@@ -369,10 +327,49 @@ client.on('interactionCreate', async (i) => {
             .setCustomId('nextImage')
             .setLabel('➡️')
             .setStyle(ButtonStyle.Primary)
-            .setDisabled(cache.index === items.length - 1)
+            .setDisabled(cache.index === cache.items.length - 1)
         );
 
         await i.update({ embeds: [embed], components: [row] });
+      } else if (cache.items.length < 100) {
+        const nextStart = cache.items.length + 1;
+        const moreUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(
+          cache.query
+        )}&num=10&start=${nextStart}`;
+        try {
+          const moreRes = await axios.get(moreUrl);
+          const moreItems = moreRes.data.items || [];
+          if (moreItems.length === 0) {
+            await i.reply({ content: T(uid, 'lastImage'), ephemeral: true });
+            return;
+          }
+          cache.items.push(...moreItems);
+          cache.index++;
+          const image = cache.items[cache.index];
+          const embed = new EmbedBuilder()
+            .setTitle(`Resultados para: ${query}`)
+            .setImage(image.link)
+            .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
+            .setColor('#00c7ff');
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('prevImage')
+              .setLabel('⬅️')
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(cache.index === 0),
+            new ButtonBuilder()
+              .setCustomId('nextImage')
+              .setLabel('➡️')
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(cache.index === cache.items.length - 1)
+          );
+
+          await i.update({ embeds: [embed], components: [row] });
+        } catch {
+          await i.reply({ content: '❌ Error cargando más imágenes.', ephemeral: true });
+          return;
+        }
       } else {
         await i.reply({ content: T(uid, 'lastImage'), ephemeral: true });
       }
@@ -380,13 +377,13 @@ client.on('interactionCreate', async (i) => {
     }
 
     if (i.customId === 'prevImage') {
-      if (index > 0) {
+      if (cache.index > 0) {
         cache.index--;
-        const image = items[cache.index];
+        const image = cache.items[cache.index];
         const embed = new EmbedBuilder()
           .setTitle(`Resultados para: ${query}`)
           .setImage(image.link)
-          .setFooter({ text: `Imagen ${cache.index + 1} de ${items.length}` })
+          .setFooter({ text: `Imagen ${cache.index + 1} de ${cache.items.length}` })
           .setColor('#00c7ff');
 
         const row = new ActionRowBuilder().addComponents(
@@ -399,7 +396,7 @@ client.on('interactionCreate', async (i) => {
             .setCustomId('nextImage')
             .setLabel('➡️')
             .setStyle(ButtonStyle.Primary)
-            .setDisabled(cache.index === items.length - 1)
+            .setDisabled(cache.index === cache.items.length - 1)
         );
 
         await i.update({ embeds: [embed], components: [row] });
@@ -424,7 +421,7 @@ client.on('interactionCreate', async (i) => {
         ephemeral: true,
       });
       const note = await i.followUp({
-        content: '🎉 Listo! Usa `.TD` ahora.',
+        content: '🎉 Listo! Usa'.td ahora.',
         ephemeral: true,
       });
       setTimeout(() => note.delete().catch(() => {}), 5000);
