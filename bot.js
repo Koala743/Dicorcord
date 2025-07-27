@@ -1,14 +1,14 @@
-import { config } from 'dotenv';
-import { Client, GatewayIntentBits } from 'discord.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { config } from "dotenv";
+import { Client, GatewayIntentBits } from "discord.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-config(); // Carga variables de entorno desde .env
+config();
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyA0uaisYn1uS0Eb-18cdUNmdWDvYkWi260'; // fallback clave fija
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-if (!DISCORD_TOKEN) {
-  console.error('❌ Falta token de Discord');
+if (!DISCORD_TOKEN || !GEMINI_API_KEY) {
+  console.error("❌ Falta token de Discord o API key de Gemini en .env");
   process.exit(1);
 }
 
@@ -18,28 +18,27 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
-client.once('ready', () => {
-  console.log(`🤖 Bot conectado como ${client.user.tag}`);
+client.once("ready", () => {
+  console.log(`🤖 Bot listo: ${client.user.tag}`);
 });
 
-client.on('messageCreate', async (message) => {
+client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   const prompt = message.content.trim();
   if (!prompt) return;
 
-  const sentMsg = await message.channel.send('🤔 Pensando...');
+  const sentMsg = await message.channel.send("🤔 Pensando...");
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
+    const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
     await sentMsg.edit(response.text());
   } catch (error) {
-    console.error('Error generando respuesta:', error);
-    await sentMsg.edit('⚠️ Ocurrió un error al generar la respuesta.');
+    console.error("Error al generar respuesta:", error);
+    await sentMsg.edit("⚠️ Error al generar respuesta.");
   }
 });
 
