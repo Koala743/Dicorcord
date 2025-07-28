@@ -151,7 +151,7 @@ client.on('messageCreate', async (m) => {
       const embed = new EmbedBuilder()
         .setTitle(`📷 Resultados para: ${query}`)
         .setImage(items[validIndex].link)
-        .setDescription(`[Link de la imagen](${items[validIndex].link})`)
+        .setDescription(`[Página donde está la imagen](${items[validIndex].image.contextLink})`)
         .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length}` })
         .setColor('#00c7ff');
 
@@ -241,10 +241,10 @@ client.on('interactionCreate', async (i) => {
   if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
 
   async function findValidImage(startIndex, direction) {
-    let i = startIndex;
-    while (i >= 0 && i < cache.items.length) {
-      if (await isImageUrlValid(cache.items[i].link)) return i;
-      i += direction;
+    let idx = startIndex;
+    while (idx >= 0 && idx < cache.items.length) {
+      if (await isImageUrlValid(cache.items[idx].link)) return idx;
+      idx += direction;
     }
     return -1;
   }
@@ -264,7 +264,7 @@ client.on('interactionCreate', async (i) => {
   const embed = new EmbedBuilder()
     .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
-    .setDescription(`[Link de la imagen](${img.link})`)
+    .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
     .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
     .setColor('#00c7ff');
 
