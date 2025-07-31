@@ -177,6 +177,43 @@ client.on('messageCreate', async (m) => {
     return;
   }
 
+if (command === 'mp4') {
+    const query = args.join(' ');
+    if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
+
+    try {
+      const res = await axios.get(`https://www.googleapis.com/youtube/v3/search`, {
+        params: {
+          part: 'snippet',
+          q: query,
+          key: GOOGLE_API_KEY,
+          maxResults: 1,
+          type: 'video'
+        }
+      });
+
+      const item = res.data.items?.[0];
+      if (!item) return m.reply('❌ No se encontró ningún video.');
+
+      const videoId = item.id.videoId;
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const title = item.snippet.title;
+      const thumb = item.snippet.thumbnails?.high?.url;
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🎬 Resultado para: ${query}`)
+        .setDescription(`[${title}](${videoUrl})`)
+        .setImage(thumb)
+        .setColor('#ff0000');
+
+      return m.channel.send({ embeds: [embed] });
+
+    } catch (err) {
+      console.error(err);
+      return m.reply('❌ Error al buscar el video.');
+    }
+  }
+
   if (command === 'td') {
     if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
 
