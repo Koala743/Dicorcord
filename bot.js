@@ -207,30 +207,27 @@ if (command === 'mp4') {
   }
 }
 
-
 if (command === 'video') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ ¡Escribe algo para buscar un video, compa!');
 
   try {
     const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:www.xnxx.es')}&num=5`;
-
     const res = await axios.get(url);
     const items = res.data.items;
     if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');
+
     const video = items.find(item => item.link.includes('/video-') && !item.link.includes('/search/')) || null;
     if (!video) return m.reply('❌ No se encontraron videos completos, ¡prueba con otra búsqueda!');
 
     const title = video.title;
     const link = video.link;
     const context = video.displayLink;
-    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
       .setTitle(`🎬 ${title.slice(0, 80)}...`)
-      .setDescription(`**🔥 Video completo encontrado 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
-      .setColor('#ff0066')
-      .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
+      .setDescription(`[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
+      .setColor('#ff0000')
       .setFooter({ text: 'Buscado con Grok, ¡a disfrutar!', iconURL: 'https://i.imgur.com/botIcon.png' })
       .setTimestamp()
       .addFields({ name: '⚠️ Nota', value: 'Este enlace te lleva directo a la página del video completo.' });
