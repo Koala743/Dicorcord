@@ -1,7 +1,6 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
-const schedule = require('node-schedule');
 
 const client = new Client({
   intents: [
@@ -42,8 +41,7 @@ const trans = {
     noSearchQuery: '⚠️ Debes proporcionar texto para buscar.',
     noImagesFound: '❌ No se encontraron imágenes para esa búsqueda.',
     noValidImages: '❌ No se encontraron imágenes válidas.',
-    chatDeactivated: '🛑 Chat automático desactivado.',
-    noTxtFile: '⚠️ Por favor, sube un archivo .txt.'
+    chatDeactivated: '🛑 Chat automático desactivado.'
   }
 };
 
@@ -98,89 +96,13 @@ const GOOGLE_CX = '34fe95d6cf39d4dd4';
 client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
   load();
-
-  schedule.scheduleJob('0 0 12 * * *', async () => {
-    const channel = client.channels.cache.get('1244039799044702239');
-    if (channel) {
-      await channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('📢 Recordatorio Diario')
-            .setDescription('¡Sube tus archivos .txt con nuevos juegos al canal!')
-            .setColor('#00c7ff')
-            .setTimestamp()
-        ]
-      });
-    }
-  });
 });
 
 client.on('messageCreate', async (m) => {
-  if (m.author.bot) return;
-
-  if (m.channel.id === '1244039799044702239') {
-    console.log(`Mensaje detectado en canal ${m.channel.id} por ${m.author.tag}`);
-    if (m.attachments.size > 0) {
-      console.log(`Adjuntos encontrados: ${m.attachments.size}`);
-      const txtAttachment = m.attachments.find(a => a.name.toLowerCase().endsWith('.txt'));
-      if (!txtAttachment) {
-        console.log('No se encontró archivo .txt');
-        return m.reply(T(m.author.id, 'noTxtFile'));
-      }
-
-      try {
-        console.log(`Archivo .txt detectado: ${txtAttachment.name}`);
-        const fileName = txtAttachment.name;
-        const messageLink = `https://discord.com/channels/${m.guild.id}/${m.channel.id}/${m.id}`;
-        const guild = m.guild;
-        const members = await guild.members.fetch();
-        let sentCount = 0;
-
-        for (const member of members.values()) {
-          if (!member.user.bot) {
-            try {
-              await member.send({
-                embeds: [
-                  new EmbedBuilder()
-                    .setTitle('🎮 Nuevo Juego Disponible')
-                    .setDescription(`Se ha subido un nuevo juego: **${fileName}** en el canal <#${m.channel.id}>.\n[Ir al mensaje](${messageLink})`)
-                    .setColor('#00c7ff')
-                    .setTimestamp()
-                ]
-              });
-              sentCount++;
-              console.log(`DM enviado a ${member.user.tag}`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (err) {
-              console.error(`No se pudo enviar DM a ${member.user.tag}: ${err.message}`);
-            }
-          }
-        }
-
-        await m.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setDescription(`✅ Notificación enviada con éxito a ${sentCount} usuarios.`)
-              .setColor('#00ff00')
-          ]
-        });
-        console.log(`Confirmación enviada al autor. Total DMs enviados: ${sentCount}`);
-      } catch (err) {
-        console.error(`Error al procesar archivo en canal ${m.channel.id}: ${err.message}`);
-        await m.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setDescription('❌ Ocurrió un error al procesar el archivo.')
-              .setColor('#ff0000')
-          ]
-        });
-      }
-    } else {
-      console.log('No se encontraron adjuntos en el mensaje');
-    }
-  }
+  if (m.author.bot || !m.content) return;
 
   const urlRegex = /https?:\/\/[^\s]+/i;
+
   if (urlRegex.test(m.content)) {
     try {
       const member = await m.guild.members.fetch(m.author.id);
@@ -251,6 +173,8 @@ client.on('messageCreate', async (m) => {
       const errMsg = err.response?.data?.error?.message || err.message;
       return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
     }
+
+    return;
   }
 
   if (command === 'td') {
@@ -303,41 +227,6 @@ client.on('messageCreate', async (m) => {
 
     return m.reply(T(m.author.id, 'mustReply'));
   }
-
-  if (command === 'autorole') {
-    if (!m.member.permissions.has(PermissionFlagsBits.Administrator)) return m.reply('⚠️ Necesitas permisos de administrador.');
-
-    const role = m.mentions.roles.first();
-    if (!role) return m.reply('⚠️ Debes mencionar un rol.');
-
-    try {
-      const members = await m.guild.members.fetch();
-      let assignedCount = 0;
-      for (const member of members.values()) {
-        if (!member.user.bot && !member.roles.cache.has(role.id)) {
-          await member.roles.add(role.id);
-          assignedCount++;
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-      await m.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setDescription(`✅ Rol ${role.name} asignado a ${assignedCount} usuarios.`)
-            .setColor('#00ff00')
-        ]
-      });
-    } catch (err) {
-      console.error(`Error al asignar rol: ${err.message}`);
-      await m.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setDescription('❌ Ocurrió un error al asignar el rol.')
-            .setColor('#ff0000')
-        ]
-      });
-    }
-  }
 });
 
 client.on('interactionCreate', async (i) => {
@@ -373,10 +262,10 @@ client.on('interactionCreate', async (i) => {
   const img = cache.items[validIndex];
 
   const embed = new EmbedBuilder()
-    .setTitle(`📷 Resultados para: ${query}`)
+    .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
     .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
-    .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length}` })
+    .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
     .setColor('#00c7ff');
 
   await i.update({
