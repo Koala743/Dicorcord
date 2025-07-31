@@ -207,6 +207,42 @@ if (command === 'mp4') {
   }
 }
 
+if (command === 'video') {
+  const query = args.join(' ');
+  if (!query) return m.reply('⚠️ Escribe algo para buscar un video.');
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=5`;
+
+    const res = await axios.get(url);
+    const items = res.data.items?.filter(i =>
+      i.link.includes('youtube.com') || i.link.includes('vimeo.com') || i.link.includes('tiktok.com')
+    );
+
+    if (!items?.length) return m.reply('❌ No se encontraron videos relevantes.');
+
+    const first = items[0];
+    const title = first.title;
+    const link = first.link;
+    const context = first.displayLink;
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎬 Resultado de video')
+      .setDescription(`**${title}**\n[Ver video](${link})`)
+      .setFooter({ text: `Fuente: ${context}` })
+      .setColor('#ff6600');
+
+    await m.channel.send({ embeds: [embed] });
+
+    if (link.includes('youtube.com/watch')) {
+      return m.channel.send(link);
+    }
+
+  } catch {
+    return m.reply('❌ Error al buscar videos en Google.');
+  }
+}
+
   if (command === 'td') {
     if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
 
