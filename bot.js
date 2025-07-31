@@ -207,12 +207,12 @@ if (command === 'mp4') {
   }
 }
 
+
 if (command === 'video') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Escribe algo para buscar un video.');
 
   try {
-    // Agrega "site:www.xnxx.es" a la consulta para restringir al dominio
     const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:www.xnxx.es')}&num=5`;
 
     const res = await axios.get(url);
@@ -226,22 +226,21 @@ if (command === 'video') {
     const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
-      .setTitle('🎬 Resultado de búsqueda')
-      .setDescription(`**${title}**\n[Ver video](${link})`)
-      .setColor('#00c7ff')
-      .setFooter({ text: `Fuente: ${context}` });
-
-    if (thumb) embed.setImage(thumb);
+      .setTitle(`🎥 ${title.slice(0, 80)}...`) // Título con emoji y límite de longitud
+      .setDescription(`[🔗 Ver video](${link})\n\n📌 **Fuente**: ${context}`)
+      .setColor('#ff4d4d') // Color más vibrante (rojo suave)
+      .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
+      .setFooter({ text: 'Buscado con Grok', iconURL: 'https://i.imgur.com/botIcon.png' }) // Pie con ícono
+      .setTimestamp(); // Marca de tiempo para un toque profesional
 
     await m.channel.send({ embeds: [embed] });
-
-    // Eliminamos la condición de YouTube y enviamos el enlace directamente
-    await m.channel.send(link);
+    await m.channel.send(link); // Enlace directo
 
   } catch {
     return m.reply('❌ Error al buscar el video.');
   }
 }
+
 
   if (command === 'td') {
     if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
