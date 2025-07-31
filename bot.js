@@ -198,16 +198,10 @@ if (command === 'mp4') {
     const videoId = item.id.videoId;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const title = item.snippet.title;
-    const thumb = item.snippet.thumbnails.high.url;
 
-    const embed = new EmbedBuilder()
-      .setTitle('🎬 Resultado de búsqueda')
-      .setDescription(`**${title}**\n[Ver en YouTube](${videoUrl})`)
-      .setImage(thumb)
-      .setColor('#ff0000')
-      .setFooter({ text: query.toUpperCase() });
+    await m.channel.send('🎬 **' + title + '**');
+    return m.channel.send(videoUrl);
 
-    return m.channel.send({ embeds: [embed] });
   } catch {
     return m.reply('❌ Error al buscar el video.');
   }
