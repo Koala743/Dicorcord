@@ -219,24 +219,26 @@ if (command === 'video') {
     const items = res.data.items;
     if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');
 
-    // Priorizar enlaces con "/video-" para videos completos
-    const video = items.find(item => item.link.includes('/video-')) || items[0];
+    // Filtrar estrictamente para URLs con "/video-" y excluir "/search/"
+    const video = items.find(item => item.link.includes('/video-') && !item.link.includes('/search/')) || null;
+    if (!video) return m.reply('❌ No se encontraron videos completos, ¡prueba con otra búsqueda!');
+
     const title = video.title;
     const link = video.link; // Enlace a la página del video completo
     const context = video.displayLink;
     const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji y límite
-      .setDescription(`**🔥 Video completo 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
+      .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji
+      .setDescription(`**🔥 Video completo encontrado 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
       .setColor('#ff0066') // Rosa neón
       .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
-      .setFooter({ text: 'Buscado con Grok, ¡disfrútalo!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Footer personalizado
+      .setFooter({ text: 'Buscado con Grok, ¡a disfrutar!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Footer
       .setTimestamp() // Marca de tiempo
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace te lleva a la página del video completo.' });
+      .addFields({ name: '⚠️ Nota', value: 'Este enlace te lleva directo a la página del video completo.' });
 
     await m.channel.send({ embeds: [embed] });
-    await m.channel.send(`📹 Enlace directo al video: ${link}`); // Enlace directo a la página
+    await m.channel.send(`📹 Enlace directo al video: ${link}`); // Enlace a la página del video
 
   } catch {
     return m.reply('❌ ¡Algo salió mal, compa! Intenta de nuevo.');
