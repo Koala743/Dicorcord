@@ -207,7 +207,7 @@ if (command === 'mp4') {
   }
 }
 
-if (command === 'video') {
+if (command === 'xml') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ ¡Escribe algo para buscar un video, compa!');
 
