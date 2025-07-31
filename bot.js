@@ -230,9 +230,9 @@ if (command === 'video') {
       .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
       .setColor('#ff0066') // Color rosa neón para que resalte
       .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
-      .setFooter({ text: 'Buscado con Grok, ¡a darle caña!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Pie personalizado
+      .setFooter({ text: 'Buscado con Bot_v, ¡a darle caña!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Pie personalizado
       .setTimestamp() // Marca de tiempo
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video. ¡Copia el enlace de abajo si quieres!' });
+      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video' });
 
     await m.channel.send({ embeds: [embed] });
    
