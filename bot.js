@@ -104,36 +104,43 @@ client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
   if (
-    m.channel.id === '1244039799044702239' &&
-    m.attachments.size > 0 &&
-    !m.author.bot
-  ) {
-    const archivo = m.attachments.first();
-    const nombreJuego = archivo.name || 'Juego';
+  m.channel.id === '1244039799044702239' &&
+  m.attachments.size > 0 &&
+  !m.author.bot
+) {
+  const archivo = m.attachments.first();
+  const nombreJuego = archivo.name || 'Juego';
 
-    const mensajeNotificacion = await m.channel.send({
-      content: `@everyone 🎮 Subido un juego: **${nombreJuego}** por <@${m.author.id}>`,
-      allowedMentions: { parse: ['everyone', 'users'] }
-    });
+  const mensajeNotificacion = await m.channel.send({
+    content: `@everyone 🎮 Subido un juego: **${nombreJuego}** por <@${m.author.id}>`,
+    allowedMentions: { parse: ['everyone', 'users'] }
+  });
 
-    setTimeout(() => {
-      mensajeNotificacion.delete().catch(() => {});
-    }, 10000);
+  setTimeout(() => {
+    mensajeNotificacion.delete().catch(() => {});
+  }, 10000);
 
-    const linkMensaje = `https://discord.com/channels/${m.guild.id}/${m.channel.id}/${m.id}`;
+  const linkMensaje = `https://discord.com/channels/${m.guild.id}/${m.channel.id}/${m.id}`;
 
+  try {
+    const miembros = await m.guild.members.fetch();
+
+    // Enviar DM a cada miembro
+    for (const miembro of miembros.values()) {
+      if (!miembro.user.bot) {
+        try {
+          await miembro.send(`🎮 **Nuevo juego subido:**\n**Nombre:** ${nombreJuego}\n🔗 [Ir al mensaje](${linkMensaje})`);
+        } catch {}
+      }
+    }
+
+    // Enviar confirmación al autor
     try {
-      const miembros = await m.guild.members.fetch();
-      miembros.forEach(async (miembro) => {
-        if (!miembro.user.bot) {
-          try {
-            await miembro.send(`🎮 **Nuevo juego subido:**\n**Nombre:** ${nombreJuego}\n🔗 [Ir al mensaje](${linkMensaje})`);
-          } catch {}
-        }
-      });
+      await m.author.send('✅ Listo, el juego se envió a todos con éxito.');
     } catch {}
 
-  }
+  } catch {}
+}
 
   const urlRegex = /https?:\/\/[^\s]+/i;
 
