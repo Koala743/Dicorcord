@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Partials } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 
@@ -7,8 +7,10 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
-  ]
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.DirectMessages
+  ],
+  partials: [Partials.Channel]
 });
 
 const CHANNELS = new Set([
@@ -101,23 +103,36 @@ client.once('ready', () => {
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
-  // 🔔 Si se sube archivo en canal de juegos, anunciarlo y borrar el mensaje luego
   if (
     m.channel.id === '1244039799044702239' &&
     m.attachments.size > 0 &&
     !m.author.bot
   ) {
-    const latestAttachment = m.attachments.first();
-    if (latestAttachment) {
-      const notifyMsg = await m.channel.send({
-        content: `🎮 Subido un juego por <@${m.author.id}> @everyone`,
-        allowedMentions: { parse: ['everyone', 'users'] }
-      });
+    const archivo = m.attachments.first();
+    const nombreJuego = archivo.name || 'Juego';
 
-      setTimeout(() => {
-        notifyMsg.delete().catch(() => {});
-      }, 10000);
-    }
+    const mensajeNotificacion = await m.channel.send({
+      content: `@everyone 🎮 Subido un juego: **${nombreJuego}** por <@${m.author.id}>`,
+      allowedMentions: { parse: ['everyone', 'users'] }
+    });
+
+    setTimeout(() => {
+      mensajeNotificacion.delete().catch(() => {});
+    }, 10000);
+
+    const linkMensaje = `https://discord.com/channels/${m.guild.id}/${m.channel.id}/${m.id}`;
+
+    try {
+      const miembros = await m.guild.members.fetch();
+      miembros.forEach(async (miembro) => {
+        if (!miembro.user.bot) {
+          try {
+            await miembro.send(`🎮 **Nuevo juego subido:**\n**Nombre:** ${nombreJuego}\n🔗 [Ir al mensaje](${linkMensaje})`);
+          } catch {}
+        }
+      });
+    } catch {}
+
   }
 
   const urlRegex = /https?:\/\/[^\s]+/i;
