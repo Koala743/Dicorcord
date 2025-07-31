@@ -182,7 +182,7 @@ if (command === 'mp4') {
   if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
 
   try {
-    const res = await axios.get(`https://www.googleapis.com/youtube/v3/search`, {
+    const res = await axios.get('https://www.googleapis.com/youtube/v3/search', {
       params: {
         part: 'snippet',
         q: query,
@@ -197,12 +197,18 @@ if (command === 'mp4') {
 
     const videoId = item.id.videoId;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const title = item.snippet.title;
+    const thumb = item.snippet.thumbnails.high.url;
 
-    // Enviar solo el link directo para que Discord lo embeba automáticamente
-    return m.channel.send(videoUrl);
+    const embed = new EmbedBuilder()
+      .setTitle('🎬 Resultado de búsqueda')
+      .setDescription(`**${title}**\n[Ver en YouTube](${videoUrl})`)
+      .setImage(thumb)
+      .setColor('#ff0000')
+      .setFooter({ text: query.toUpperCase() });
 
-  } catch (err) {
-    console.error(err);
+    return m.channel.send({ embeds: [embed] });
+  } catch {
     return m.reply('❌ Error al buscar el video.');
   }
 }
