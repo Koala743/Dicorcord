@@ -235,7 +235,7 @@ if (command === 'video') {
       .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video. ¡Copia el enlace de abajo si quieres!' });
 
     await m.channel.send({ embeds: [embed] });
-    await m.channel.send(`📹 Enlace directo: ${link}`); // Enlace directo a la página del video
+   
 
   } catch {
     return m.reply('❌ ¡Algo salió mal, compa! Intenta de nuevo.');
