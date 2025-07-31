@@ -226,11 +226,13 @@ if (command === 'video') {
     const title = video.title;
     const link = video.link; // Enlace a la página del video completo
     const context = video.displayLink;
+    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
       .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji
-      .setDescription(`[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
-      .setColor('#ff0000') // Rojo puro
+      .setDescription(`**🔥 Video completo encontrado 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
+      .setColor('#ff0066') // Rosa neón
+      .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
       .setFooter({ text: 'Buscado con Grok, ¡a disfrutar!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Footer
       .setTimestamp() // Marca de tiempo
       .addFields({ name: '⚠️ Nota', value: 'Este enlace te lleva directo a la página del video completo.' });
