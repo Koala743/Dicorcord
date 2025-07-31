@@ -218,23 +218,21 @@ if (command === 'video') {
     const res = await axios.get(url);
     const items = res.data.items;
     if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');
-
-    // Filtrar estrictamente para URLs con "/video-" y excluir "/search/"
     const video = items.find(item => item.link.includes('/video-') && !item.link.includes('/search/')) || null;
     if (!video) return m.reply('❌ No se encontraron videos completos, ¡prueba con otra búsqueda!');
 
     const title = video.title;
-    const link = video.link; // Enlace a la página del video completo
+    const link = video.link;
     const context = video.displayLink;
     const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji
+      .setTitle(`🎬 ${title.slice(0, 80)}...`)
       .setDescription(`**🔥 Video completo encontrado 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
-      .setColor('#ff0066') // Rosa neón
-      .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
-      .setFooter({ text: 'Buscado con Grok, ¡a disfrutar!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Footer
-      .setTimestamp() // Marca de tiempo
+      .setColor('#ff0066')
+      .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
+      .setFooter({ text: 'Buscado con Grok, ¡a disfrutar!', iconURL: 'https://i.imgur.com/botIcon.png' })
+      .setTimestamp()
       .addFields({ name: '⚠️ Nota', value: 'Este enlace te lleva directo a la página del video completo.' });
 
     await m.channel.send({ embeds: [embed] });
