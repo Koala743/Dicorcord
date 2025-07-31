@@ -242,6 +242,60 @@ if (command === 'xml') {
   }
 }
 
+const cheerio = require('cheerio');
+
+if (command === 'imgdeep') {
+  const query = args.join(' ');
+  if (!query) return m.reply('⚠️ Escribe algo para buscar imágenes.');
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=1`;
+    const res = await axios.get(url);
+    const item = res.data.items?.[0];
+    if (!item) return m.reply('❌ No se encontró ninguna imagen.');
+
+    const pageUrl = item.image.contextLink;
+    const pageHtml = await axios.get(pageUrl);
+    const $ = cheerio.load(pageHtml.data);
+    const imageUrls = [];
+
+    $('img').each((_, img) => {
+      const src = $(img).attr('src');
+      if (src && src.startsWith('http')) imageUrls.push(src);
+    });
+
+    if (!imageUrls.length) return m.reply('❌ No se encontraron imágenes en la página.');
+
+    const userCache = { images: imageUrls, index: 0, query, site: pageUrl };
+    imageSearchCache.set(m.author.id, userCache);
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🖼 Imágenes en: ${query}`)
+      .setDescription(`[Ver sitio original](${pageUrl})`)
+      .setImage(imageUrls[0])
+      .setFooter({ text: `Imagen 1 de ${imageUrls.length}` })
+      .setColor('#00c7ff');
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('prevImage')
+        .setLabel('⬅️')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId('nextImage')
+        .setLabel('➡️')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(imageUrls.length <= 1)
+    );
+
+    return m.channel.send({ embeds: [embed], components: [row] });
+
+  } catch {
+    return m.reply('❌ Error al buscar y extraer imágenes.');
+  }
+}
+
   if (command === 'td') {
     if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
 
