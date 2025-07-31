@@ -213,26 +213,29 @@ if (command === 'video') {
 
   try {
     const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:www.xnxx.es')}&num=5`;
+
     const res = await axios.get(url);
     const items = res.data.items;
     if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');
 
-    const video = items.find(item => item.link.includes('/video-') && !item.link.includes('/search/')) || null;
-    if (!video) return m.reply('❌ No se encontraron videos completos, ¡prueba con otra búsqueda!');
-
+    // Filtrar para URLs que contengan "/video-" (páginas de video en xnxx.es)
+    const video = items.find(item => item.link.includes('/video-')) || items[0];
     const title = video.title;
-    const link = video.link;
+    const link = video.link; // Enlace a la página del video
     const context = video.displayLink;
+    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎬 ${title.slice(0, 80)}...`)
-      .setDescription(`[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
-      .setColor('#ff0000')
-      .setFooter({ text: 'Buscado con Grok, ¡a disfrutar!', iconURL: 'https://i.imgur.com/botIcon.png' })
-      .setTimestamp()
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace te lleva directo a la página del video completo.' });
+      .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji de película
+      .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
+      .setColor('#ff0066') // Color rosa neón para que resalte
+      .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
+      .setFooter({ text: 'Buscado con Grok, ¡a darle caña!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Pie personalizado
+      .setTimestamp() // Marca de tiempo
+      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video. ¡Copia el enlace de abajo si quieres!' });
 
     await m.channel.send({ embeds: [embed] });
+    await m.channel.send(`📹 Enlace directo: ${link}`); // Enlace directo a la página del video
 
   } catch {
     return m.reply('❌ ¡Algo salió mal, compa! Intenta de nuevo.');
