@@ -101,6 +101,25 @@ client.once('ready', () => {
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
+  // 🔔 Si se sube archivo en canal de juegos, anunciarlo y borrar el mensaje luego
+  if (
+    m.channel.id === '1244039799044702239' &&
+    m.attachments.size > 0 &&
+    !m.author.bot
+  ) {
+    const latestAttachment = m.attachments.first();
+    if (latestAttachment) {
+      const notifyMsg = await m.channel.send({
+        content: `🎮 Subido un juego por <@${m.author.id}> @everyone`,
+        allowedMentions: { parse: ['everyone', 'users'] }
+      });
+
+      setTimeout(() => {
+        notifyMsg.delete().catch(() => {});
+      }, 10000);
+    }
+  }
+
   const urlRegex = /https?:\/\/[^\s]+/i;
 
   if (urlRegex.test(m.content)) {
