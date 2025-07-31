@@ -242,39 +242,89 @@ if (command === 'xml') {
   }
 }
 
-const cheerio = require('cheerio');
-if (command === 'imgdeep') {
+if (command === 'findvideo') {
   const query = args.join(' ');
-  if (!query) return m.reply('❌ Escribe algo para buscar.');
+  if (!query) return m.reply('❌ Escribe algo para buscar videos.');
 
-  try {
-    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=1`;
-    const res = await axios.get(searchUrl);
-    const item = res.data.items?.[0];
-    if (!item) return m.reply('❌ No encontré ninguna imagen.');
+  const searchOptions = [
+    { label: 'YouTube', value: 'youtube' },
+    { label: 'Vimeo', value: 'vimeo' },
+    { label: 'TikTok', value: 'tiktok' },
+    { label: 'Facebook Video', value: 'facebook' },
+    { label: 'Dailymotion', value: 'dailymotion' },
+    { label: 'Instagram Reels', value: 'instagram' },
+    { label: 'Todos', value: 'all' }
+  ];
 
-    const pageUrl = item.image.contextLink;
-    const pageHtml = await axios.get(pageUrl);
-    const $ = cheerio.load(pageHtml.data);
-    const images = [];
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('search_video_source')
+      .setPlaceholder('📺 Selecciona una plataforma para buscar...')
+      .addOptions(searchOptions)
+  );
 
-    $('img').each((_, el) => {
-      const src = $(el).attr('src');
-      if (src && src.startsWith('http')) images.push(src);
-    });
+  await m.reply({
+    content: `🎥 ¿Dónde quieres buscar el video de: **${query}**?`,
+    components: [row]
+  });
 
-    if (!images.length) return m.reply('❌ No se encontraron imágenes en esa página.');
+  client.once('interactionCreate', async interaction => {
+    if (!interaction.isStringSelectMenu()) return;
+    if (interaction.customId !== 'search_video_source') return;
 
-    await m.reply(`🔍 Mostrando imágenes encontradas dentro de la página: **${query}**`);
+    const choice = interaction.values[0];
+    await interaction.deferUpdate();
 
-    for (const img of images.slice(0, 10)) { // máximo 10 para evitar spam
-      await m.channel.send({ content: '', files: [img] }).catch(() => { });
-      await new Promise(res => setTimeout(res, 1000)); // espera 1s entre imágenes
+    // Aquí defines la lógica de búsqueda para cada fuente
+    let results = [];
+
+    if (choice === 'youtube' || choice === 'all') {
+      results.push(...await searchYouTube(query));
     }
 
-  } catch (e) {
-    return m.reply('❌ Ocurrió un error al buscar.');
-  }
+    if (choice === 'vimeo' || choice === 'all') {
+      results.push(...await searchVimeo(query));
+    }
+
+    if (choice === 'tiktok' || choice === 'all') {
+      results.push(...await searchTikTok(query));
+    }
+
+    if (choice === 'facebook' || choice === 'all') {
+      results.push(...await searchFacebook(query));
+    }
+
+    if (choice === 'dailymotion' || choice === 'all') {
+      results.push(...await searchDailymotion(query));
+    }
+
+    if (choice === 'instagram' || choice === 'all') {
+      results.push(...await searchInstagram(query));
+    }
+
+    if (!results.length) {
+      return m.channel.send(`❌ No se encontraron videos para: **${query}**`);
+    }
+
+    for (const vid of results.slice(0, 5)) {
+      await m.channel.send({
+        embeds: [{
+          title: vid.title,
+          description: `🔗 Fuente: ${vid.source}`,
+          image: { url: vid.thumbnail },
+          color: 0x00bfff
+        }],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setLabel('▶️ Ver Video')
+              .setStyle(ButtonStyle.Link)
+              .setURL(vid.url)
+          )
+        ]
+      });
+    }
+  });
 }
 
   if (command === 'td') {
