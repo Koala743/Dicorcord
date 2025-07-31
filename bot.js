@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 
@@ -7,10 +7,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.DirectMessages
-  ],
-  partials: [Partials.Channel]
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
 const CHANNELS = new Set([
@@ -101,58 +99,56 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (m) => {
-  if (m.author.bot || !m.content) return;
+  if (m.author.bot) return;
 
-  if (
-  m.channel.id === '1244039799044702239' &&
-  m.attachments.size > 0 &&
-  !m.author.bot
-) {
-  const archivo = m.attachments.first();
-  const nombreJuego = archivo.name || 'Juego';
+  if (m.channel.id === '1244039799044702239' && m.attachments.size > 0) {
+    const txtAttachment = m.attachments.find(a => a.name.toLowerCase().endsWith('.txt'));
+    if (txtAttachment) {
+      try {
+        const fileName = txtAttachment.name;
+        const messageLink = `https://discord.com/channels/${m.guild.id}/${m.channel.id}/${m.id}`;
+        const guild = m.guild;
+        const members = await guild.members.fetch();
 
-  const mensajeNotificacion = await m.channel.send({
-    content: `@everyone 🎮 Subido un juego: **${nombreJuego}** por <@${m.author.id}>`,
-    allowedMentions: { parse: ['everyone', 'users'] }
-  });
-
-  setTimeout(() => {
-    mensajeNotificacion.delete().catch(() => {});
-  }, 10000);
-
-  const linkMensaje = `https://discord.com/channels/${m.guild.id}/${m.channel.id}/${m.id}`;
-
-  let enviados = 0;
-  let fallos = 0;
-
-  try {
-    const miembros = await m.guild.members.fetch();
-
-    for (const miembro of miembros.values()) {
-      if (!miembro.user.bot) {
-        try {
-          await miembro.send(`🎮 **Nuevo juego subido:**\n**Nombre:** ${nombreJuego}\n🔗 [Ir al mensaje](${linkMensaje})`);
-          enviados++;
-        } catch {
-          fallos++;
+        for (const member of members.values()) {
+          if (!member.user.bot) {
+            try {
+              await member.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle('🎮 Nuevo Juego Disponible')
+                    .setDescription(`Se ha subido un nuevo juego: **${fileName}** en el canal <#${m.channel.id}>.\n[Ir al mensaje](${messageLink})`)
+                    .setColor('#00c7ff')
+                    .setTimestamp()
+                ]
+              });
+            } catch (err) {
+              console.error(`No se pudo enviar DM a ${member.user.tag}: ${err.message}`);
+            }
+          }
         }
+
+        await m.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setDescription('✅ Notificación enviada con éxito a todos los usuarios.')
+              .setColor('#00ff00')
+          ]
+        });
+      } catch (err) {
+        console.error(`Error al procesar archivo en canal ${m.channel.id}: ${err.message}`);
+        await m.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setDescription('❌ Ocurrió un error al procesar el archivo.')
+              .setColor('#ff0000')
+          ]
+        });
       }
     }
-
-    // Mensaje al autor resumiendo
-    await m.author.send(
-      `✅ Se intentó enviar el juego a todos.\n📤 Enviados con éxito: **${enviados}**\n❌ Fallos al enviar: **${fallos}**`
-    );
-  } catch (error) {
-    console.error('Error enviando mensajes:', error);
-    try {
-      await m.author.send('❌ Ocurrió un error al intentar enviar el juego a los usuarios.');
-    } catch {}
   }
-}
 
   const urlRegex = /https?:\/\/[^\s]+/i;
-
   if (urlRegex.test(m.content)) {
     try {
       const member = await m.guild.members.fetch(m.author.id);
@@ -223,8 +219,6 @@ client.on('messageCreate', async (m) => {
       const errMsg = err.response?.data?.error?.message || err.message;
       return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
     }
-
-    return;
   }
 
   if (command === 'td') {
