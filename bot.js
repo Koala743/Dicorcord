@@ -215,31 +215,31 @@ if (command === 'video') {
     const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=5`;
 
     const res = await axios.get(url);
-    const items = res.data.items?.filter(i =>
-      i.link.includes('youtube.com') || i.link.includes('vimeo.com') || i.link.includes('tiktok.com')
-    );
+    const items = res.data.items;
+    if (!items || items.length === 0) return m.reply('❌ No se encontraron videos.');
 
-    if (!items?.length) return m.reply('❌ No se encontraron videos relevantes.');
-
-    const first = items[0];
-    const title = first.title;
-    const link = first.link;
-    const context = first.displayLink;
+    const video = items[0];
+    const title = video.title;
+    const link = video.link;
+    const context = video.displayLink;
+    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
-      .setTitle('🎬 Resultado de video')
+      .setTitle('🎬 Resultado de búsqueda')
       .setDescription(`**${title}**\n[Ver video](${link})`)
-      .setFooter({ text: `Fuente: ${context}` })
-      .setColor('#ff6600');
+      .setColor('#00c7ff')
+      .setFooter({ text: `Fuente: ${context}` });
+
+    if (thumb) embed.setImage(thumb);
 
     await m.channel.send({ embeds: [embed] });
 
     if (link.includes('youtube.com/watch')) {
-      return m.channel.send(link);
+      await m.channel.send(link);
     }
 
   } catch {
-    return m.reply('❌ Error al buscar videos en Google.');
+    return m.reply('❌ Error al buscar el video.');
   }
 }
 
