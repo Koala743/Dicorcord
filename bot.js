@@ -243,56 +243,37 @@ if (command === 'xml') {
 }
 
 const cheerio = require('cheerio');
-
 if (command === 'imgdeep') {
   const query = args.join(' ');
-  if (!query) return m.reply('⚠️ Escribe algo para buscar imágenes.');
+  if (!query) return m.reply('❌ Escribe algo para buscar.');
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=1`;
-    const res = await axios.get(url);
+    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=1`;
+    const res = await axios.get(searchUrl);
     const item = res.data.items?.[0];
-    if (!item) return m.reply('❌ No se encontró ninguna imagen.');
+    if (!item) return m.reply('❌ No encontré ninguna imagen.');
 
     const pageUrl = item.image.contextLink;
     const pageHtml = await axios.get(pageUrl);
     const $ = cheerio.load(pageHtml.data);
-    const imageUrls = [];
+    const images = [];
 
-    $('img').each((_, img) => {
-      const src = $(img).attr('src');
-      if (src && src.startsWith('http')) imageUrls.push(src);
+    $('img').each((_, el) => {
+      const src = $(el).attr('src');
+      if (src && src.startsWith('http')) images.push(src);
     });
 
-    if (!imageUrls.length) return m.reply('❌ No se encontraron imágenes en la página.');
+    if (!images.length) return m.reply('❌ No se encontraron imágenes en esa página.');
 
-    const userCache = { images: imageUrls, index: 0, query, site: pageUrl };
-    imageSearchCache.set(m.author.id, userCache);
+    await m.reply(`🔍 Mostrando imágenes encontradas dentro de la página: **${query}**`);
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🖼 Imágenes en: ${query}`)
-      .setDescription(`[Ver sitio original](${pageUrl})`)
-      .setImage(imageUrls[0])
-      .setFooter({ text: `Imagen 1 de ${imageUrls.length}` })
-      .setColor('#00c7ff');
+    for (const img of images.slice(0, 10)) { // máximo 10 para evitar spam
+      await m.channel.send({ content: '', files: [img] }).catch(() => { });
+      await new Promise(res => setTimeout(res, 1000)); // espera 1s entre imágenes
+    }
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('prevImage')
-        .setLabel('⬅️')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(true),
-      new ButtonBuilder()
-        .setCustomId('nextImage')
-        .setLabel('➡️')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(imageUrls.length <= 1)
-    );
-
-    return m.channel.send({ embeds: [embed], components: [row] });
-
-  } catch {
-    return m.reply('❌ Error al buscar y extraer imágenes.');
+  } catch (e) {
+    return m.reply('❌ Ocurrió un error al buscar.');
   }
 }
 
