@@ -122,24 +122,33 @@ client.on('messageCreate', async (m) => {
 
   const linkMensaje = `https://discord.com/channels/${m.guild.id}/${m.channel.id}/${m.id}`;
 
+  let enviados = 0;
+  let fallos = 0;
+
   try {
     const miembros = await m.guild.members.fetch();
 
-    // Enviar DM a cada miembro
     for (const miembro of miembros.values()) {
       if (!miembro.user.bot) {
         try {
           await miembro.send(`🎮 **Nuevo juego subido:**\n**Nombre:** ${nombreJuego}\n🔗 [Ir al mensaje](${linkMensaje})`);
-        } catch {}
+          enviados++;
+        } catch {
+          fallos++;
+        }
       }
     }
 
-    // Enviar confirmación al autor
+    // Mensaje al autor resumiendo
+    await m.author.send(
+      `✅ Se intentó enviar el juego a todos.\n📤 Enviados con éxito: **${enviados}**\n❌ Fallos al enviar: **${fallos}**`
+    );
+  } catch (error) {
+    console.error('Error enviando mensajes:', error);
     try {
-      await m.author.send('✅ Listo, el juego se envió a todos con éxito.');
+      await m.author.send('❌ Ocurrió un error al intentar enviar el juego a los usuarios.');
     } catch {}
-
-  } catch {}
+  }
 }
 
   const urlRegex = /https?:\/\/[^\s]+/i;
