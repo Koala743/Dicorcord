@@ -219,22 +219,23 @@ if (command === 'video') {
     const items = res.data.items;
     if (!items || items.length === 0) return m.reply('❌ No se encontraron videos.');
 
-    const video = items[0];
+    // Filtrar para encontrar un enlace que contenga "/video-" (URLs de videos en xnxx.es)
+    const video = items.find(item => item.link.includes('/video-')) || items[0];
     const title = video.title;
-    const link = video.link;
+    const link = video.link; // Enlace a la página del video
     const context = video.displayLink;
     const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎥 ${title.slice(0, 80)}...`) // Título con emoji y límite de longitud
+      .setTitle(`🎥 ${title.slice(0, 80)}...`) // Título con emoji
       .setDescription(`[🔗 Ver video](${link})\n\n📌 **Fuente**: ${context}`)
-      .setColor('#ff4d4d') // Color más vibrante (rojo suave)
+      .setColor('#ff4d4d') // Color vibrante
       .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
       .setFooter({ text: 'Buscado con Grok', iconURL: 'https://i.imgur.com/botIcon.png' }) // Pie con ícono
-      .setTimestamp(); // Marca de tiempo para un toque profesional
+      .setTimestamp(); // Marca de tiempo
 
     await m.channel.send({ embeds: [embed] });
-    await m.channel.send(link); // Enlace directo
+    await m.channel.send(link); // Enlace directo a la página del video
 
   } catch {
     return m.reply('❌ Error al buscar el video.');
