@@ -212,7 +212,8 @@ if (command === 'video') {
   if (!query) return m.reply('⚠️ Escribe algo para buscar un video.');
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=5`;
+    // Agrega "site:www.xnxx.es" a la consulta para restringir al dominio
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:www.xnxx.es')}&num=5`;
 
     const res = await axios.get(url);
     const items = res.data.items;
@@ -234,9 +235,8 @@ if (command === 'video') {
 
     await m.channel.send({ embeds: [embed] });
 
-    if (link.includes('youtube.com/watch')) {
-      await m.channel.send(link);
-    }
+    // Eliminamos la condición de YouTube y enviamos el enlace directamente
+    await m.channel.send(link);
 
   } catch {
     return m.reply('❌ Error al buscar el video.');
