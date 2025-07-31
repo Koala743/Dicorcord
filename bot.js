@@ -219,24 +219,24 @@ if (command === 'video') {
     const items = res.data.items;
     if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');
 
-    // Filtrar para URLs que contengan "/video-" (páginas de video en xnxx.es)
+    // Priorizar enlaces con "/video-" para videos completos
     const video = items.find(item => item.link.includes('/video-')) || items[0];
     const title = video.title;
-    const link = video.link; // Enlace a la página del video
+    const link = video.link; // Enlace a la página del video completo
     const context = video.displayLink;
     const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji de película
-      .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
-      .setColor('#ff0066') // Color rosa neón para que resalte
+      .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji y límite
+      .setDescription(`**🔥 Video completo 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
+      .setColor('#ff0066') // Rosa neón
       .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
-      .setFooter({ text: 'Buscado con Grok, ¡a darle caña!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Pie personalizado
+      .setFooter({ text: 'Buscado con Grok, ¡disfrútalo!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Footer personalizado
       .setTimestamp() // Marca de tiempo
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video. ¡Copia el enlace de abajo si quieres!' });
+      .addFields({ name: '⚠️ Nota', value: 'Este enlace te lleva a la página del video completo.' });
 
     await m.channel.send({ embeds: [embed] });
-    await m.channel.send(`📹 Enlace directo: ${link}`); // Enlace directo a la página del video
+    await m.channel.send(`📹 Enlace directo al video: ${link}`); // Enlace directo a la página
 
   } catch {
     return m.reply('❌ ¡Algo salió mal, compa! Intenta de nuevo.');
