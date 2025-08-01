@@ -245,7 +245,7 @@ if (command === 'xml') {
 
 
   if (command === 'td') {
-    if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
+    if (!m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
 
     try {
       const ref = await m.channel.messages.fetch(m.reference.messageId);
