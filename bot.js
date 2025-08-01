@@ -437,135 +437,134 @@ if (command === 'xxx') {
 
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
-  
-if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
-  const [_, uid2] = i.customId.split('-');
-  if (i.user.id !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
 
-  const query = pendingXXXSearch.get(i.user.id);
-  if (!query) return i.reply({ content: '❌ No se encontró tu búsqueda previa.', ephemeral: true });
-
-  const selectedSite = i.values[0];
-
-  try {
-    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:' + selectedSite)}&num=10`;
-    const res = await axios.get(searchUrl);
-    const items = res.data.items;
-    if (!items || items.length === 0)
-      return i.reply({ content: '❌ No se encontraron resultados.', ephemeral: true });
-
-    xxxSearchCache.set(i.user.id, { items, currentIndex: 0, query, site: selectedSite });
-
-    const item = items[0];
-    const title = item.title;
-    const link = item.link;
-    const context = item.displayLink;
-    const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🔞 ${title.slice(0, 80)}...`)
-      .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
-      .setColor('#ff3366')
-      .setImage(thumb)
-      .setFooter({ text: `Resultados para adultos (+18) — Resultado 1 de ${items.length}`, iconURL: 'https://i.imgur.com/botIcon.png' })
-      .setTimestamp()
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
-
-    const backBtn = new ButtonBuilder()
-      .setCustomId(`xxxback-${i.user.id}`)
-      .setLabel('⬅️')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(true);
-
-    const nextBtn = new ButtonBuilder()
-      .setCustomId(`xxxnext-${i.user.id}`)
-      .setLabel('➡️')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(items.length <= 1);
-
-    const row = new ActionRowBuilder().addComponents(backBtn, nextBtn);
-
-    await i.update({ content: '', embeds: [embed], components: [row] });
-    pendingXXXSearch.delete(i.user.id);
-  } catch (err) {
-    console.error('Error en búsqueda .xxx:', err.message);
-    return i.reply({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', ephemeral: true });
-  }
-}
-
-if (i.isButton()) {
-  const [action, uid] = i.customId.split('-');
-  if (i.user.id !== uid) return i.reply({ content: '⛔ No puedes usar estos botones.', ephemeral: true });
-
-  if (!xxxSearchCache.has(i.user.id)) {
-    return i.reply({ content: '❌ No hay búsqueda activa para paginar.', ephemeral: true });
+  // 🟢 Menú de selección de idioma
+  if (i.isStringSelectMenu() && i.customId.startsWith('select-')) {
+    const [_, uid2] = i.customId.split('-');
+    if (uid !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
+    const v = i.values[0];
+    prefs[uid] = v;
+    save();
+    await i.update({
+      content: `${LANGUAGES.find((l) => l.value === v).emoji} ${T(uid, 'langSaved')}`,
+      components: [],
+      ephemeral: true,
+    });
+    const note = await i.followUp({ content: '🎉 Listo! Usa `.td` o `.chat` ahora.', ephemeral: true });
+    setTimeout(() => note.delete().catch(() => {}), 5000);
+    return;
   }
 
-  const data = xxxSearchCache.get(i.user.id);
-  const { items, currentIndex } = data;
+  // 🔞 Menú de sitios para comando .xxx
+  if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
+    const [_, uid2] = i.customId.split('-');
+    if (i.user.id !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
 
-  let newIndex = currentIndex;
+    const query = pendingXXXSearch.get(i.user.id);
+    if (!query) return i.reply({ content: '❌ No se encontró tu búsqueda previa.', ephemeral: true });
 
-  if (action === 'xxxnext') {
-    if (currentIndex < items.length - 1) newIndex++;
-  } else if (action === 'xxxback') {
-    if (currentIndex > 0) newIndex--;
-  }
+    const selectedSite = i.values[0];
 
-  data.currentIndex = newIndex;
-  xxxSearchCache.set(i.user.id, data);
+    try {
+      const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:' + selectedSite)}&num=10`;
+      const res = await axios.get(searchUrl);
+      const items = res.data.items;
+      if (!items || items.length === 0)
+        return i.reply({ content: '❌ No se encontraron resultados.', ephemeral: true });
 
-  const item = items[newIndex];
-  const title = item.title;
-  const link = item.link;
-  const context = item.displayLink;
-  const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+      xxxSearchCache.set(i.user.id, { items, currentIndex: 0, query, site: selectedSite });
+      pendingXXXSearch.delete(i.user.id);
 
-  const embed = new EmbedBuilder()
-    .setTitle(`🔞 ${title.slice(0, 80)}...`)
-    .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
-    .setColor('#ff3366')
-    .setImage(thumb)
-    .setFooter({ text: `Resultados para adultos (+18) — Resultado ${newIndex + 1} de ${items.length}`, iconURL: 'https://i.imgur.com/botIcon.png' })
-    .setTimestamp()
-    .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
+      const item = items[0];
+      const title = item.title;
+      const link = item.link;
+      const context = item.displayLink;
+      const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
 
-  const backBtn = new ButtonBuilder()
-    .setCustomId(`xxxback-${i.user.id}`)
-    .setLabel('⬅️')
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(newIndex === 0);
+      const embed = new EmbedBuilder()
+        .setTitle(`🔞 ${title.slice(0, 80)}...`)
+        .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
+        .setColor('#ff3366')
+        .setImage(thumb)
+        .setFooter({ text: `Resultado 1 de ${items.length}`, iconURL: 'https://i.imgur.com/botIcon.png' })
+        .setTimestamp()
+        .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
 
-  const nextBtn = new ButtonBuilder()
-    .setCustomId(`xxxnext-${i.user.id}`)
-    .setLabel('➡️')
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(newIndex === items.length - 1);
+      const backBtn = new ButtonBuilder()
+        .setCustomId(`xxxback-${i.user.id}`)
+        .setLabel('⬅️')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true);
 
-  const row = new ActionRowBuilder().addComponents(backBtn, nextBtn);
+      const nextBtn = new ButtonBuilder()
+        .setCustomId(`xxxnext-${i.user.id}`)
+        .setLabel('➡️')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(items.length <= 1);
 
-  await i.update({ embeds: [embed], components: [row] });
-}
+      const row = new ActionRowBuilder().addComponents(backBtn, nextBtn);
 
-  if (i.isStringSelectMenu()) {
-    if (i.customId.startsWith('select-')) {
-      const [_, uid2] = i.customId.split('-');
-      if (uid !== uid2) return i.reply({ content: 'No es tu menú.', ephemeral: true });
-      const v = i.values[0];
-      prefs[uid] = v;
-      save();
-      await i.update({
-        content: `${LANGUAGES.find((l) => l.value === v).emoji} ${T(uid, 'langSaved')}`,
-        components: [],
-        ephemeral: true,
-      });
-      const note = await i.followUp({ content: '🎉 Listo! Usa `.td` o `.chat` ahora.', ephemeral: true });
-      setTimeout(() => note.delete().catch(() => {}), 5000);
-      return;
+      await i.update({ content: '', embeds: [embed], components: [row] });
+    } catch (err) {
+      console.error('Error en búsqueda .xxx:', err.message);
+      return i.reply({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', ephemeral: true });
     }
   }
 
+  // 🔘 Botones (xxx y web)
   if (i.isButton()) {
+    const [action, btnUid] = i.customId.split('-');
+
+    // 🔞 Navegación en resultados xxx
+    if (action === 'xxxnext' || action === 'xxxback') {
+      if (i.user.id !== btnUid) return i.reply({ content: '⛔ No puedes usar estos botones.', ephemeral: true });
+
+      if (!xxxSearchCache.has(i.user.id)) {
+        return i.reply({ content: '❌ No hay búsqueda activa para paginar.', ephemeral: true });
+      }
+
+      const data = xxxSearchCache.get(i.user.id);
+      const { items, currentIndex } = data;
+
+      let newIndex = currentIndex;
+      if (action === 'xxxnext' && currentIndex < items.length - 1) newIndex++;
+      if (action === 'xxxback' && currentIndex > 0) newIndex--;
+
+      data.currentIndex = newIndex;
+      xxxSearchCache.set(i.user.id, data); // actualizar
+
+      const item = items[newIndex];
+      const title = item.title;
+      const link = item.link;
+      const context = item.displayLink;
+      const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🔞 ${title.slice(0, 80)}...`)
+        .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
+        .setColor('#ff3366')
+        .setImage(thumb)
+        .setFooter({ text: `Resultado ${newIndex + 1} de ${items.length}`, iconURL: 'https://i.imgur.com/botIcon.png' })
+        .setTimestamp()
+        .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos.' });
+
+      const backBtn = new ButtonBuilder()
+        .setCustomId(`xxxback-${i.user.id}`)
+        .setLabel('⬅️')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newIndex === 0);
+
+      const nextBtn = new ButtonBuilder()
+        .setCustomId(`xxxnext-${i.user.id}`)
+        .setLabel('➡️')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newIndex === items.length - 1);
+
+      const row = new ActionRowBuilder().addComponents(backBtn, nextBtn);
+      return i.update({ embeds: [embed], components: [row] });
+    }
+
+    // 📷 Navegación en resultados de imagen (.web)
     const cache = imageSearchCache.get(uid);
     if (!cache) return i.deferUpdate();
 
