@@ -130,7 +130,6 @@ async function sendWarning(interactionOrMessage, text) {
 
 const activeChats = new Map();
 const imageSearchCache = new Map();
-const personalTranslations = new Map();  // <--- Agrega esta línea
 
 const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
 const GOOGLE_CX = '34fe95d6cf39d4dd4';
@@ -206,29 +205,6 @@ if (chat) {
   }
 }
 
-
-
-const personalLang = personalTranslations.get(m.author.id);
-if (personalLang) {
-  const raw = m.content.trim();
-  // No traduzcas comandos
-  if (!raw.startsWith('.')) {
-    const res = await translate(raw, personalLang);
-    if (res && res.text) {
-      const emoji = LANGUAGES.find((l) => l.value === personalLang)?.emoji || '🌐';
-      const embed = new EmbedBuilder()
-        .setColor('#00c7ff')
-        .setDescription(`**${emoji} ${res.text}**\n\n*${m.author} (${getLang(m.author.id)})*`);
-      m.channel.send({ embeds: [embed] }).catch(() => {});
-    }
-  }
-}
-
-if (command === 'tyou') {
-  personalTranslations.delete(m.author.id);
-  return m.reply('🛑 Tu traducción automática ha sido desactivada.');
-}
-
   if (!m.content.startsWith('.')) return;
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
 
@@ -284,21 +260,61 @@ if (command === 'tyou') {
     }
   }
 
-if (command === 'you') {
-  const uid = m.author.id;
-  const sel = new StringSelectMenuBuilder()
-    .setCustomId(`youlang-${uid}`)
-    .setPlaceholder('🌍 Selecciona a qué idioma traducir tus mensajes para los demás')
-    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
+if (command === 'wex') {
+  const axios = require('axios');
+  const cheerio = require('cheerio');
+  const { EmbedBuilder } = require('discord.js');
 
-  return m.reply({
-    content: 'Selecciona el idioma en el que quieres que los demás vean tus mensajes:',
-    components: [new ActionRowBuilder().addComponents(sel)],
-    ephemeral: true,
-  });
+  const query = args.join(' ');
+  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+
+  try {
+    const xnxxUrl = `https://www.xnxx.com/search/${encodeURIComponent(query)}`;
+    const xvideosUrl = `https://www.xvideos.es/?k=${encodeURIComponent(query)}`;
+
+    const [xnxxRes, xvideosRes] = await Promise.all([
+      axios.get(xnxxUrl),
+      axios.get(xvideosUrl)
+    ]);
+
+    const xnxx$ = cheerio.load(xnxxRes.data);
+    const xvideos$ = cheerio.load(xvideosRes.data);
+
+    const results = [];
+
+    xnxx$('.mozaique .thumb-block').slice(0, 3).each((i, el) => {
+      const title = xnxx$(el).find('.title a').text().trim();
+      const link = 'https://www.xnxx.com' + xnxx$(el).find('.title a').attr('href');
+      const thumb = xnxx$(el).find('img').attr('data-src');
+      results.push({ title, link, thumb });
+    });
+
+    xvideos$('.thumb-block').slice(0, 3).each((i, el) => {
+      const title = xvideos$(el).find('p a').text().trim();
+      const link = 'https://www.xvideos.es' + xvideos$(el).find('p a').attr('href');
+      const thumb = xvideos$(el).find('img').attr('data-src') || xvideos$(el).find('img').attr('src');
+      results.push({ title, link, thumb });
+    });
+
+    if (!results.length) return m.reply('❌ No se encontraron videos.');
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🔞 Resultados para: ${query}`)
+      .setColor('#ff4b4b')
+      .setDescription(
+        results
+          .map((v, i) => `**${i + 1}. [${v.title}](${v.link})**`)
+          .join('\n\n')
+      )
+      .setImage(results[0].thumb)
+      .setFooter({ text: `Mostrando ${results.length} videos` });
+
+    await m.channel.send({ embeds: [embed] });
+
+  } catch (err) {
+    m.reply('❌ Error al buscar videos.');
+  }
 }
-
-
 
   if (command === 'mp4') {
     const query = args.join(' ');
@@ -450,22 +466,6 @@ if (command === 'you') {
 
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
-  
-  if (i.isStringSelectMenu()) {
-  if (i.customId.startsWith('youlang-')) {
-    const [_, uid2] = i.customId.split('-');
-    if (i.user.id !== uid2) return i.reply({ content: '⚠️ No es tu menú.', ephemeral: true });
-    const selectedLang = i.values[0];
-    personalTranslations.set(uid2, selectedLang);
-    await i.update({
-      content: `${LANGUAGES.find((l) => l.value === selectedLang).emoji} ✅ Tus mensajes ahora se traducirán automáticamente a ese idioma para los demás.`,
-      components: [],
-      ephemeral: true,
-    });
-    return;
-  }
-}
-  
   if (i.isStringSelectMenu()) {
     if (i.customId.startsWith('select-')) {
       const [_, uid2] = i.customId.split('-');
