@@ -130,6 +130,7 @@ async function sendWarning(interactionOrMessage, text) {
 
 const activeChats = new Map();
 const imageSearchCache = new Map();
+const pendingXXXSearch = new Map(); // userId => query
 
 const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
 const GOOGLE_CX = '34fe95d6cf39d4dd4';
@@ -260,7 +261,28 @@ if (chat) {
     }
   }
 
+if (command === 'xxx') {
+  const query = args.join(' ');
+  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
+  const uid = m.author.id;
+  pendingXXXSearch.set(uid, query);
+
+  const siteSelector = new StringSelectMenuBuilder()
+    .setCustomId(`xxxsite-${uid}`)
+    .setPlaceholder('🔞 Selecciona el sitio para buscar contenido adulto')
+    .addOptions([
+      { label: 'Xvideos', value: 'xvideos.es', emoji: '🔴' },
+      { label: 'Pornhub', value: 'es.pornhub.com', emoji: '🔵' },
+      { label: 'Hentaila', value: 'hentaila.tv', emoji: '🟣' },
+    ]);
+
+  return m.reply({
+    content: 'Selecciona el sitio donde deseas buscar:',
+    components: [new ActionRowBuilder().addComponents(siteSelector)],
+    ephemeral: true,
+  });
+}
 
   if (command === 'mp4') {
     const query = args.join(' ');
@@ -413,6 +435,47 @@ if (chat) {
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
 
+if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
+  const [_, uid2] = i.customId.split('-');
+  if (i.user.id !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
+
+  const query = pendingXXXSearch.get(i.user.id);
+  if (!query) return i.reply({ content: '❌ No se encontró tu búsqueda previa.', ephemeral: true });
+
+  const selectedSite = i.values[0];
+
+  try {
+    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:' + selectedSite)}&num=5`;
+    const res = await axios.get(searchUrl);
+    const items = res.data.items;
+    if (!items || items.length === 0)
+      return i.reply({ content: '❌ No se encontraron resultados.', ephemeral: true });
+
+    const video = items.find(item =>
+      item.link.includes('/video') || item.link.includes('/view_video.php') || item.link.includes('/ver/')
+    ) || items[0];
+
+    const title = video.title;
+    const link = video.link;
+    const context = video.displayLink;
+    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🔞 ${title.slice(0, 80)}...`)
+      .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
+      .setColor('#ff3366')
+      .setThumbnail(thumb)
+      .setFooter({ text: 'Resultados para adultos (+18)', iconURL: 'https://i.imgur.com/botIcon.png' })
+      .setTimestamp()
+      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
+
+    await i.update({ content: '', components: [], embeds: [embed] });
+    pendingXXXSearch.delete(i.user.id);
+  } catch (err) {
+    console.error('Error en búsqueda .xxx:', err.message);
+    return i.reply({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', ephemeral: true });
+  }
+}
 
   if (i.isStringSelectMenu()) {
     if (i.customId.startsWith('select-')) {
