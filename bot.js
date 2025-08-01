@@ -55,6 +55,8 @@ const trans = {
     chatSelectUsers: '🌐 Selecciona con quién quieres hablar (tú ya estás incluido):',
     notAuthorized: '⚠️ No eres el usuario autorizado para usar este comando.',
     selectOneUser: '⚠️ Debes seleccionar exactamente un usuario para chatear.',
+    noSearchQuery: '⚠️ Debes escribir algo para buscar.',
+    noValidImages: '❌ No se encontraron imágenes válidas.',
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
@@ -72,6 +74,8 @@ const trans = {
     chatSelectUsers: '🌐 Select who you want to chat with (you are included):',
     notAuthorized: '⚠️ You are not authorized to use this command.',
     selectOneUser: '⚠️ You must select exactly one user to chat with.',
+    noSearchQuery: '⚠️ You must provide a search query.',
+    noValidImages: '❌ No valid images found.',
   },
 };
 
@@ -125,7 +129,6 @@ async function sendWarning(interactionOrMessage, text) {
 const activeChats = new Map();
 const imageSearchCache = new Map();
 
-
 const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
 const GOOGLE_CX = '34fe95d6cf39d4dd4';
 
@@ -137,6 +140,7 @@ client.once('ready', () => {
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
+  // Manejo de invitaciones
   const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i;
   const restrictedRole = '1244039798696710211';
   const allowedRoles = new Set([
@@ -161,15 +165,68 @@ client.on('messageCreate', async (m) => {
             fr: '⚠️ Vous ne pouvez pas envoyer de liens d\'invitation car vous avez le rôle de **Membre**, qui est restreint. Votre message a été supprimé automatiquement.',
             de: '⚠️ Du darfst keine Einladungslinks senden, da du die **Mitglied**-Rolle hast, die eingeschränkt ist. Deine Nachricht wurde automatisch gelöscht.',
           }[userLang] || '⚠️ You are not allowed to send invite links due to restricted role. Message deleted.';
-
         await m.author.send({ content: translatedWarning });
       } catch {}
       return;
     }
   }
 
- if (!m.content.startsWith('.')) return;
+  // Lógica del chat automático
+  const chat = activeChats.get(m.channel.id);
+  if (chat) {
+    const { users } = chat;
+    if (users.includes(m.author.id)) {
+      const otherUserId = users.find((u) => u !== m.author.id);
+      const fromLang = getLang(m.author.id);
+      const toLang = getLang(otherUserId);
+      const raw = m.content.trim();
 
+      // Ignorar stickers, emojis, comandos y mensajes vacíos
+      if (
+        !raw ||
+        m.stickers.size > 0 ||
+        /^<a?:.+?:\d+>$/.test(raw) || // Emojis personalizados
+        /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) || // Emojis Unicode
+        /^\.\w{1,4}$/i.test(raw) // Comandos (ej. .td, .chat)
+      ) return;
+
+      // Traducir si los idiomas son diferentes
+      if (fromLang !== toLang) {
+        try {
+          const res = await translate(raw, toLang);
+          if (res && res.text) {
+            const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+            const embed = new EmbedBuilder()
+              .setColor('#00c7ff')
+              .setDescription(`${targetLangEmoji} **Traducción para <@${otherUserId}>:** ${res.text}`)
+              .setFooter({ text: `Original de <@${m.author.id}> (${fromLang})` });
+            await m.channel.send({ embeds: [embed] });
+          } else {
+            await m.channel.send({
+              content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
+              ephemeral: true,
+            });
+          }
+        } catch (err) {
+          console.error('Error en traducción:', err);
+          await m.channel.send({
+            content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
+            ephemeral: true,
+          });
+        }
+      } else {
+        // Si los idiomas son iguales, enviar el mensaje sin traducir
+        const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+        const embed = new EmbedBuilder()
+          .setColor('#00c7ff')
+          .setDescription(`${targetLangEmoji} **Mensaje para <@${otherUserId}>:** ${raw}`)
+          .setFooter({ text: `Enviado por <@${m.author.id}> (${fromLang})` });
+        await m.channel.send({ embeds: [embed] });
+      }
+    }
+  }
+
+  if (!m.content.startsWith('.')) return;
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
 
   if (command === 'web') {
@@ -222,76 +279,70 @@ client.on('messageCreate', async (m) => {
       const errMsg = err.response?.data?.error?.message || err.message;
       return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
     }
-
-    return;
   }
-  
-if (command === 'mp4') {
-  const query = args.join(' ');
-  if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
 
-  try {
-    const res = await axios.get('https://www.googleapis.com/youtube/v3/search', {
-      params: {
-        part: 'snippet',
-        q: query,
-        key: GOOGLE_API_KEY,
-        maxResults: 1,
-        type: 'video'
-      }
-    });
+  if (command === 'mp4') {
+    const query = args.join(' ');
+    if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
 
-    const item = res.data.items?.[0];
-    if (!item) return m.reply('❌ No se encontró ningún video.');
+    try {
+      const res = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+        params: {
+          part: 'snippet',
+          q: query,
+          key: GOOGLE_API_KEY,
+          maxResults: 1,
+          type: 'video'
+        }
+      });
 
-    const videoId = item.id.videoId;
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const title = item.snippet.title;
+      const item = res.data.items?.[0];
+      if (!item) return m.reply('❌ No se encontró ningún video.');
 
-    await m.channel.send('🎬 **' + title + '**');
-    return m.channel.send(videoUrl);
+      const videoId = item.id.videoId;
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const title = item.snippet.title;
 
-  } catch {
-    return m.reply('❌ Error al buscar el video.');
+      await m.channel.send('🎬 **' + title + '**');
+      return m.channel.send(videoUrl);
+    } catch {
+      return m.reply('❌ Error al buscar el video.');
+    }
   }
-}
 
-if (command === 'xml') {
-  const query = args.join(' ');
-  if (!query) return m.reply('⚠️ ¡Escribe algo para buscar un video, compa!');
+  if (command === 'xml') {
+    const query = args.join(' ');
+    if (!query) return m.reply('⚠️ ¡Escribe algo para buscar un video, compa!');
 
-  try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:www.xnxx.es')}&num=5`;
+    try {
+      const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:www.xnxx.es')}&num=5`;
 
-    const res = await axios.get(url);
-    const items = res.data.items;
-    if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');
+      const res = await axios.get(url);
+      const items = res.data.items;
+      if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');
 
-    // Filtrar para URLs que contengan "/video-" (páginas de video en xnxx.es)
-    const video = items.find(item => item.link.includes('/video-')) || items[0];
-    const title = video.title;
-    const link = video.link; // Enlace a la página del video
-    const context = video.displayLink;
-    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
+      const video = items.find(item => item.link.includes('/video-')) || items[0];
+      const title = video.title;
+      const link = video.link;
+      const context = video.displayLink;
+      const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🎬 ${title.slice(0, 80)}...`) // Título con emoji de película
-      .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
-      .setColor('#ff0066') // Color rosa neón para que resalte
-      .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png') // Miniatura o predeterminada
-      .setFooter({ text: 'Buscado con Bot_v, ¡a darle caña!', iconURL: 'https://i.imgur.com/botIcon.png' }) // Pie personalizado
-      .setTimestamp() // Marca de tiempo
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video' });
+      const embed = new EmbedBuilder()
+        .setTitle(`🎬 ${title.slice(0, 80)}...`)
+        .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
+        .setColor('#ff0066')
+        .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
+        .setFooter({ text: 'Buscado con Bot_v, ¡a darle caña!', iconURL: 'https://i.imgur.com/botIcon.png' })
+        .setTimestamp()
+        .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video' });
 
-    await m.channel.send({ embeds: [embed] });
-   
-
-  } catch {
-    return m.reply('❌ ¡Algo salió mal, compa! Intenta de nuevo.');
+      await m.channel.send({ embeds: [embed] });
+    } catch {
+      return m.reply('❌ ¡Algo salió mal, compa! Intenta de nuevo.');
+    }
   }
-}  
- 
-  if (m.content.toLowerCase().startsWith('.td')) {
+
+  if (command === 'td') {
     if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
     const ref = await m.channel.messages.fetch(m.reference.messageId);
     const txt = ref.content,
@@ -324,36 +375,7 @@ if (command === 'xml') {
     });
   }
 
-  const chat = activeChats.get(m.channel.id);
-  if (chat) {
-  const { users } = chat;
-  if (users.includes(m.author.id)) {
-    const otherUserId = users.find((u) => u !== m.author.id);
-    const fromLang = getLang(m.author.id);
-    const toLang = getLang(otherUserId);
-
-    const raw = m.content.trim();
-
-    if (
-      !raw ||
-      m.stickers.size > 0 ||
-      /^<a?:.+?:\d+>$/.test(raw) ||
-      /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) ||
-      /^\.\w{1,4}$/i.test(raw)
-    ) return;
-
-    if (fromLang !== toLang) {
-      const res = await translate(raw, toLang);
-      if (res && res.text) {
-        m.channel.send({
-          content: `${LANGUAGES.find((l) => l.value === toLang)?.emoji || ''} **Traducción para <@${otherUserId}>:** ${res.text}`,
-        });
-      }
-    }
-  }
-}
-
-  if (m.content.toLowerCase().startsWith('.chat')) {
+  if (command === 'chat') {
     const mention = m.mentions.users.first();
     if (!mention) return sendWarning(m, '❌ Debes mencionar al usuario con quien quieres chatear.');
     const user1 = m.author;
@@ -374,7 +396,7 @@ if (command === 'xml') {
     return m.channel.send({ embeds: [embed] });
   }
 
-  if (m.content.toLowerCase().startsWith('.dchat')) {
+  if (command === 'dchat') {
     if (m.author.username !== 'flux_fer')
       return sendWarning(m, T(m.author.id, 'notAuthorized'));
     if (activeChats.has(m.channel.id)) {
@@ -400,69 +422,66 @@ client.on('interactionCreate', async (i) => {
         components: [],
         ephemeral: true,
       });
-      const note = await i.followUp({ content: '🎉 Listo! Usa `.TD` ahora.', ephemeral: true });
+      const note = await i.followUp({ content: '🎉 Listo! Usa `.td` ahora.', ephemeral: true });
       setTimeout(() => note.delete().catch(() => {}), 5000);
       return;
     }
   }
-});
 
-client.on('interactionCreate', async (i) => {
-  if (!i.isButton()) return;
+  if (i.isButton()) {
+    const cache = imageSearchCache.get(uid);
+    if (!cache) return i.deferUpdate();
 
-  const uid = i.user.id;
-  const cache = imageSearchCache.get(uid);
-  if (!cache) return i.deferUpdate();
+    let newIndex = cache.index;
+    if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
+    if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
 
-  let newIndex = cache.index;
-  if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
-  if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
-
-  async function findValidImage(startIndex, direction) {
-    let idx = startIndex;
-    while (idx >= 0 && idx < cache.items.length) {
-      if (await isImageUrlValid(cache.items[idx].link)) return idx;
-      idx += direction;
+    async function findValidImage(startIndex, direction) {
+      let idx = startIndex;
+      while (idx >= 0 && idx < cache.items.length) {
+        if (await isImageUrlValid(cache.items[idx].link)) return idx;
+        idx += direction;
+      }
+      return -1;
     }
-    return -1;
+
+    const direction = newIndex < cache.index ? -1 : 1;
+    let validIndex = await findValidImage(newIndex, direction);
+
+    if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
+      validIndex = cache.index;
+    }
+
+    if (validIndex === -1) return i.deferUpdate();
+
+    cache.index = validIndex;
+    const img = cache.items[validIndex];
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📷 Resultados para: ${cache.query}`)
+      .setImage(img.link)
+      .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
+      .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
+      .setColor('#00c7ff');
+
+    await i.update({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('prevImage')
+            .setLabel('⬅️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(validIndex === 0),
+          new ButtonBuilder()
+            .setCustomId('nextImage')
+            .setLabel('➡️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(validIndex === cache.items.length - 1)
+        )
+      ]
+    });
   }
-
-  const direction = newIndex < cache.index ? -1 : 1;
-  let validIndex = await findValidImage(newIndex, direction);
-
-  if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
-    validIndex = cache.index;
-  }
-
-  if (validIndex === -1) return i.deferUpdate();
-
-  cache.index = validIndex;
-  const img = cache.items[validIndex];
-
-  const embed = new EmbedBuilder()
-    .setTitle(`📷 Resultados para: ${cache.query}`)
-    .setImage(img.link)
-    .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
-    .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
-    .setColor('#00c7ff');
-
-  await i.update({
-    embeds: [embed],
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('prevImage')
-          .setLabel('⬅️')
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(validIndex === 0),
-        new ButtonBuilder()
-          .setCustomId('nextImage')
-          .setLabel('➡️')
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(validIndex === cache.items.length - 1)
-      )
-    ]
-  });
 });
 
 client.login(process.env.DISCORD_TOKEN);
