@@ -14,7 +14,8 @@ const client = new Client({
 const CHANNELS = new Set([
   '1381953561008541920',
   '1386131661942554685',
-  '1299860715884249088'
+  '1299860715884249088',
+  '1399055360014422149'
 ]);
 
 const LANGUAGES = [
@@ -109,6 +110,7 @@ client.on('messageCreate', async (m) => {
       const allowedRoles = new Set([
         '1305327128341905459',
         '1244056080825454642',
+        '1399055360014422149',
         '1244039798696710212'
       ]);
       const hasAllowedRole = member.roles.cache.some(r => allowedRoles.has(r.id));
