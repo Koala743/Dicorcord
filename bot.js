@@ -178,6 +178,12 @@ client.on('messageCreate', async (m) => {
     return;
   }
 
+if (command === 'DY') {
+  delete prefs[m.author.id];
+  save();
+  return m.reply('✅ Tu idioma ha sido borrado. Podrás elegir uno nuevo la próxima vez que uses un comando con idioma.');
+}
+
 if (command === 'mp4') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
