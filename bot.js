@@ -181,7 +181,10 @@ if (chat) {
     const otherUserId = users.find((u) => u !== m.author.id);
     const toLang = getLang(otherUserId);
     const raw = m.content.trim();
+
+    // Filtrar solo si tiene stickers o es solo emojis
     if (m.stickers.size > 0 || /^<a?:.+?:\d+>$/.test(raw) || /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw)) return;
+
     try {
       const res = await translate(raw, toLang);
       if (res && res.text) {
