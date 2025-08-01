@@ -194,13 +194,12 @@ client.on('messageCreate', async (m) => {
       // Traducir al idioma del otro usuario
       try {
         const res = await translate(raw, toLang);
-			if (res && res.text) {
-			  const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-			  const embed = new EmbedBuilder()
-			    .setColor('#00c7ff')
-			    .setDescription(`**${targetLangEmoji} ${res.text}**\n\n*<@${m.author.id}> (${getLang(m.author.id)})*`);
-			  await m.channel.send({ embeds: [embed] });
-			}
+		if (res && res.text) {
+		  const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+		  const embed = new EmbedBuilder()
+		    .setColor('#00c7ff')
+		    .setDescription(`**${targetLangEmoji} ${res.text}**\n\n*<@${m.author.id}> (${getLang(m.author.id)})*`);
+		  await m.channel.send({ embeds: [embed] });
         } else {
           await m.channel.send({
             content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
