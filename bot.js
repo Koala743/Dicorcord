@@ -100,6 +100,14 @@ function T(u, k) {
   return trans[getLang(u)]?.[k] || trans['es'][k];
 }
 
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 async function isImageUrlValid(url) {
   try {
     const res = await axios.head(url, { timeout: 5000 });
@@ -476,7 +484,18 @@ client.on('interactionCreate', async (i) => {
       allItems.push(...res.data.items);
     }
 
-    const items = allItems;
+    // 🔍 Eliminar duplicados por link
+    const uniqueItems = [];
+    const seenLinks = new Set();
+    for (const item of allItems) {
+      if (!seenLinks.has(item.link)) {
+        uniqueItems.push(item);
+        seenLinks.add(item.link);
+      }
+    }
+
+    // 🔀 Mezclar resultados aleatoriamente
+    const items = shuffleArray(uniqueItems);
 
     if (!items || items.length === 0)
       return i.reply({ content: '❌ No se encontraron resultados.', ephemeral: true });
