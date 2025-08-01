@@ -110,14 +110,34 @@ async function isImageUrlValid(url) {
   }
 }
 
-async function translate(t, lang) {
+// Caché para traducciones (texto original, idioma destino -> resultado)
+const translationCache = new Map();
+
+// Función optimizada para traducir con caché
+async function translateWithCache(text, lang) {
+  const cacheKey = `${text}:${lang}`;
+  if (translationCache.has(cacheKey)) {
+    return translationCache.get(cacheKey);
+  }
+
   try {
+    const start = Date.now();
     const r = await axios.get(
-      `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(t)}`
+      `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`,
+      { timeout: 300 } // Timeout de 3 segundos
     );
-    if (r.data?.translation)
-      return { text: r.data.translation, from: r.data.from };
-  } catch {}
+    const end = Date.now();
+    console.log(`Traducción tomó ${end - start}ms para "${text}" a ${lang}`);
+
+    if (r.data?.translation) {
+      const result = { text: r.data.translation, from: r.data.from };
+      translationCache.set(cacheKey, result);
+      setTimeout(() => translationCache.delete(cacheKey), 5 * 60 * 1000); // Expirar en 5 min
+      return result;
+    }
+  } catch (err) {
+    console.error('Error en traducción:', err.message);
+  }
   return null;
 }
 
@@ -192,26 +212,16 @@ client.on('messageCreate', async (m) => {
       ) return;
 
       // Traducir al idioma del otro usuario
-      try {
-        const res = await translate(raw, toLang);
-		if (res && res.text) {
-		  const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-		  const embed = new EmbedBuilder()
-		    .setColor('#00c7ff')
-		    .setDescription(`**${targetLangEmoji} ${res.text}**\n\n*<@${m.author.id}> (${getLang(m.author.id)})*`);
-		  await m.channel.send({ embeds: [embed] });
-        } else {
-          await m.channel.send({
-            content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
-            ephemeral: true,
-          });
-        }
-      } catch (err) {
-        console.error('Error en traducción:', err);
-        await m.channel.send({
-          content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
-          ephemeral: true,
-        });
+      const res = await translateWithCache(raw, toLang);
+      if (res && res.text) {
+        const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+        const embed = new EmbedBuilder()
+          .setColor('#00c7ff')
+          .setDescription(`${targetLangEmoji} **Traducción para <@${otherUserId}>:** ${res.text}`)
+          .setFooter({ text: `Original de <@${m.author.id}> (${getLang(m.author.id)})` });
+        await m.channel.send({ embeds: [embed] });
+      } else {
+        await sendWarning(m, `⚠️ No se pudo traducir el mensaje al idioma de <@${otherUserId}>.`);
       }
     }
   }
@@ -340,7 +350,7 @@ client.on('messageCreate', async (m) => {
     const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
     const lang = getLang(uid);
     if (prefs[uid]) {
-      const res = await translate(txt, lang);
+      const res = await translateWithCache(txt, lang);
       await loading.delete().catch(() => {});
       if (!res) return m.reply({ content: T(uid, 'timeout'), ephemeral: true });
       if (res.from === lang) return m.reply({ content: T(uid, 'alreadyInLang'), ephemeral: true });
