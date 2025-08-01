@@ -260,6 +260,41 @@ if (chat) {
     }
   }
 
+if (command === 'wex') {
+  const query = args.join(' ');
+  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=10`;
+
+    const res = await axios.get(url);
+    const items = res.data.items;
+    if (!items || items.length === 0) return m.reply('❌ No se encontraron resultados.');
+
+    // Filtramos por posibles resultados de video (esto puede ajustarse)
+    const videoResults = items.filter(item =>
+      /video|watch|player|embed|stream/i.test(item.link)
+    ).slice(0, 5);
+
+    if (!videoResults.length) return m.reply('❌ No se encontraron videos relevantes.');
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🎥 Resultados para: ${query}`)
+      .setColor('#00c7ff')
+      .setDescription(
+        videoResults
+          .map((item, i) => `**${i + 1}. [${item.title}](${item.link})**\n🌐 ${item.displayLink}`)
+          .join('\n\n')
+      )
+      .setFooter({ text: `Mostrando ${videoResults.length} resultados de video encontrados en Google` });
+
+    await m.channel.send({ embeds: [embed] });
+  } catch (err) {
+    const errMsg = err.response?.data?.error?.message || err.message;
+    return m.reply(`❌ Error buscando videos: ${errMsg}`);
+  }
+}
+
   if (command === 'mp4') {
     const query = args.join(' ');
     if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
