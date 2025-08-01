@@ -9,6 +9,7 @@ const {
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
+const pLimit = require('p-limit');
 
 const client = new Client({
   intents: [
@@ -83,6 +84,9 @@ const trans = {
 
 const PREFS = './langPrefs.json';
 let prefs = {};
+const translationCache = new Map();
+const limit = pLimit(2); // Limitar a 2 solicitudes concurrentes a la API
+
 function load() {
   try {
     prefs = JSON.parse(fs.readFileSync(PREFS));
@@ -90,12 +94,15 @@ function load() {
     prefs = {};
   }
 }
+
 function save() {
   fs.writeFileSync(PREFS, JSON.stringify(prefs, null, 2));
 }
+
 function getLang(u) {
   return prefs[u] || 'es';
 }
+
 function T(u, k) {
   return trans[getLang(u)]?.[k] || trans['es'][k];
 }
@@ -110,42 +117,36 @@ async function isImageUrlValid(url) {
   }
 }
 
-// Caché para traducciones (texto original, idioma destino -> resultado)
-const translationCache = new Map();
-
-// Función optimizada para traducir con caché
-async function translateWithCache(text, lang) {
-  const cacheKey = `${text}:${lang}`;
-  if (translationCache.has(cacheKey)) {
-    return translationCache.get(cacheKey);
-  }
-
-  try {
-    const start = Date.now();
-    const r = await axios.get(
-      `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`,
-      { timeout: 2000 } // Timeout de 3 segundos
-    );
-    const end = Date.now();
-    console.log(`Traducción tomó ${end - start}ms para "${text}" a ${lang}`);
-
-    if (r.data?.translation) {
-      const result = { text: r.data.translation, from: r.data.from };
-      translationCache.set(cacheKey, result);
-      setTimeout(() => translationCache.delete(cacheKey), 5 * 60 * 1000); // Expirar en 5 min
-      return result;
+async function translate(t, lang) {
+  return limit(async () => {
+    const cacheKey = `${t}:${lang}`;
+    if (translationCache.has(cacheKey)) {
+      return translationCache.get(cacheKey);
     }
-  } catch (err) {
-    console.error('Error en traducción:', err.message);
-  }
-  return null;
+
+    try {
+      const r = await axios.get(
+        `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(t)}`,
+        { timeout: 2000 }
+      );
+      if (r.data?.translation) {
+        const result = { text: r.data.translation, from: r.data.from };
+        translationCache.set(cacheKey, result);
+        if (translationCache.size > 1000) {
+          translationCache.delete(translationCache.keys().next().value);
+        }
+        return result;
+      }
+    } catch {}
+    return null;
+  });
 }
 
 async function sendWarning(interactionOrMessage, text) {
   const reply = await interactionOrMessage.reply({ content: text, ephemeral: true });
   setTimeout(() => {
     if (reply?.delete) reply.delete().catch(() => {});
-  }, 5000);
+  }, 2000);
 }
 
 const activeChats = new Map();
@@ -160,7 +161,7 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (m) => {
-  if (m.author.bot || !m.content) return;
+  if (m.author.bot || !m.content || !m.content.trim()) return;
 
   // Manejo de invitaciones
   const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i;
@@ -198,30 +199,25 @@ client.on('messageCreate', async (m) => {
   if (chat) {
     const { users } = chat;
     if (users.includes(m.author.id)) {
+      const raw = m.content.trim();
+      if (m.stickers.size > 0 || raw.startsWith('.')) return;
+
       const otherUserId = users.find((u) => u !== m.author.id);
       const toLang = getLang(otherUserId);
-      const raw = m.content.trim();
 
-      // Ignorar stickers, emojis, comandos y mensajes vacíos
-      if (
-        !raw ||
-        m.stickers.size > 0 ||
-        /^<a?:.+?:\d+>$/.test(raw) || // Emojis personalizados
-        /^(\p{Emoji_Presentation}|\p{Emoji})+$/u.test(raw) || // Emojis Unicode
-        /^\.\w{1,4}$/i.test(raw) // Comandos (ej. .td, .chat)
-      ) return;
-
-      // Traducir al idioma del otro usuario
-      const res = await translateWithCache(raw, toLang);
-      if (res && res.text) {
-        const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-        const embed = new EmbedBuilder()
-          .setColor('#00c7ff')
-          .setDescription(`${targetLangEmoji} **Traducción para <@${otherUserId}>:** ${res.text}`)
-          .setFooter({ text: `Original de <@${m.author.id}> (${getLang(m.author.id)})` });
-        await m.channel.send({ embeds: [embed] });
-      } else {
-        await sendWarning(m, `⚠️ No se pudo traducir el mensaje al idioma de <@${otherUserId}>.`);
+      try {
+        const res = await translate(raw, toLang);
+        if (res && res.text) {
+          const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+          await m.channel.send({
+            content: `${targetLangEmoji} **<@${otherUserId}>:** ${res.text}`,
+          });
+        } else {
+          await sendWarning(m, `⚠️ No se pudo traducir el mensaje al idioma de <@${otherUserId}>.`);
+        }
+      } catch (err) {
+        console.error('Error en traducción:', err);
+        await sendWarning(m, `❌ Error al traducir al idioma de <@${otherUserId}>.`);
       }
     }
   }
@@ -350,7 +346,7 @@ client.on('messageCreate', async (m) => {
     const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
     const lang = getLang(uid);
     if (prefs[uid]) {
-      const res = await translateWithCache(txt, lang);
+      const res = await translate(txt, lang);
       await loading.delete().catch(() => {});
       if (!res) return m.reply({ content: T(uid, 'timeout'), ephemeral: true });
       if (res.from === lang) return m.reply({ content: T(uid, 'alreadyInLang'), ephemeral: true });
@@ -382,12 +378,10 @@ client.on('messageCreate', async (m) => {
     const user2 = mention;
     if (user1.id === user2.id) return sendWarning(m, '⚠️ No puedes iniciar un chat contigo mismo.');
 
-    // Verificar si los idiomas son iguales
     const lang1 = getLang(user1.id);
     const lang2 = getLang(user2.id);
     if (lang1 === lang2) return sendWarning(m, T(user1.id, 'sameLanguage'));
 
-    // Iniciar el chat
     activeChats.set(m.channel.id, { users: [user1.id, user2.id] });
     const member1 = await m.guild.members.fetch(user1.id);
     const member2 = await m.guild.members.fetch(user2.id);
