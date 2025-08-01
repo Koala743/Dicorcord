@@ -260,41 +260,7 @@ if (chat) {
     }
   }
 
-if (command === 'xxx') {
-  const query = args.join(' ');
-  if (!query) return m.reply('⚠️ Escribe lo que quieres buscar.\nEjemplo: `.xxx hentai big boobs`');
 
-  const selectMenu = new MessageActionRow().addComponents(
-    new MessageSelectMenu()
-      .setCustomId(`xxxsite-${m.author.id}-${encodeURIComponent(query)}`)
-      .setPlaceholder('📺 Elige el sitio donde buscar')
-      .addOptions([
-        {
-          label: 'XVideos',
-          value: 'xvideos.es',
-          description: 'Buscar en xvideos.es',
-          emoji: '🔴'
-        },
-        {
-          label: 'Pornhub',
-          value: 'es.pornhub.com',
-          description: 'Buscar en pornhub.com',
-          emoji: '🟠'
-        },
-        {
-          label: 'Hentaila',
-          value: 'hentaila.tv',
-          description: 'Buscar en hentaila.tv',
-          emoji: '🟣'
-        }
-      ])
-  );
-
-  await m.reply({
-    content: '🔞 ¿Dónde quieres buscar el contenido?',
-    components: [selectMenu]
-  });
-}
 
   if (command === 'mp4') {
     const query = args.join(' ');
@@ -447,50 +413,6 @@ if (command === 'xxx') {
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
 
-if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
-  const [_, uid, rawQuery] = i.customId.split('-');
-  if (i.user.id !== uid) return i.reply({ content: '❌ Este menú no es para ti.', ephemeral: true });
-
-  const query = decodeURIComponent(rawQuery);
-  const site = i.values[0];
-
-  try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(`${query} site:${site}`)}&num=5`;
-    const res = await axios.get(url);
-    const items = res.data.items;
-
-    if (!items || items.length === 0)
-      return i.update({ content: '❌ No se encontraron resultados.', components: [] });
-
-    const result = items.find(item =>
-      item.link.includes('/video.') ||
-      item.link.includes('/view_video.php') ||
-      item.link.includes('/ver/')
-    ) || items[0];
-
-    const link = result.link;
-    const title = result.title;
-    const thumb = result.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🔞 ${title}`)
-      .setDescription(`👉 [Haz clic aquí para ver el video](${link})`)
-      .setImage(thumb)
-      .setColor('#ff3366')
-      .setFooter({ text: `Sitio: ${site}`, iconURL: 'https://i.imgur.com/botIcon.png' })
-      .setTimestamp();
-
-    await i.update({
-      embeds: [embed],
-      components: [],
-      ephemeral: true,
-    });
-
-  } catch (err) {
-    console.error('Error en selección xxx:', err.message);
-    await i.update({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', components: [] });
-  }
-}
 
   if (i.isStringSelectMenu()) {
     if (i.customId.startsWith('select-')) {
