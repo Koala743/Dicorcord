@@ -206,19 +206,7 @@ if (chat) {
   }
 }
 
-if (command === 'you') {
-  const uid = m.author.id;
-  const sel = new StringSelectMenuBuilder()
-    .setCustomId(`youlang-${uid}`)
-    .setPlaceholder('🌍 Selecciona a qué idioma traducir tus mensajes para los demás')
-    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
 
-  return m.reply({
-    content: 'Selecciona el idioma en el que quieres que los demás vean tus mensajes:',
-    components: [new ActionRowBuilder().addComponents(sel)],
-    ephemeral: true,
-  });
-}
 
 const personalLang = personalTranslations.get(m.author.id);
 if (personalLang) {
@@ -296,61 +284,21 @@ if (command === 'tyou') {
     }
   }
 
-if (command === 'wex') {
-  const axios = require('axios');
-  const cheerio = require('cheerio');
-  const { EmbedBuilder } = require('discord.js');
+if (command === 'you') {
+  const uid = m.author.id;
+  const sel = new StringSelectMenuBuilder()
+    .setCustomId(`youlang-${uid}`)
+    .setPlaceholder('🌍 Selecciona a qué idioma traducir tus mensajes para los demás')
+    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
 
-  const query = args.join(' ');
-  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
-
-  try {
-    const xnxxUrl = `https://www.xnxx.com/search/${encodeURIComponent(query)}`;
-    const xvideosUrl = `https://www.xvideos.es/?k=${encodeURIComponent(query)}`;
-
-    const [xnxxRes, xvideosRes] = await Promise.all([
-      axios.get(xnxxUrl),
-      axios.get(xvideosUrl)
-    ]);
-
-    const xnxx$ = cheerio.load(xnxxRes.data);
-    const xvideos$ = cheerio.load(xvideosRes.data);
-
-    const results = [];
-
-    xnxx$('.mozaique .thumb-block').slice(0, 3).each((i, el) => {
-      const title = xnxx$(el).find('.title a').text().trim();
-      const link = 'https://www.xnxx.com' + xnxx$(el).find('.title a').attr('href');
-      const thumb = xnxx$(el).find('img').attr('data-src');
-      results.push({ title, link, thumb });
-    });
-
-    xvideos$('.thumb-block').slice(0, 3).each((i, el) => {
-      const title = xvideos$(el).find('p a').text().trim();
-      const link = 'https://www.xvideos.es' + xvideos$(el).find('p a').attr('href');
-      const thumb = xvideos$(el).find('img').attr('data-src') || xvideos$(el).find('img').attr('src');
-      results.push({ title, link, thumb });
-    });
-
-    if (!results.length) return m.reply('❌ No se encontraron videos.');
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🔞 Resultados para: ${query}`)
-      .setColor('#ff4b4b')
-      .setDescription(
-        results
-          .map((v, i) => `**${i + 1}. [${v.title}](${v.link})**`)
-          .join('\n\n')
-      )
-      .setImage(results[0].thumb)
-      .setFooter({ text: `Mostrando ${results.length} videos` });
-
-    await m.channel.send({ embeds: [embed] });
-
-  } catch (err) {
-    m.reply('❌ Error al buscar videos.');
-  }
+  return m.reply({
+    content: 'Selecciona el idioma en el que quieres que los demás vean tus mensajes:',
+    components: [new ActionRowBuilder().addComponents(sel)],
+    ephemeral: true,
+  });
 }
+
+
 
   if (command === 'mp4') {
     const query = args.join(' ');
