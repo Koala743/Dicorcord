@@ -260,7 +260,7 @@ if (chat) {
     }
   }
 
-if (command === 'xxx') {
+if (command === 'Lista') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
