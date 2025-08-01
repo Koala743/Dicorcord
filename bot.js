@@ -261,53 +261,58 @@ if (chat) {
   }
 
 if (command === 'wex') {
+  const axios = require('axios');
+  const cheerio = require('cheerio');
+  const { EmbedBuilder } = require('discord.js');
+
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
   try {
-    // Excluye YouTube y busca cosas relacionadas con videos
-    const fullQuery = `${query} video -site:youtube.com -site:youtu.be`;
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(fullQuery)}&num=15`;
+    const xnxxUrl = `https://www.xnxx.com/search/${encodeURIComponent(query)}`;
+    const xvideosUrl = `https://www.xvideos.es/?k=${encodeURIComponent(query)}`;
 
-    const res = await axios.get(url);
-    const items = res.data.items;
-    if (!items || items.length === 0) return m.reply('❌ No se encontraron resultados.');
+    const [xnxxRes, xvideosRes] = await Promise.all([
+      axios.get(xnxxUrl),
+      axios.get(xvideosUrl)
+    ]);
 
-    const videoLinks = new Map(); // Para evitar dominios repetidos
+    const xnxx$ = cheerio.load(xnxxRes.data);
+    const xvideos$ = cheerio.load(xvideosRes.data);
 
-    for (const item of items) {
-      if (
-        item.link &&
-        /video|watch|embed|stream|player/i.test(item.link)
-      ) {
-        const domain = new URL(item.link).hostname;
-        if (!videoLinks.has(domain)) {
-          videoLinks.set(domain, {
-            title: item.title,
-            link: item.link,
-            source: item.displayLink,
-          });
-        }
-      }
-      if (videoLinks.size >= 7) break;
-    }
+    const results = [];
 
-    if (videoLinks.size === 0) return m.reply('❌ No se encontraron videos fuera de YouTube.');
+    xnxx$('.mozaique .thumb-block').slice(0, 3).each((i, el) => {
+      const title = xnxx$(el).find('.title a').text().trim();
+      const link = 'https://www.xnxx.com' + xnxx$(el).find('.title a').attr('href');
+      const thumb = xnxx$(el).find('img').attr('data-src');
+      results.push({ title, link, thumb });
+    });
+
+    xvideos$('.thumb-block').slice(0, 3).each((i, el) => {
+      const title = xvideos$(el).find('p a').text().trim();
+      const link = 'https://www.xvideos.es' + xvideos$(el).find('p a').attr('href');
+      const thumb = xvideos$(el).find('img').attr('data-src') || xvideos$(el).find('img').attr('src');
+      results.push({ title, link, thumb });
+    });
+
+    if (!results.length) return m.reply('❌ No se encontraron videos.');
 
     const embed = new EmbedBuilder()
-      .setTitle(`🌐 Videos encontrados (sin YouTube) para: ${query}`)
-      .setColor('#00c7ff')
+      .setTitle(`🔞 Resultados para: ${query}`)
+      .setColor('#ff4b4b')
       .setDescription(
-        Array.from(videoLinks.values())
-          .map((item, i) => `**${i + 1}. [${item.title}](${item.link})**\n🌐 ${item.source}`)
+        results
+          .map((v, i) => `**${i + 1}. [${v.title}](${v.link})**`)
           .join('\n\n')
       )
-      .setFooter({ text: `Mostrando ${videoLinks.size} resultados únicos de video` });
+      .setImage(results[0].thumb)
+      .setFooter({ text: `Mostrando ${results.length} videos` });
 
     await m.channel.send({ embeds: [embed] });
+
   } catch (err) {
-    const errMsg = err.response?.data?.error?.message || err.message;
-    return m.reply(`❌ Error buscando videos: ${errMsg}`);
+    m.reply('❌ Error al buscar videos.');
   }
 }
 
