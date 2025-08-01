@@ -402,6 +402,8 @@ const translations = {
     autoTranslateOff: "🛑 Traducción automática DESACTIVADA.",
     autoTranslateNotActive: "⚠️ No tienes traducción automática activa.",
     invalidLanguage: "⚠️ Idioma no válido. Usa códigos como: es, en, fr, de, pt, it, ru, ja, ko, zh-CN",
+    userNoLanguage:
+      "⚠️ El usuario mencionado no tiene un idioma guardado. Debe usar .ID para configurar su idioma primero.",
   },
   en: {
     mustReply: "⚠️ Use the command by replying to a message.",
@@ -422,6 +424,8 @@ const translations = {
     autoTranslateOff: "🛑 Auto-translate DEACTIVATED.",
     autoTranslateNotActive: "⚠️ You don't have auto-translate active.",
     invalidLanguage: "⚠️ Invalid language. Use codes like: es, en, fr, de, pt, it, ru, ja, ko, zh-CN",
+    userNoLanguage:
+      "⚠️ The mentioned user doesn't have a saved language. They must use .ID to set their language first.",
   },
 }
 
@@ -444,6 +448,22 @@ function getUserLanguage(userId) {
 function getTranslation(userId, key) {
   const userLang = getUserLanguage(userId)
   return translations[userLang]?.[key] || translations["es"][key]
+}
+
+async function logError(channel, error, context = "") {
+  const errorEmbed = new EmbedBuilder()
+    .setTitle("🚨 Error Detectado")
+    .setDescription(
+      `**Contexto:** ${context}\n**Error:** \`${error.message}\`\n**Stack:** \`\`\`${error.stack?.slice(0, 1000) || "No disponible"}\`\`\``,
+    )
+    .setColor("#FF0000")
+    .setTimestamp()
+
+  try {
+    await channel.send({ embeds: [errorEmbed] })
+  } catch (e) {
+    console.error("Error enviando log de error:", e)
+  }
 }
 
 async function isImageUrlValid(url) {
@@ -533,6 +553,28 @@ async function getPlayerNames(playerTokens) {
   }
 }
 
+async function getPlayerAvatars(playerIds) {
+  if (!playerIds || playerIds.length === 0) return []
+  try {
+    const response = await axios.get(
+      `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${playerIds.join(",")}&size=150x150&format=Png&isCircular=false`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      },
+    )
+    return response.data.data || []
+  } catch (error) {
+    console.log("Error obteniendo avatares de jugadores:", error.message)
+    return playerIds.map((id) => ({
+      targetId: id,
+      state: "Completed",
+      imageUrl: `https://tr.rbxcdn.com/30DAY-AvatarHeadshot-${id}-Png/150/150/AvatarHeadshot/Webp/noFilter`,
+    }))
+  }
+}
+
 async function handleRobloxSearch(message, args) {
   const input = args.join(" ")
   if (!input) return message.reply("⚠️ Debes escribir el ID del juego de Roblox o el nombre.")
@@ -553,6 +595,7 @@ async function handleRobloxSearch(message, args) {
         })
         universeId = placeInfoResponse.data.universeId
       } catch (error) {
+        await logError(message.channel, error, "Error obteniendo universeId desde placeId")
         return message.reply("❌ No se pudo encontrar el juego con ese ID.")
       }
     } else {
@@ -581,6 +624,7 @@ async function handleRobloxSearch(message, args) {
           placeId = catalogGames[0].id
           universeId = catalogGames[0].universeId
         } catch (error) {
+          await logError(message.channel, error, "Error en búsqueda amplia de juegos")
           return message.reply("❌ No se encontró ningún juego con ese nombre.")
         }
       } else {
@@ -766,6 +810,7 @@ async function handleRobloxSearch(message, args) {
     await message.channel.send({ embeds: [embed], components: [row1, row2] })
   } catch (error) {
     console.error("Error en búsqueda de Roblox:", error.message)
+    await logError(message.channel, error, "Error general en búsqueda de Roblox")
     return message.reply(`❌ Error al obtener información de Roblox: ${error.message}`)
   }
 }
@@ -822,10 +867,10 @@ async function handleAllPlayersView(interaction, cache) {
 
   await interaction.deferUpdate()
 
-  let playerList = "**👥 TODOS LOS JUGADORES:**\n\n"
+  let playerList = "**👥 TODOS LOS JUGADORES CON AVATARES:**\n\n"
   let totalPlayersShown = 0
 
-  for (let serverIndex = 0; serverIndex < allServers.length && totalPlayersShown < 50; serverIndex++) {
+  for (let serverIndex = 0; serverIndex < allServers.length && totalPlayersShown < 30; serverIndex++) {
     const server = allServers[serverIndex]
     const serverType = serverIndex < cache.publicServers.length ? "🌐" : "💎"
 
@@ -834,20 +879,30 @@ async function handleAllPlayersView(interaction, cache) {
 
       try {
         const playerNames = await getPlayerNames(server.playerTokens)
+        const playerAvatars = await getPlayerAvatars(server.playerTokens)
 
         server.playerTokens.forEach((playerToken, playerIndex) => {
-          if (totalPlayersShown >= 50) return
+          if (totalPlayersShown >= 30) return
 
           const playerData = playerNames.find((p) => p.id === playerToken)
           const playerName = playerData ? playerData.displayName || playerData.name : `Jugador_${playerIndex + 1}`
 
+          const avatarData = playerAvatars.find((a) => a.targetId == playerToken)
+          const avatarUrl = avatarData
+            ? avatarData.imageUrl
+            : `https://tr.rbxcdn.com/30DAY-AvatarHeadshot-${playerToken}-Png/150/150/AvatarHeadshot/Webp/noFilter`
+
           playerList += `  ${totalPlayersShown + 1}. **${playerName}** (ID: \`${playerToken}\`)\n`
+          playerList += `     🖼️ [Avatar](${avatarUrl})\n`
           totalPlayersShown++
         })
       } catch (error) {
+        await logError(interaction.channel, error, "Error obteniendo datos de jugadores")
         server.playerTokens.forEach((playerToken, playerIndex) => {
-          if (totalPlayersShown >= 50) return
+          if (totalPlayersShown >= 30) return
+          const avatarUrl = `https://tr.rbxcdn.com/30DAY-AvatarHeadshot-${playerToken}-Png/150/150/AvatarHeadshot/Webp/noFilter`
           playerList += `  ${totalPlayersShown + 1}. **Jugador_${playerIndex + 1}** (ID: \`${playerToken}\`)\n`
+          playerList += `     🖼️ [Avatar](${avatarUrl})\n`
           totalPlayersShown++
         })
       }
@@ -858,7 +913,7 @@ async function handleAllPlayersView(interaction, cache) {
 
   if (totalPlayersShown === 0) {
     playerList = "❌ No se encontraron jugadores en los servidores disponibles."
-  } else if (totalPlayersShown >= 50) {
+  } else if (totalPlayersShown >= 30) {
     playerList += `*... y más jugadores en otros servidores*\n`
   }
 
@@ -942,40 +997,46 @@ async function handleRobloxNavigation(interaction, action) {
   const cache = robloxSearchCache.get(userId)
 
   if (!cache) {
-    return interaction.reply({ content: "❌ No hay datos de juego disponibles.", ephemeral: true })
-  }
-
-  if (action === "allServersRoblox") {
-    await handleAllServersView(interaction, cache)
-  } else if (action === "allPlayersRoblox") {
-    await handleAllPlayersView(interaction, cache)
-  } else if (action === "playerCountRoblox") {
-    await handlePlayerCountView(interaction, cache)
-  } else if (action === "playRoblox") {
-    const playUrl = `https://www.roblox.com/games/${cache.placeId}`
+    await logError(interaction.channel, new Error("Cache no encontrado"), `Usuario: ${userId}, Acción: ${action}`)
     return interaction.reply({
-      content: `🎮 **${cache.gameData.name}**\n🔗 ${playUrl}\n*Clic en el enlace para jugar directamente*`,
+      content: "❌ No hay datos de juego disponibles. Usa .roblox [juego] primero.",
       ephemeral: true,
     })
-  } else if (action === "refreshRoblox") {
-    try {
-      await interaction.deferUpdate()
-      const newMessage = {
-        author: { id: userId },
-        reply: (content) => interaction.editReply(content),
-        channel: interaction.channel,
-      }
-      await handleRobloxSearch(newMessage, [cache.placeId])
-    } catch (error) {
-      return interaction.editReply({ content: "❌ Error al actualizar datos del servidor." })
-    }
-    return
-  } else if (action === "backRoblox") {
-    const embed = new EmbedBuilder()
-      .setTitle(`🎮 ${cache.gameData.name}`)
-      .setDescription(`**📊 Estadísticas Completas del Juego:**
+  }
 
-**👥 JUGADORES TOTALES: ${cache.totalPlayers.toLocaleString()}/${cache.totalMaxPlayers.toLocaleString()}**
+  try {
+    if (action === "allServersRoblox") {
+      await handleAllServersView(interaction, cache)
+    } else if (action === "allPlayersRoblox") {
+      await handleAllPlayersView(interaction, cache)
+    } else if (action === "playerCountRoblox") {
+      await handlePlayerCountView(interaction, cache)
+    } else if (action === "playRoblox") {
+      const playUrl = `https://www.roblox.com/games/${cache.placeId}`
+      return interaction.reply({
+        content: `🎮 **${cache.gameData.name}**\n🔗 ${playUrl}\n*Clic en el enlace para jugar directamente*`,
+        ephemeral: true,
+      })
+    } else if (action === "refreshRoblox") {
+      try {
+        await interaction.deferUpdate()
+        const newMessage = {
+          author: { id: userId },
+          reply: (content) => interaction.editReply(content),
+          channel: interaction.channel,
+        }
+        await handleRobloxSearch(newMessage, [cache.placeId])
+      } catch (error) {
+        await logError(interaction.channel, error, "Error refrescando datos de Roblox")
+        return interaction.editReply({ content: "❌ Error al actualizar datos del servidor." })
+      }
+      return
+    } else if (action === "backRoblox") {
+      const embed = new EmbedBuilder()
+        .setTitle(`🎮 ${cache.gameData.name}`)
+        .setDescription(`**📊 Estadísticas Completas del Juego:**
+
+**👥 JUGADORES TOTALES: ${cache.totalPlayers.toLocaleString()}/${cache.totalMaxPlayers?.toLocaleString() || "N/A"}**
 
 **🌐 Servidores Públicos:**
 🟢 Servidores: ${cache.totalPublicServers}
@@ -988,60 +1049,60 @@ async function handleRobloxNavigation(interaction, action) {
 **📈 Información General:**
 ⭐ Rating: ${cache.gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${cache.gameData.totalDownVotes?.toLocaleString() || 0}👎
 🎯 Visitas: ${cache.gameData.visits?.toLocaleString() || "N/A"}`)
-      .setColor("#00b2ff")
-      .setThumbnail(
-        `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+        .setColor("#00b2ff")
+        .setThumbnail(
+          `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+        )
+        .setFooter({
+          text: `ID: ${cache.placeId} | Total de servidores: ${cache.totalServers}`,
+        })
+        .setTimestamp()
+
+      const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`publicRoblox-${userId}`)
+          .setLabel("🌐 Ver Públicos")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(cache.totalPublicServers === 0),
+        new ButtonBuilder()
+          .setCustomId(`vipRoblox-${userId}`)
+          .setLabel("💎 Ver VIP")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(cache.totalVipServers === 0),
+        new ButtonBuilder().setCustomId(`playRoblox-${userId}`).setLabel("🎮 Jugar").setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`refreshRoblox-${userId}`)
+          .setLabel("🔄 Actualizar")
+          .setStyle(ButtonStyle.Secondary),
       )
-      .setFooter({
-        text: `ID: ${cache.placeId} | Total de servidores: ${cache.totalServers}`,
-      })
-      .setTimestamp()
 
-    const row1 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`publicRoblox-${userId}`)
-        .setLabel("🌐 Ver Públicos")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(cache.totalPublicServers === 0),
-      new ButtonBuilder()
-        .setCustomId(`vipRoblox-${userId}`)
-        .setLabel("💎 Ver VIP")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(cache.totalVipServers === 0),
-      new ButtonBuilder().setCustomId(`playRoblox-${userId}`).setLabel("🎮 Jugar").setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`refreshRoblox-${userId}`)
-        .setLabel("🔄 Actualizar")
-        .setStyle(ButtonStyle.Secondary),
-    )
+      const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`allServersRoblox-${userId}`)
+          .setLabel("📋 Todos los Servidores")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`allPlayersRoblox-${userId}`)
+          .setLabel("👥 Todos los Jugadores")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`playerCountRoblox-${userId}`)
+          .setLabel("📊 Contador Jugadores")
+          .setStyle(ButtonStyle.Secondary),
+      )
 
-    const row2 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`allServersRoblox-${userId}`)
-        .setLabel("📋 Todos los Servidores")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`allPlayersRoblox-${userId}`)
-        .setLabel("👥 Todos los Jugadores")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`playerCountRoblox-${userId}`)
-        .setLabel("📊 Contador Jugadores")
-        .setStyle(ButtonStyle.Secondary),
-    )
-
-    return interaction.update({ embeds: [embed], components: [row1, row2] })
-  } else if (action === "publicRoblox") {
-    if (cache.publicServers.length === 0) {
-      return interaction.reply({ content: "❌ No hay servidores públicos disponibles.", ephemeral: true })
-    }
-    cache.serverType = "public"
-    cache.index = 0
-    robloxSearchCache.set(userId, cache)
-    const server = cache.publicServers[0]
-    const embed = new EmbedBuilder()
-      .setTitle(`🌐 ${cache.gameData.name} - Servidores Públicos`)
-      .setDescription(`**📊 Servidor Público ${cache.index + 1} de ${cache.totalPublicServers}**
+      return interaction.update({ embeds: [embed], components: [row1, row2] })
+    } else if (action === "publicRoblox") {
+      if (cache.publicServers.length === 0) {
+        return interaction.reply({ content: "❌ No hay servidores públicos disponibles.", ephemeral: true })
+      }
+      cache.serverType = "public"
+      cache.index = 0
+      robloxSearchCache.set(userId, cache)
+      const server = cache.publicServers[0]
+      const embed = new EmbedBuilder()
+        .setTitle(`🌐 ${cache.gameData.name} - Servidores Públicos`)
+        .setDescription(`**📊 Servidor Público ${cache.index + 1} de ${cache.totalPublicServers}**
 
 **👥 Jugadores:** ${server.playing}/${server.maxPlayers}
 **🆔 ID del Servidor:** ${server.id}
@@ -1051,40 +1112,40 @@ async function handleRobloxNavigation(interaction, action) {
 **📈 Estadísticas Públicas:**
 🟢 Total de servidores públicos: ${cache.totalPublicServers}
 👥 Total de jugadores públicos: ${cache.publicPlayers.toLocaleString()}`)
-      .setColor("#4CAF50")
-      .setThumbnail(
-        `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+        .setColor("#4CAF50")
+        .setThumbnail(
+          `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+        )
+        .setFooter({ text: `Servidor público ${cache.index + 1}/${cache.totalPublicServers}` })
+        .setTimestamp()
+
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`prevRoblox-${userId}`)
+          .setLabel("⬅️ Anterior")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`nextRoblox-${userId}`)
+          .setLabel("➡️ Siguiente")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(cache.publicServers.length <= 1),
+        new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
       )
-      .setFooter({ text: `Servidor público ${cache.index + 1}/${cache.totalPublicServers}` })
-      .setTimestamp()
 
-    const buttons = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`prevRoblox-${userId}`)
-        .setLabel("⬅️ Anterior")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(true),
-      new ButtonBuilder()
-        .setCustomId(`nextRoblox-${userId}`)
-        .setLabel("➡️ Siguiente")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(cache.publicServers.length <= 1),
-      new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
-    )
-
-    return interaction.update({ embeds: [embed], components: [buttons] })
-  } else if (action === "vipRoblox") {
-    if (cache.vipServers.length === 0) {
-      return interaction.reply({ content: "❌ No hay servidores VIP disponibles.", ephemeral: true })
-    }
-    cache.serverType = "vip"
-    cache.index = 0
-    robloxSearchCache.set(userId, cache)
-    const server = cache.vipServers[0]
-    const embed = new EmbedBuilder()
-      .setTitle(`💎 ${cache.gameData.name} - Servidores VIP`)
-      .setDescription(`**📊 Servidor VIP ${cache.index + 1} de ${cache.totalVipServers}**
+      return interaction.update({ embeds: [embed], components: [buttons] })
+    } else if (action === "vipRoblox") {
+      if (cache.vipServers.length === 0) {
+        return interaction.reply({ content: "❌ No hay servidores VIP disponibles.", ephemeral: true })
+      }
+      cache.serverType = "vip"
+      cache.index = 0
+      robloxSearchCache.set(userId, cache)
+      const server = cache.vipServers[0]
+      const embed = new EmbedBuilder()
+        .setTitle(`💎 ${cache.gameData.name} - Servidores VIP`)
+        .setDescription(`**📊 Servidor VIP ${cache.index + 1} de ${cache.totalVipServers}**
 
 **👥 Jugadores:** ${server.playing}/${server.maxPlayers}
 **🆔 ID del Servidor:** ${server.id}
@@ -1094,66 +1155,66 @@ async function handleRobloxNavigation(interaction, action) {
 **💎 Estadísticas VIP:**
 🔒 Total de servidores VIP: ${cache.totalVipServers}
 👥 Total de jugadores VIP: ${cache.vipPlayers.toLocaleString()}`)
-      .setColor("#9C27B0")
-      .setThumbnail(
-        `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+        .setColor("#9C27B0")
+        .setThumbnail(
+          `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+        )
+        .setFooter({ text: `Servidor VIP ${cache.index + 1}/${cache.totalVipServers}` })
+        .setTimestamp()
+
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`prevRoblox-${userId}`)
+          .setLabel("⬅️ Anterior")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`nextRoblox-${userId}`)
+          .setLabel("➡️ Siguiente")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(cache.vipServers.length <= 1),
+        new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
       )
-      .setFooter({ text: `Servidor VIP ${cache.index + 1}/${cache.totalVipServers}` })
-      .setTimestamp()
 
-    const buttons = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`prevRoblox-${userId}`)
-        .setLabel("⬅️ Anterior")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(true),
-      new ButtonBuilder()
-        .setCustomId(`nextRoblox-${userId}`)
-        .setLabel("➡️ Siguiente")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(cache.vipServers.length <= 1),
-      new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
-    )
-
-    return interaction.update({ embeds: [embed], components: [buttons] })
-  } else if (action === "joinRoblox") {
-    const currentServers = cache.serverType === "public" ? cache.publicServers : cache.vipServers
-    const server = currentServers[cache.index]
-    const joinUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id}`
-    return interaction.reply({
-      content: `🚀 **Unirse al Servidor ${cache.serverType === "public" ? "Público" : "VIP"}**
+      return interaction.update({ embeds: [embed], components: [buttons] })
+    } else if (action === "joinRoblox") {
+      const currentServers = cache.serverType === "public" ? cache.publicServers : cache.vipServers
+      const server = currentServers[cache.index]
+      const joinUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id}`
+      return interaction.reply({
+        content: `🚀 **Unirse al Servidor ${cache.serverType === "public" ? "Público" : "VIP"}**
 
 🎮 **Juego:** ${cache.gameData.name}
 👥 **Jugadores:** ${server.playing}/${server.maxPlayers}
 🔗 **Link:** ${joinUrl}
 
 *Clic en el enlace para jugar directamente*`,
-      ephemeral: true,
-    })
-  }
+        ephemeral: true,
+      })
+    }
 
-  const currentServers = cache.serverType === "public" ? cache.publicServers : cache.vipServers
-  const maxServers = cache.serverType === "public" ? cache.totalPublicServers : cache.totalVipServers
-  let newIndex = cache.index
+    const currentServers = cache.serverType === "public" ? cache.publicServers : cache.vipServers
+    const maxServers = cache.serverType === "public" ? cache.totalPublicServers : cache.totalVipServers
+    let newIndex = cache.index
 
-  if (action === "nextRoblox" && cache.index < currentServers.length - 1) {
-    newIndex++
-  } else if (action === "prevRoblox" && cache.index > 0) {
-    newIndex--
-  }
+    if (action === "nextRoblox" && cache.index < currentServers.length - 1) {
+      newIndex++
+    } else if (action === "prevRoblox" && cache.index > 0) {
+      newIndex--
+    }
 
-  cache.index = newIndex
-  robloxSearchCache.set(userId, cache)
+    cache.index = newIndex
+    robloxSearchCache.set(userId, cache)
 
-  const server = currentServers[newIndex]
-  const serverTypeText = cache.serverType === "public" ? "Público" : "VIP"
-  const serverTypeEmoji = cache.serverType === "public" ? "🌐" : "💎"
-  const serverTypeColor = cache.serverType === "public" ? "#4CAF50" : "#9C27B0"
+    const server = currentServers[newIndex]
+    const serverTypeText = cache.serverType === "public" ? "Público" : "VIP"
+    const serverTypeEmoji = cache.serverType === "public" ? "🌐" : "💎"
+    const serverTypeColor = cache.serverType === "public" ? "#4CAF50" : "#9C27B0"
 
-  const embed = new EmbedBuilder()
-    .setTitle(`${serverTypeEmoji} ${cache.gameData.name} - Servidores ${serverTypeText}s`)
-    .setDescription(`**📊 Servidor ${serverTypeText} ${newIndex + 1} de ${maxServers}**
+    const embed = new EmbedBuilder()
+      .setTitle(`${serverTypeEmoji} ${cache.gameData.name} - Servidores ${serverTypeText}s`)
+      .setDescription(`**📊 Servidor ${serverTypeText} ${newIndex + 1} de ${maxServers}**
 
 **👥 Jugadores:** ${server.playing}/${server.maxPlayers}
 **🆔 ID del Servidor:** ${server.id}
@@ -1163,29 +1224,33 @@ ${cache.serverType === "public" ? "**🌍 Región:** " + (server.location || "Gl
 **📈 Estadísticas ${serverTypeText}s:**
 ${serverTypeEmoji} Total de servidores ${cache.serverType === "public" ? "públicos" : "VIP"}: ${maxServers}
 👥 Total de jugadores ${cache.serverType === "public" ? "públicos" : "VIP"}: ${cache.serverType === "public" ? cache.publicPlayers.toLocaleString() : cache.vipPlayers.toLocaleString()}`)
-    .setColor(serverTypeColor)
-    .setThumbnail(
-      `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+      .setColor(serverTypeColor)
+      .setThumbnail(
+        `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+      )
+      .setFooter({ text: `Servidor ${serverTypeText.toLowerCase()} ${newIndex + 1}/${maxServers}` })
+      .setTimestamp()
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`prevRoblox-${userId}`)
+        .setLabel("⬅️ Anterior")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newIndex === 0),
+      new ButtonBuilder()
+        .setCustomId(`nextRoblox-${userId}`)
+        .setLabel("➡️ Siguiente")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newIndex === currentServers.length - 1),
+      new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
     )
-    .setFooter({ text: `Servidor ${serverTypeText.toLowerCase()} ${newIndex + 1}/${maxServers}` })
-    .setTimestamp()
 
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`prevRoblox-${userId}`)
-      .setLabel("⬅️ Anterior")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(newIndex === 0),
-    new ButtonBuilder()
-      .setCustomId(`nextRoblox-${userId}`)
-      .setLabel("➡️ Siguiente")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(newIndex === currentServers.length - 1),
-    new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
-  )
-
-  await interaction.update({ embeds: [embed], components: [buttons] })
+    await interaction.update({ embeds: [embed], components: [buttons] })
+  } catch (error) {
+    await logError(interaction.channel, error, `Error en navegación Roblox - Acción: ${action}`)
+    return interaction.reply({ content: "❌ Error procesando la acción. Intenta de nuevo.", ephemeral: true })
+  }
 }
 
 client.once("ready", () => {
@@ -1195,19 +1260,27 @@ client.once("ready", () => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.content) return
-  await handleInviteRestrictions(message)
-  await handleAutoTranslate(message)
-  await handleChatTranslation(message)
-  if (message.content.startsWith(".")) {
-    await handleCommands(message)
+  try {
+    await handleInviteRestrictions(message)
+    await handleAutoTranslate(message)
+    await handleChatTranslation(message)
+    if (message.content.startsWith(".")) {
+      await handleCommands(message)
+    }
+  } catch (error) {
+    await logError(message.channel, error, "Error en messageCreate")
   }
 })
 
 client.on("interactionCreate", async (interaction) => {
-  if (interaction.isStringSelectMenu()) {
-    await handleSelectMenu(interaction)
-  } else if (interaction.isButton()) {
-    await handleButtonInteraction(interaction)
+  try {
+    if (interaction.isStringSelectMenu()) {
+      await handleSelectMenu(interaction)
+    } else if (interaction.isButton()) {
+      await handleButtonInteraction(interaction)
+    }
+  } catch (error) {
+    await logError(interaction.channel, error, "Error en interactionCreate")
   }
 })
 
@@ -1230,6 +1303,7 @@ async function handleAutoTranslate(message) {
     }
   } catch (error) {
     console.error("Error en auto-traducción:", error)
+    await logError(message.channel, error, "Error en auto-traducción")
   }
 }
 
@@ -1246,6 +1320,7 @@ async function handleInviteRestrictions(message) {
         await message.author.send({ content: warning })
       } catch (error) {
         console.error("Error handling invite restriction:", error.message)
+        await logError(message.channel, error, "Error manejando restricción de invites")
       }
       return true
     }
@@ -1279,6 +1354,7 @@ async function handleChatTranslation(message) {
     }
   } catch (error) {
     console.error("Error en traducción:", error)
+    await logError(message.channel, error, "Error en traducción de chat")
     await message.channel.send({
       content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
       ephemeral: true,
@@ -1289,72 +1365,77 @@ async function handleChatTranslation(message) {
 async function handleCommands(message) {
   const [command, ...args] = message.content.slice(1).trim().split(/ +/)
   const cmd = command.toLowerCase()
-  switch (cmd) {
-    case "web":
-      await handleWebSearch(message, args)
-      break
-    case "bs":
-      await handleGeneralSearch(message, args)
-      break
-    case "xxx":
-      await handleAdultSearch(message, args)
-      break
-    case "cmx":
-      await handleComicSearch(message, args)
-      break
-    case "mp4":
-      await handleVideoSearch(message, args)
-      break
-    case "xml":
-      await handleXMLSearch(message, args)
-      break
-    case "roblox":
-      await handleRobloxSearch(message, args)
-      break
-    case "td":
-      await handleTranslate(message)
-      break
-    case "auto":
-      await handleAutoTranslateCommand(message, args)
-      break
-    case "dauto":
-      await handleDisableAutoTranslate(message)
-      break
-    case "chat":
-      await handleChatCommand(message)
-      break
-    case "dchat":
-      await handleDisableChatCommand(message)
-      break
-    case "id":
-      await handleLanguageSelection(message)
-      break
-    case "lista":
-      await handleCommandsList(message)
-      break
-    case "apistats":
-      if (message.author.username !== "flux_fer") {
-        return sendWarning(message, "⚠️ Solo el administrador puede ver las estadísticas.")
-      }
-      const googleStats = apiManager.getAPIStats("google")
-      const youtubeStats = apiManager.getAPIStats("youtube")
-      const embed = new EmbedBuilder()
-        .setTitle("📊 Estadísticas de APIs")
-        .setColor("#00c7ff")
-        .addFields(
-          {
-            name: "🔍 Google Custom Search",
-            value: `Activas: ${googleStats.active}/${googleStats.total}\nRequests hoy: ${googleStats.totalRequests}`,
-            inline: true,
-          },
-          {
-            name: "🎬 YouTube Data API",
-            value: `Activas: ${youtubeStats.active}/${youtubeStats.total}\nRequests hoy: ${youtubeStats.totalRequests}`,
-            inline: true,
-          },
-        )
-        .setTimestamp()
-      return message.reply({ embeds: [embed], ephemeral: true })
+  try {
+    switch (cmd) {
+      case "web":
+        await handleWebSearch(message, args)
+        break
+      case "bs":
+        await handleGeneralSearch(message, args)
+        break
+      case "xxx":
+        await handleAdultSearch(message, args)
+        break
+      case "cmx":
+        await handleComicSearch(message, args)
+        break
+      case "mp4":
+        await handleVideoSearch(message, args)
+        break
+      case "xml":
+        await handleXMLSearch(message, args)
+        break
+      case "roblox":
+        await handleRobloxSearch(message, args)
+        break
+      case "td":
+        await handleTranslate(message)
+        break
+      case "auto":
+        await handleAutoTranslateCommand(message, args)
+        break
+      case "dauto":
+        await handleDisableAutoTranslate(message)
+        break
+      case "chat":
+        await handleChatCommand(message)
+        break
+      case "dchat":
+        await handleDisableChatCommand(message)
+        break
+      case "id":
+        await handleLanguageSelection(message)
+        break
+      case "lista":
+        await handleCommandsList(message)
+        break
+      case "apistats":
+        if (message.author.username !== "flux_fer") {
+          return sendWarning(message, "⚠️ Solo el administrador puede ver las estadísticas.")
+        }
+        const googleStats = apiManager.getAPIStats("google")
+        const youtubeStats = apiManager.getAPIStats("youtube")
+        const embed = new EmbedBuilder()
+          .setTitle("📊 Estadísticas de APIs")
+          .setColor("#00c7ff")
+          .addFields(
+            {
+              name: "🔍 Google Custom Search",
+              value: `Activas: ${googleStats.active}/${googleStats.total}\nRequests hoy: ${googleStats.totalRequests}`,
+              inline: true,
+            },
+            {
+              name: "🎬 YouTube Data API",
+              value: `Activas: ${youtubeStats.active}/${youtubeStats.total}\nRequests hoy: ${youtubeStats.totalRequests}`,
+              inline: true,
+            },
+          )
+          .setTimestamp()
+        return message.reply({ embeds: [embed], ephemeral: true })
+    }
+  } catch (error) {
+    await logError(message.channel, error, `Error ejecutando comando: ${cmd}`)
+    return message.reply(`❌ Error ejecutando el comando: ${error.message}`)
   }
 }
 
@@ -1468,6 +1549,7 @@ async function handleGeneralSearch(message, args) {
   } catch (error) {
     const errorMsg = error.message || "Error desconocido"
     console.error("Error en búsqueda general:", errorMsg)
+    await logError(message.channel, error, "Error en búsqueda general")
     return message.reply(`❌ Error en la búsqueda: ${errorMsg}`)
   }
 }
@@ -1539,6 +1621,7 @@ async function handleWebSearch(message, args) {
   } catch (error) {
     const errorMsg = error.message || "Error desconocido"
     console.error("Error en búsqueda de imágenes:", errorMsg)
+    await logError(message.channel, error, "Error en búsqueda de imágenes")
     return message.reply(`❌ Error buscando imágenes: ${errorMsg}`)
   }
 }
@@ -1600,6 +1683,7 @@ async function handleVideoSearch(message, args) {
       console.log("⚠️ Cuota de YouTube agotada, intentando con otra API...")
       return message.reply("⚠️ Cuota agotada, intentando con otra API...")
     }
+    await logError(message.channel, error, "Error en búsqueda de video YouTube")
     return message.reply("❌ Error al buscar el video.")
   }
 }
@@ -1634,6 +1718,7 @@ async function handleXMLSearch(message, args) {
     await message.channel.send({ embeds: [embed] })
   } catch (error) {
     console.error("Error en búsqueda XML:", error.message)
+    await logError(message.channel, error, "Error en búsqueda XML")
     return message.reply("❌ ¡Algo salió mal, compa! Intenta de nuevo.")
   }
 }
@@ -1683,11 +1768,22 @@ async function handleChatCommand(message) {
   if (user1.id === user2.id) {
     return sendWarning(message, "⚠️ No puedes iniciar un chat contigo mismo.")
   }
-  const lang1 = getUserLanguage(user1.id)
-  const lang2 = getUserLanguage(user2.id)
+
+  const lang1 = prefs[user1.id]
+  const lang2 = prefs[user2.id]
+
+  if (!lang1) {
+    return sendWarning(message, `⚠️ Tú no tienes un idioma guardado. Usa .ID para configurar tu idioma primero.`)
+  }
+
+  if (!lang2) {
+    return sendWarning(message, getTranslation(user1.id, "userNoLanguage"))
+  }
+
   if (lang1 === lang2) {
     return sendWarning(message, getTranslation(user1.id, "sameLanguage"))
   }
+
   activeChats.set(message.channel.id, { users: [user1.id, user2.id] })
   const member1 = await message.guild.members.fetch(user1.id)
   const member2 = await message.guild.members.fetch(user2.id)
@@ -1733,14 +1829,18 @@ async function handleLanguageSelection(message) {
 
 async function handleSelectMenu(interaction) {
   const userId = interaction.user.id
-  if (interaction.customId.startsWith("xxxsite-")) {
-    await handleAdultSiteSelection(interaction)
-  } else if (interaction.customId.startsWith("comicsite-")) {
-    await handleComicSiteSelection(interaction)
-  } else if (interaction.customId.startsWith("autoselect-")) {
-    await handleAutoTranslateSelection(interaction)
-  } else if (interaction.customId.startsWith("select-")) {
-    await handleLanguageSelectionMenu(interaction)
+  try {
+    if (interaction.customId.startsWith("xxxsite-")) {
+      await handleAdultSiteSelection(interaction)
+    } else if (interaction.customId.startsWith("comicsite-")) {
+      await handleComicSiteSelection(interaction)
+    } else if (interaction.customId.startsWith("autoselect-")) {
+      await handleAutoTranslateSelection(interaction)
+    } else if (interaction.customId.startsWith("select-")) {
+      await handleLanguageSelectionMenu(interaction)
+    }
+  } catch (error) {
+    await logError(interaction.channel, error, "Error en handleSelectMenu")
   }
 }
 
@@ -1794,6 +1894,7 @@ async function handleComicSiteSelection(interaction) {
     pendingComicSearch.delete(interaction.user.id)
   } catch (error) {
     console.error("Error en búsqueda de comics:", error.message)
+    await logError(interaction.channel, error, "Error en búsqueda de comics")
     return interaction.reply({
       content: "❌ Error al buscar comics. Intenta de nuevo más tarde.",
       ephemeral: true,
@@ -1835,6 +1936,7 @@ async function handleAdultSiteSelection(interaction) {
     pendingXXXSearch.delete(interaction.user.id)
   } catch (error) {
     console.error("Error en búsqueda .xxx:", error.message)
+    await logError(interaction.channel, error, "Error en búsqueda adulta")
     return interaction.reply({
       content: "❌ Error al buscar. Intenta de nuevo más tarde.",
       ephemeral: true,
@@ -1869,16 +1971,20 @@ async function handleButtonInteraction(interaction) {
   if (userId !== uid) {
     return interaction.reply({ content: "⛔ No puedes usar estos botones.", ephemeral: true })
   }
-  if (action.startsWith("xxx")) {
-    await handleAdultSearchNavigation(interaction, action)
-  } else if (action.startsWith("comic")) {
-    await handleComicSearchNavigation(interaction, action)
-  } else if (action.startsWith("General") || action.includes("General")) {
-    await handleGeneralSearchNavigation(interaction, action)
-  } else if (action.includes("Roblox")) {
-    await handleRobloxNavigation(interaction, action)
-  } else if (["prevImage", "nextImage"].includes(interaction.customId)) {
-    await handleImageNavigation(interaction)
+  try {
+    if (action.startsWith("xxx")) {
+      await handleAdultSearchNavigation(interaction, action)
+    } else if (action.startsWith("comic")) {
+      await handleComicSearchNavigation(interaction, action)
+    } else if (action.startsWith("General") || action.includes("General")) {
+      await handleGeneralSearchNavigation(interaction, action)
+    } else if (action.includes("Roblox")) {
+      await handleRobloxNavigation(interaction, action)
+    } else if (["prevImage", "nextImage"].includes(interaction.customId)) {
+      await handleImageNavigation(interaction)
+    }
+  } catch (error) {
+    await logError(interaction.channel, error, "Error en handleButtonInteraction")
   }
 }
 
