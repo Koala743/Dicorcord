@@ -298,7 +298,6 @@ if (command === 'xxx') {
 }
 
 
-
   if (command === 'mp4') {
     const query = args.join(' ');
     if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
@@ -495,7 +494,6 @@ if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
     await i.update({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', components: [] });
   }
 }
-
 
 
   if (i.isStringSelectMenu()) {
