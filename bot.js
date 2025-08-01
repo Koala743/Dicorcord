@@ -260,7 +260,7 @@ if (chat) {
     }
   }
 
-if (command === 'Lista') {
+if (command === 'xxx') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
@@ -473,9 +473,20 @@ if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
 
     const link = result.link;
     const title = result.title;
+    const thumb = result.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🔞 ${title.slice(0, 80)}...`)
+      .setDescription(`👉 [Haz clic aquí para ver el video](${link})`)
+      .setThumbnail(thumb)
+      .setColor('#ff3366')
+      .setFooter({ text: `Sitio: ${site}`, iconURL: 'https://i.imgur.com/botIcon.png' })
+      .setTimestamp()
+      .addFields({ name: '⚠️ Advertencia', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
 
     await i.update({
-      content: `🔞 **${title}**\n👉 [Haz clic aquí para verlo directamente](${link})`,
+      content: '',
+      embeds: [embed],
       components: [],
       ephemeral: true,
     });
