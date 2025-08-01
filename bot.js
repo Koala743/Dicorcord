@@ -265,28 +265,44 @@ if (command === 'wex') {
   if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=10`;
+    // Excluye YouTube y busca cosas relacionadas con videos
+    const fullQuery = `${query} video -site:youtube.com -site:youtu.be`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(fullQuery)}&num=15`;
 
     const res = await axios.get(url);
     const items = res.data.items;
     if (!items || items.length === 0) return m.reply('❌ No se encontraron resultados.');
 
-    // Filtramos por posibles resultados de video (esto puede ajustarse)
-    const videoResults = items.filter(item =>
-      /video|watch|player|embed|stream/i.test(item.link)
-    ).slice(0, 5);
+    const videoLinks = new Map(); // Para evitar dominios repetidos
 
-    if (!videoResults.length) return m.reply('❌ No se encontraron videos relevantes.');
+    for (const item of items) {
+      if (
+        item.link &&
+        /video|watch|embed|stream|player/i.test(item.link)
+      ) {
+        const domain = new URL(item.link).hostname;
+        if (!videoLinks.has(domain)) {
+          videoLinks.set(domain, {
+            title: item.title,
+            link: item.link,
+            source: item.displayLink,
+          });
+        }
+      }
+      if (videoLinks.size >= 7) break;
+    }
+
+    if (videoLinks.size === 0) return m.reply('❌ No se encontraron videos fuera de YouTube.');
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎥 Resultados para: ${query}`)
+      .setTitle(`🌐 Videos encontrados (sin YouTube) para: ${query}`)
       .setColor('#00c7ff')
       .setDescription(
-        videoResults
-          .map((item, i) => `**${i + 1}. [${item.title}](${item.link})**\n🌐 ${item.displayLink}`)
+        Array.from(videoLinks.values())
+          .map((item, i) => `**${i + 1}. [${item.title}](${item.link})**\n🌐 ${item.source}`)
           .join('\n\n')
       )
-      .setFooter({ text: `Mostrando ${videoResults.length} resultados de video encontrados en Google` });
+      .setFooter({ text: `Mostrando ${videoLinks.size} resultados únicos de video` });
 
     await m.channel.send({ embeds: [embed] });
   } catch (err) {
