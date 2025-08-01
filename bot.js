@@ -260,42 +260,38 @@ if (chat) {
     }
   }
 
-if (command === 'xxx') {
-  const query = args.join(' ');
-  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
+  const [_, uid, rawQuery] = i.customId.split('-');
+  if (i.user.id !== uid) return i.reply({ content: '❌ Este menú no es para ti.', ephemeral: true });
+
+  const query = decodeURIComponent(rawQuery);
+  const site = i.values[0];
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:xvideos.es OR site:es.pornhub.com OR site:hentaila.tv')}&num=5`;
-
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(`${query} site:${site}`)}&num=5`;
     const res = await axios.get(url);
     const items = res.data.items;
     if (!items || items.length === 0)
-      return m.reply('❌ No se encontraron resultados para tu búsqueda.');
+      return i.update({ content: '❌ No se encontraron resultados.', components: [] });
 
-    const video = items.find(item =>
+    const result = items.find(item =>
       item.link.includes('/video.') ||
       item.link.includes('/view_video.php') ||
       item.link.includes('/ver/')
     ) || items[0];
 
-    const title = video.title;
-    const link = video.link;
-    const context = video.displayLink;
-    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+    const link = result.link;
+    const title = result.title;
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🔞 ${title.slice(0, 80)}...`)
-      .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
-      .setColor('#ff3366')
-      .setThumbnail(thumb)
-      .setFooter({ text: 'Resultados para adultos (+18)', iconURL: 'https://i.imgur.com/botIcon.png' })
-      .setTimestamp()
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
+    await i.update({
+      content: `🔞 **${title}**\n👉 [Haz clic aquí para verlo directamente](${link})`,
+      components: [],
+      ephemeral: true,
+    });
 
-    await m.channel.send({ embeds: [embed] });
   } catch (err) {
-    console.error('Error en .xxx:', err.message);
-    return m.reply('❌ Error al buscar. Intenta de nuevo más tarde.');
+    console.error('Error en selección de xxxsite:', err.message);
+    await i.update({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', components: [] });
   }
 }
 
