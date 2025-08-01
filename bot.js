@@ -57,6 +57,7 @@ const trans = {
     selectOneUser: '⚠️ Debes seleccionar exactamente un usuario para chatear.',
     noSearchQuery: '⚠️ Debes escribir algo para buscar.',
     noValidImages: '❌ No se encontraron imágenes válidas.',
+    sameLanguage: '⚠️ Ambos usuarios tienen el mismo idioma, no se inició el chat.',
   },
   en: {
     mustReply: '⚠️ Use the command by replying to a message.',
@@ -76,6 +77,7 @@ const trans = {
     selectOneUser: '⚠️ You must select exactly one user to chat with.',
     noSearchQuery: '⚠️ You must provide a search query.',
     noValidImages: '❌ No valid images found.',
+    sameLanguage: '⚠️ Both users have the same language, chat not started.',
   },
 };
 
@@ -177,7 +179,6 @@ client.on('messageCreate', async (m) => {
     const { users } = chat;
     if (users.includes(m.author.id)) {
       const otherUserId = users.find((u) => u !== m.author.id);
-      const fromLang = getLang(m.author.id);
       const toLang = getLang(otherUserId);
       const raw = m.content.trim();
 
@@ -190,38 +191,28 @@ client.on('messageCreate', async (m) => {
         /^\.\w{1,4}$/i.test(raw) // Comandos (ej. .td, .chat)
       ) return;
 
-      // Traducir si los idiomas son diferentes
-      if (fromLang !== toLang) {
-        try {
-          const res = await translate(raw, toLang);
-          if (res && res.text) {
-            const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-            const embed = new EmbedBuilder()
-              .setColor('#00c7ff')
-              .setDescription(`${targetLangEmoji} **Traducción para <@${otherUserId}>:** ${res.text}`)
-              .setFooter({ text: `Original de <@${m.author.id}> (${fromLang})` });
-            await m.channel.send({ embeds: [embed] });
-          } else {
-            await m.channel.send({
-              content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
-              ephemeral: true,
-            });
-          }
-        } catch (err) {
-          console.error('Error en traducción:', err);
+      // Traducir al idioma del otro usuario
+      try {
+        const res = await translate(raw, toLang);
+        if (res && res.text) {
+          const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+          const embed = new EmbedBuilder()
+            .setColor('#00c7ff')
+            .setDescription(`${targetLangEmoji} **Traducción para <@${otherUserId}>:** ${res.text}`)
+            .setFooter({ text: `Original de <@${m.author.id}> (${getLang(m.author.id)})` });
+          await m.channel.send({ embeds: [embed] });
+        } else {
           await m.channel.send({
-            content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
+            content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
             ephemeral: true,
           });
         }
-      } else {
-        // Si los idiomas son iguales, enviar el mensaje sin traducir
-        const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-        const embed = new EmbedBuilder()
-          .setColor('#00c7ff')
-          .setDescription(`${targetLangEmoji} **Mensaje para <@${otherUserId}>:** ${raw}`)
-          .setFooter({ text: `Enviado por <@${m.author.id}> (${fromLang})` });
-        await m.channel.send({ embeds: [embed] });
+      } catch (err) {
+        console.error('Error en traducción:', err);
+        await m.channel.send({
+          content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
+          ephemeral: true,
+        });
       }
     }
   }
@@ -381,13 +372,20 @@ client.on('messageCreate', async (m) => {
     const user1 = m.author;
     const user2 = mention;
     if (user1.id === user2.id) return sendWarning(m, '⚠️ No puedes iniciar un chat contigo mismo.');
+
+    // Verificar si los idiomas son iguales
+    const lang1 = getLang(user1.id);
+    const lang2 = getLang(user2.id);
+    if (lang1 === lang2) return sendWarning(m, T(user1.id, 'sameLanguage'));
+
+    // Iniciar el chat
     activeChats.set(m.channel.id, { users: [user1.id, user2.id] });
     const member1 = await m.guild.members.fetch(user1.id);
     const member2 = await m.guild.members.fetch(user2.id);
     const embed = new EmbedBuilder()
       .setTitle('💬 Chat Automático Iniciado')
       .setDescription(
-        `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}>\n**${member2.nickname || member2.user.username}** <@${member2.id}>`
+        `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}> (${lang1})\n**${member2.nickname || member2.user.username}** <@${member2.id}> (${lang2})`
       )
       .setThumbnail(member1.user.displayAvatarURL({ extension: 'png', size: 64 }))
       .setImage(member2.user.displayAvatarURL({ extension: 'png', size: 64 }))
@@ -406,6 +404,20 @@ client.on('messageCreate', async (m) => {
       return sendWarning(m, T(m.author.id, 'chatNoSession'));
     }
   }
+
+  if (command === 'ID') {
+    const uid = m.author.id;
+    const sel = new StringSelectMenuBuilder()
+      .setCustomId(`select-${uid}`)
+      .setPlaceholder('🌍 Selecciona idioma')
+      .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
+
+    return m.reply({
+      content: 'Selecciona un nuevo idioma para guardar:',
+      components: [new ActionRowBuilder().addComponents(sel)],
+      ephemeral: true,
+    });
+  }
 });
 
 client.on('interactionCreate', async (i) => {
@@ -422,7 +434,7 @@ client.on('interactionCreate', async (i) => {
         components: [],
         ephemeral: true,
       });
-      const note = await i.followUp({ content: '🎉 Listo! Usa `.td` ahora.', ephemeral: true });
+      const note = await i.followUp({ content: '🎉 Listo! Usa `.td` o `.chat` ahora.', ephemeral: true });
       setTimeout(() => note.delete().catch(() => {}), 5000);
       return;
     }
