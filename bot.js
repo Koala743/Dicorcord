@@ -1,631 +1,737 @@
 const {
-Client,
-GatewayIntentBits,
-ActionRowBuilder,
-StringSelectMenuBuilder,
-ButtonBuilder,
-ButtonStyle,
-EmbedBuilder,
-} = require('discord.js');
-const axios = require('axios');
-const fs = require('fs');
+  Client,
+  GatewayIntentBits,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+} = require("discord.js")
+const axios = require("axios")
+const fs = require("fs")
 
+// Bot configuration
 const client = new Client({
-intents: [
-GatewayIntentBits.Guilds,
-GatewayIntentBits.GuildMessages,
-GatewayIntentBits.MessageContent,
-GatewayIntentBits.GuildMembers,
-],
-});
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
+  ],
+})
 
-const CHANNELS = new Set([
-'1381953561008541920',
-'1386131661942554685',
-'1299860715884249088',
-]);
+// Constants
+const CHANNELS = new Set(["1381953561008541920", "1386131661942554685", "1299860715884249088"])
 
 const LANGUAGES = [
-{ label: 'Español', value: 'es', emoji: '🇪🇸' },
-{ label: 'Inglés', value: 'en', emoji: '🇬🇧' },
-{ label: 'Francés', value: 'fr', emoji: '🇫🇷' },
-{ label: 'Alemán', value: 'de', emoji: '🇩🇪' },
-{ label: 'Portugués', value: 'pt', emoji: '🇵🇹' },
-{ label: 'Italiano', value: 'it', emoji: '🇮🇹' },
-{ label: 'Ruso', value: 'ru', emoji: '🇷🇺' },
-{ label: 'Japonés', value: 'ja', emoji: '🇯🇵' },
-{ label: 'Coreano', value: 'ko', emoji: '🇰🇷' },
-{ label: 'Chino (Simpl.)', value: 'zh-CN', emoji: '🇨🇳' },
-];
+  { label: "Español", value: "es", emoji: "🇪🇸" },
+  { label: "Inglés", value: "en", emoji: "🇬🇧" },
+  { label: "Francés", value: "fr", emoji: "🇫🇷" },
+  { label: "Alemán", value: "de", emoji: "🇩🇪" },
+  { label: "Portugués", value: "pt", emoji: "🇵🇹" },
+  { label: "Italiano", value: "it", emoji: "🇮🇹" },
+  { label: "Ruso", value: "ru", emoji: "🇷🇺" },
+  { label: "Japonés", value: "ja", emoji: "🇯🇵" },
+  { label: "Coreano", value: "ko", emoji: "🇰🇷" },
+  { label: "Chino (Simpl.)", value: "zh-CN", emoji: "🇨🇳" },
+]
 
-const trans = {
-es: {
-mustReply: '⚠️ Usa el comando respondiendo a un mensaje.',
-timeout: '⏳ Tiempo agotado. Usa el comando nuevamente.',
-alreadyInLang: '⚠️ El mensaje ya está en tu idioma.',
-notYours: '⚠️ No puedes traducir tu propio idioma.',
-langSaved: '🎉 Idioma guardado exitosamente.',
-dtSuccess: '✅ Mensajes eliminados exitosamente.',
-dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
-dtChooseAmount: '🗑️ Selecciona la cantidad de mensajes a eliminar:',
-noPermDT: '⚠️ Solo el usuario flux_fer puede usar este comando.',
-chatActivated: '💬 Chat de traducción automática ACTIVADO para los usuarios seleccionados.',
-chatDeactivated: '🛑 Chat de traducción automática FINALIZADO.',
-chatNoSession: '❌ No hay chat activo para finalizar.',
-chatSelectUsers: '🌐 Selecciona con quién quieres hablar (tú ya estás incluido):',
-notAuthorized: '⚠️ No eres el usuario autorizado para usar este comando.',
-selectOneUser: '⚠️ Debes seleccionar exactamente un usuario para chatear.',
-noSearchQuery: '⚠️ Debes escribir algo para buscar.',
-noValidImages: '❌ No se encontraron imágenes válidas.',
-sameLanguage: '⚠️ Ambos usuarios tienen el mismo idioma, no se inició el chat.',
-},
-en: {
-mustReply: '⚠️ Use the command by replying to a message.',
-timeout: '⏳ Time ran out. Use the command again.',
-alreadyInLang: '⚠️ Message already in your language.',
-notYours: "⚠️ You can't translate your own language.",
-langSaved: '🎉 Language saved successfully.',
-dtSuccess: '✅ Messages deleted successfully.',
-dtFail: "❌ Couldn't delete messages. Do I have permissions?",
-dtChooseAmount: '🗑️ Select the amount of messages to delete:',
-noPermDT: '⚠️ Only user flux_fer can use this command.',
-chatActivated: '💬 Auto-translate chat ACTIVATED for selected users.',
-chatDeactivated: '🛑 Auto-translate chat STOPPED.',
-chatNoSession: '❌ No active chat session to stop.',
-chatSelectUsers: '🌐 Select who you want to chat with (you are included):',
-notAuthorized: '⚠️ You are not authorized to use this command.',
-selectOneUser: '⚠️ You must select exactly one user to chat with.',
-noSearchQuery: '⚠️ You must provide a search query.',
-noValidImages: '❌ No valid images found.',
-sameLanguage: '⚠️ Both users have the same language, chat not started.',
-},
-};
+const ROLE_CONFIG = {
+  restricted: "1244039798696710211",
+  allowed: new Set(["1244056080825454642", "1305327128341905459", "1244039798696710212"]),
+}
 
-const PREFS = './langPrefs.json';
-let prefs = {};
-function load() {
-try {
-prefs = JSON.parse(fs.readFileSync(PREFS));
-} catch {
-prefs = {};
+const API_CONFIG = {
+  googleApiKey: "AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY",
+  googleCx: "34fe95d6cf39d4dd4",
+  lingvaUrl: "https://lingva.ml/api/v1",
 }
+
+// Global state
+const activeChats = new Map()
+const imageSearchCache = new Map()
+const pendingXXXSearch = new Map()
+const xxxSearchCache = new Map()
+let prefs = {}
+
+// Translations
+const translations = {
+  es: {
+    mustReply: "⚠️ Usa el comando respondiendo a un mensaje.",
+    timeout: "⏳ Tiempo agotado. Usa el comando nuevamente.",
+    alreadyInLang: "⚠️ El mensaje ya está en tu idioma.",
+    notYours: "⚠️ No puedes traducir tu propio idioma.",
+    langSaved: "🎉 Idioma guardado exitosamente.",
+    chatActivated: "💬 Chat de traducción automática ACTIVADO para los usuarios seleccionados.",
+    chatDeactivated: "🛑 Chat de traducción automática FINALIZADO.",
+    chatNoSession: "❌ No hay chat activo para finalizar.",
+    notAuthorized: "⚠️ No eres el usuario autorizado para usar este comando.",
+    noSearchQuery: "⚠️ Debes escribir algo para buscar.",
+    noValidImages: "❌ No se encontraron imágenes válidas.",
+    sameLanguage: "⚠️ Ambos usuarios tienen el mismo idioma, no se inició el chat.",
+    inviteRestricted:
+      "⚠️ No podés enviar enlaces de invitación porque tenés el rol de Miembro, el cual está restringido. Tu mensaje fue eliminado automáticamente.",
+  },
+  en: {
+    mustReply: "⚠️ Use the command by replying to a message.",
+    timeout: "⏳ Time ran out. Use the command again.",
+    alreadyInLang: "⚠️ Message already in your language.",
+    notYours: "⚠️ You can't translate your own language.",
+    langSaved: "🎉 Language saved successfully.",
+    chatActivated: "💬 Auto-translate chat ACTIVATED for selected users.",
+    chatDeactivated: "🛑 Auto-translate chat STOPPED.",
+    chatNoSession: "❌ No active chat session to stop.",
+    notAuthorized: "⚠️ You are not authorized to use this command.",
+    noSearchQuery: "⚠️ You must provide a search query.",
+    noValidImages: "❌ No valid images found.",
+    sameLanguage: "⚠️ Both users have the same language, chat not started.",
+    inviteRestricted:
+      "⚠️ You are not allowed to send invite links because you have the Member role, which is restricted. Your message was automatically deleted.",
+  },
 }
-function save() {
-fs.writeFileSync(PREFS, JSON.stringify(prefs, null, 2));
+
+// Utility functions
+function loadPreferences() {
+  try {
+    prefs = JSON.parse(fs.readFileSync("./langPrefs.json"))
+  } catch {
+    prefs = {}
+  }
 }
-function getLang(u) {
-return prefs[u] || 'es';
+
+function savePreferences() {
+  fs.writeFileSync("./langPrefs.json", JSON.stringify(prefs, null, 2))
 }
-function T(u, k) {
-return trans[getLang(u)]?.[k] || trans['es'][k];
+
+function getUserLanguage(userId) {
+  return prefs[userId] || "es"
+}
+
+function getTranslation(userId, key) {
+  const userLang = getUserLanguage(userId)
+  return translations[userLang]?.[key] || translations["es"][key]
 }
 
 async function isImageUrlValid(url) {
-try {
-const res = await axios.head(url, { timeout: 5000 });
-const contentType = res.headers['content-type'];
-return res.status === 200 && contentType && contentType.startsWith('image/');
-} catch {
-return false;
-}
+  try {
+    const response = await axios.head(url, { timeout: 5000 })
+    const contentType = response.headers["content-type"]
+    return response.status === 200 && contentType && contentType.startsWith("image/")
+  } catch {
+    return false
+  }
 }
 
-async function translate(t, lang) {
-try {
-const r = await axios.get(
-https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(t)}
-);
-if (r.data?.translation)
-return { text: r.data.translation, from: r.data.from };
-} catch {}
-return null;
+async function translateText(text, targetLang) {
+  try {
+    const response = await axios.get(`${API_CONFIG.lingvaUrl}/auto/${targetLang}/${encodeURIComponent(text)}`)
+    if (response.data?.translation) {
+      return {
+        text: response.data.translation,
+        from: response.data.from,
+      }
+    }
+  } catch (error) {
+    console.error("Translation error:", error.message)
+  }
+  return null
 }
 
 async function sendWarning(interactionOrMessage, text) {
-const reply = await interactionOrMessage.reply({ content: text, ephemeral: true });
-setTimeout(() => {
-if (reply?.delete) reply.delete().catch(() => {});
-}, 5000);
+  const reply = await interactionOrMessage.reply({ content: text, ephemeral: true })
+  setTimeout(() => {
+    if (reply?.delete) reply.delete().catch(() => {})
+  }, 5000)
 }
 
-const activeChats = new Map();
-const imageSearchCache = new Map();
-const pendingXXXSearch = new Map();
+// Event handlers
+client.once("ready", () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`)
+  loadPreferences()
+})
 
-const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
-const GOOGLE_CX = '34fe95d6cf39d4dd4';
+client.on("messageCreate", async (message) => {
+  if (message.author.bot || !message.content) return
 
-client.once('ready', () => {
-console.log(✅ Bot conectado como ${client.user.tag});
-load();
-});
+  // Handle invite link restrictions
+  await handleInviteRestrictions(message)
 
-client.on('messageCreate', async (m) => {
-if (m.author.bot || !m.content) return;
+  // Handle active chat translations
+  await handleChatTranslation(message)
 
-// Manejo de invitaciones
-const inviteRegex = /(discord.gg/|discord.com/invite/)/i;
-const restrictedRole = '1244039798696710211';
-const allowedRoles = new Set([
-'1244056080825454642',
-'1305327128341905459',
-'1244039798696710212',
-]);
+  // Handle commands
+  if (message.content.startsWith(".")) {
+    await handleCommands(message)
+  }
+})
 
-if (inviteRegex.test(m.content) && m.member) {
-const hasRestricted = m.member.roles.cache.has(restrictedRole);
-const hasAllowed = m.member.roles.cache.some((r) => allowedRoles.has(r.id));
-if (hasRestricted && !hasAllowed) {
-try {
-await m.delete();
-const uid = m.author.id;
-const userLang = getLang(uid);
-const translatedWarning =
-{
-es: '⚠️ No podés enviar enlaces de invitación porque tenés el rol de Miembro, el cual está restringido. Tu mensaje fue eliminado automáticamente.',
-en: '⚠️ You are not allowed to send invite links because you have the Member role, which is restricted. Your message was automatically deleted.',
-pt: '⚠️ Você não pode enviar links de convite porque possui o cargo de Membro, que é restrito. Sua mensagem foi excluída automaticamente.',
-fr: '⚠️ Vous ne pouvez pas envoyer de liens d'invitation car vous avez le rôle de Membre, qui est restreint. Votre message a été supprimé automatiquement.',
-de: '⚠️ Du darfst keine Einladungslinks senden, da du die Mitglied-Rolle hast, die eingeschränkt ist. Deine Nachricht wurde automatisch gelöscht.',
-}[userLang] || '⚠️ You are not allowed to send invite links due to restricted role. Message deleted.';
-await m.author.send({ content: translatedWarning });
-} catch {}
-return;
-}
-}
+client.on("interactionCreate", async (interaction) => {
+  if (interaction.isStringSelectMenu()) {
+    await handleSelectMenu(interaction)
+  } else if (interaction.isButton()) {
+    await handleButtonInteraction(interaction)
+  }
+})
 
-const chat = activeChats.get(m.channel.id);
-if (chat) {
-const { users } = chat;
-if (users.includes(m.author.id)) {
-const otherUserId = users.find((u) => u !== m.author.id);
-const toLang = getLang(otherUserId);
-const raw = m.content.trim();
-try {
-const res = await translate(raw, toLang);
-if (res && res.text) {
-const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-const embed = new EmbedBuilder()
-.setColor('#00c7ff')
-.setDescription(**${targetLangEmoji} ${res.text}**\n\n*<@${m.author.id}> (${getLang(m.author.id)})*);
-await m.channel.send({ embeds: [embed] });
-} else {
-await m.channel.send({
-content: ⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.,
-ephemeral: true,
-});
-}
-} catch (err) {
-console.error('Error en traducción:', err);
-await m.channel.send({
-content: ❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.,
-ephemeral: true,
-});
-}
-}
+// Handler functions
+async function handleInviteRestrictions(message) {
+  const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i
+
+  if (inviteRegex.test(message.content) && message.member) {
+    const hasRestricted = message.member.roles.cache.has(ROLE_CONFIG.restricted)
+    const hasAllowed = message.member.roles.cache.some((role) => ROLE_CONFIG.allowed.has(role.id))
+
+    if (hasRestricted && !hasAllowed) {
+      try {
+        await message.delete()
+        const userLang = getUserLanguage(message.author.id)
+        const warning = getTranslation(message.author.id, "inviteRestricted")
+        await message.author.send({ content: warning })
+      } catch (error) {
+        console.error("Error handling invite restriction:", error.message)
+      }
+      return true
+    }
+  }
+  return false
 }
 
-if (!m.content.startsWith('.')) return;
-const [command, ...args] = m.content.slice(1).trim().split(/ +/);
+async function handleChatTranslation(message) {
+  const chat = activeChats.get(message.channel.id)
+  if (!chat) return
 
-if (command === 'web') {
-const query = args.join(' ');
-if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
+  const { users } = chat
+  if (!users.includes(message.author.id)) return
 
-const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=10`;  
+  const otherUserId = users.find((u) => u !== message.author.id)
+  const toLang = getUserLanguage(otherUserId)
+  const raw = message.content.trim()
 
-try {  
-  const res = await axios.get(url);  
-  let items = res.data.items || [];  
-  items = items.filter(img => img.link && img.link.startsWith('http'));  
+  try {
+    const result = await translateText(raw, toLang)
+    if (result && result.text) {
+      const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || "🌐"
+      const embed = new EmbedBuilder()
+        .setColor("#00c7ff")
+        .setDescription(
+          `${targetLangEmoji} ${result.text}\n\n*<@${message.author.id}> (${getUserLanguage(message.author.id)})*`,
+        )
 
-  if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));  
-
-  let validIndex = -1;  
-  for (let i = 0; i < items.length; i++) {  
-    if (await isImageUrlValid(items[i].link)) {  
-      validIndex = i;  
-      break;  
-    }  
-  }  
-
-  if (validIndex === -1) return m.reply(T(m.author.id, 'noValidImages'));  
-
-  imageSearchCache.set(m.author.id, { items, index: validIndex, query });  
-
-  const embed = new EmbedBuilder()  
-    .setTitle(`📷 Resultados para: ${query}`)  
-    .setImage(items[validIndex].link)  
-    .setDescription(`[Página donde está la imagen](${items[validIndex].image.contextLink})`)  
-    .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length}` })  
-    .setColor('#00c7ff');  
-
-  const row = new ActionRowBuilder().addComponents(  
-    new ButtonBuilder()  
-      .setCustomId('prevImage')  
-      .setLabel('⬅️')  
-      .setStyle(ButtonStyle.Primary)  
-      .setDisabled(validIndex === 0),  
-    new ButtonBuilder()  
-      .setCustomId('nextImage')  
-      .setLabel('➡️')  
-      .setStyle(ButtonStyle.Primary)  
-      .setDisabled(validIndex === items.length - 1)  
-  );  
-
-  await m.channel.send({ embeds: [embed], components: [row] });  
-} catch (err) {  
-  const errMsg = err.response?.data?.error?.message || err.message;  
-  return m.reply(`❌ Error buscando imágenes: ${errMsg}`);  
+      await message.channel.send({ embeds: [embed] })
+    } else {
+      await message.channel.send({
+        content: `⚠️ No se pudo traducir el mensaje de <@${message.author.id}> al idioma de <@${otherUserId}>.`,
+        ephemeral: true,
+      })
+    }
+  } catch (error) {
+    console.error("Error en traducción:", error)
+    await message.channel.send({
+      content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
+      ephemeral: true,
+    })
+  }
 }
 
+async function handleCommands(message) {
+  const [command, ...args] = message.content.slice(1).trim().split(/ +/)
+
+  switch (command) {
+    case "web":
+      await handleWebSearch(message, args)
+      break
+    case "xxx":
+      await handleAdultSearch(message, args)
+      break
+    case "mp4":
+      await handleVideoSearch(message, args)
+      break
+    case "xml":
+      await handleXMLSearch(message, args)
+      break
+    case "td":
+      await handleTranslate(message)
+      break
+    case "chat":
+      await handleChatCommand(message)
+      break
+    case "dchat":
+      await handleDisableChatCommand(message)
+      break
+    case "ID":
+      await handleLanguageSelection(message)
+      break
+  }
 }
 
-if (command === 'xxx') {
-const query = args.join(' ');
-if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+async function handleWebSearch(message, args) {
+  const query = args.join(" ")
+  if (!query) return message.reply(getTranslation(message.author.id, "noSearchQuery"))
 
-const uid = m.author.id;
-pendingXXXSearch.set(uid, query);
+  const url = `https://www.googleapis.com/customsearch/v1?key=${API_CONFIG.googleApiKey}&cx=${API_CONFIG.googleCx}&searchType=image&q=${encodeURIComponent(query)}&num=10`
 
-const siteSelector = new StringSelectMenuBuilder()
-.setCustomId(xxxsite-${uid})
-.setPlaceholder('🔞 Selecciona el sitio para buscar contenido adulto')
-.addOptions([
-{ label: 'Xvideos', value: 'xvideos.es', emoji: '🔴' },
-{ label: 'Pornhub', value: 'es.pornhub.com', emoji: '🔵' },
-{ label: 'Hentaila', value: 'hentaila.tv', emoji: '🟣' },
-]);
+  try {
+    const response = await axios.get(url)
+    let items = response.data.items || []
+    items = items.filter((img) => img.link && img.link.startsWith("http"))
 
-return m.reply({
-content: 'Selecciona el sitio donde deseas buscar:',
-components: [new ActionRowBuilder().addComponents(siteSelector)],
-ephemeral: true,
-});
+    if (!items.length) {
+      return message.reply(getTranslation(message.author.id, "noValidImages"))
+    }
+
+    let validIndex = -1
+    for (let i = 0; i < items.length; i++) {
+      if (await isImageUrlValid(items[i].link)) {
+        validIndex = i
+        break
+      }
+    }
+
+    if (validIndex === -1) {
+      return message.reply(getTranslation(message.author.id, "noValidImages"))
+    }
+
+    imageSearchCache.set(message.author.id, { items, index: validIndex, query })
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📷 Resultados para: ${query}`)
+      .setImage(items[validIndex].link)
+      .setDescription(`[Página donde está la imagen](${items[validIndex].image.contextLink})`)
+      .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length}` })
+      .setColor("#00c7ff")
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("prevImage")
+        .setLabel("⬅️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(validIndex === 0),
+      new ButtonBuilder()
+        .setCustomId("nextImage")
+        .setLabel("➡️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(validIndex === items.length - 1),
+    )
+
+    await message.channel.send({ embeds: [embed], components: [row] })
+  } catch (error) {
+    const errorMsg = error.response?.data?.error?.message || error.message
+    return message.reply(`❌ Error buscando imágenes: ${errorMsg}`)
+  }
 }
 
-if (command === 'mp4') {
-const query = args.join(' ');
-if (!query) return m.reply('⚠️ Debes escribir algo para buscar el video.');
+async function handleAdultSearch(message, args) {
+  const query = args.join(" ")
+  if (!query) return message.reply("⚠️ Debes escribir algo para buscar.")
 
-try {  
-  const res = await axios.get('https://www.googleapis.com/youtube/v3/search', {  
-    params: {  
-      part: 'snippet',  
-      q: query,  
-      key: GOOGLE_API_KEY,  
-      maxResults: 1,  
-      type: 'video'  
-    }  
-  });  
+  const userId = message.author.id
+  pendingXXXSearch.set(userId, query)
 
-  const item = res.data.items?.[0];  
-  if (!item) return m.reply('❌ No se encontró ningún video.');  
+  const siteSelector = new StringSelectMenuBuilder()
+    .setCustomId(`xxxsite-${userId}`)
+    .setPlaceholder("🔞 Selecciona el sitio para buscar contenido adulto")
+    .addOptions([
+      { label: "Xvideos", value: "xvideos.es", emoji: "🔴" },
+      { label: "Pornhub", value: "es.pornhub.com", emoji: "🔵" },
+      { label: "Hentaila", value: "hentaila.tv", emoji: "🟣" },
+    ])
 
-  const videoId = item.id.videoId;  
-  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;  
-  const title = item.snippet.title;  
-
-  await m.channel.send('🎬 **' + title + '**');  
-  return m.channel.send(videoUrl);  
-} catch {  
-  return m.reply('❌ Error al buscar el video.');  
+  return message.reply({
+    content: "Selecciona el sitio donde deseas buscar:",
+    components: [new ActionRowBuilder().addComponents(siteSelector)],
+    ephemeral: true,
+  })
 }
 
+async function handleVideoSearch(message, args) {
+  const query = args.join(" ")
+  if (!query) return message.reply("⚠️ Debes escribir algo para buscar el video.")
+
+  try {
+    const response = await axios.get("https://www.googleapis.com/youtube/v3/search", {
+      params: {
+        part: "snippet",
+        q: query,
+        key: API_CONFIG.googleApiKey,
+        maxResults: 1,
+        type: "video",
+      },
+    })
+
+    const item = response.data.items?.[0]
+    if (!item) return message.reply("❌ No se encontró ningún video.")
+
+    const videoId = item.id.videoId
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
+    const title = item.snippet.title
+
+    await message.channel.send("🎬 " + title + "")
+    return message.channel.send(videoUrl)
+  } catch {
+    return message.reply("❌ Error al buscar el video.")
+  }
 }
 
-if (command === 'xml') {
-const query = args.join(' ');
-if (!query) return m.reply('⚠️ ¡Escribe algo para buscar un video, compa!');
+async function handleXMLSearch(message, args) {
+  const query = args.join(" ")
+  if (!query) return message.reply("⚠️ ¡Escribe algo para buscar un video, compa!")
 
-try {  
-  const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:www.xnxx.es')}&num=5`;  
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${API_CONFIG.googleApiKey}&cx=${API_CONFIG.googleCx}&q=${encodeURIComponent(query + " site:www.xnxx.es")}&num=5`
+    const response = await axios.get(url)
+    const items = response.data.items
 
-  const res = await axios.get(url);  
-  const items = res.data.items;  
-  if (!items || items.length === 0) return m.reply('❌ No se encontraron videos, ¡intenta otra cosa!');  
+    if (!items || items.length === 0) {
+      return message.reply("❌ No se encontraron videos, ¡intenta otra cosa!")
+    }
 
-  const video = items.find(item => item.link.includes('/video-')) || items[0];  
-  const title = video.title;  
-  const link = video.link;  
-  const context = video.displayLink;  
-  const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;  
+    const video = items.find((item) => item.link.includes("/video-")) || items[0]
+    const title = video.title
+    const link = video.link
+    const context = video.displayLink
+    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src
 
-  const embed = new EmbedBuilder()  
-    .setTitle(`🎬 ${title.slice(0, 80)}...`)  
-    .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)  
-    .setColor('#ff0066')  
-    .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')  
-    .setFooter({ text: 'Buscado con Bot_v, ¡a darle caña!', iconURL: 'https://i.imgur.com/botIcon.png' })  
-    .setTimestamp()  
-    .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a la página del video' });  
+    const embed = new EmbedBuilder()
+      .setTitle(`🎬 ${title.slice(0, 80)}...`)
+      .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
+      .setColor("#ff0066")
+      .setThumbnail(thumb || "https://i.imgur.com/defaultThumbnail.png")
+      .setFooter({ text: "Buscado con Bot_v, ¡a darle caña!", iconURL: "https://i.imgur.com/botIcon.png" })
+      .setTimestamp()
+      .addFields({ name: "⚠️ Nota", value: "Este enlace lleva a la página del video" })
 
-  await m.channel.send({ embeds: [embed] });  
-} catch {  
-  return m.reply('❌ ¡Algo salió mal, compa! Intenta de nuevo.');  
+    await message.channel.send({ embeds: [embed] })
+  } catch {
+    return message.reply("❌ ¡Algo salió mal, compa! Intenta de nuevo.")
+  }
 }
 
+async function handleTranslate(message) {
+  if (!message.reference?.messageId) {
+    return sendWarning(message, getTranslation(message.author.id, "mustReply"))
+  }
+
+  const referencedMessage = await message.channel.messages.fetch(message.reference.messageId)
+  const text = referencedMessage.content
+  const userId = message.author.id
+
+  const loading = await message.reply({ content: "⌛ Traduciendo...", ephemeral: true })
+  const userLang = getUserLanguage(userId)
+
+  if (prefs[userId]) {
+    const result = await translateText(text, userLang)
+    await loading.delete().catch(() => {})
+
+    if (!result) {
+      return message.reply({ content: getTranslation(userId, "timeout"), ephemeral: true })
+    }
+
+    if (result.from === userLang) {
+      return message.reply({ content: getTranslation(userId, "alreadyInLang"), ephemeral: true })
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor("#00c7ff")
+      .setDescription(`${LANGUAGES.find((l) => l.value === userLang).emoji} : ${result.text}`)
+
+    return message.reply({ embeds: [embed], ephemeral: true })
+  }
+
+  await loading.delete().catch(() => {})
+
+  const selector = new StringSelectMenuBuilder()
+    .setCustomId(`select-${userId}`)
+    .setPlaceholder("🌍 Selecciona idioma")
+    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })))
+
+  message.reply({
+    content: "Selecciona idioma para guardar:",
+    components: [new ActionRowBuilder().addComponents(selector)],
+    ephemeral: true,
+  })
 }
 
-if (command === 'td') {
-if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
-const ref = await m.channel.messages.fetch(m.reference.messageId);
-const txt = ref.content,
-uid = m.author.id;
-const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
-const lang = getLang(uid);
-if (prefs[uid]) {
-const res = await translate(txt, lang);
-await loading.delete().catch(() => {});
-if (!res) return m.reply({ content: T(uid, 'timeout'), ephemeral: true });
-if (res.from === lang) return m.reply({ content: T(uid, 'alreadyInLang'), ephemeral: true });
+async function handleChatCommand(message) {
+  const mention = message.mentions.users.first()
+  if (!mention) {
+    return sendWarning(message, "❌ Debes mencionar al usuario con quien quieres chatear.")
+  }
 
-const e = new EmbedBuilder()  
-    .setColor('#00c7ff')  
-    .setDescription(`${LANGUAGES.find((l) => l.value === lang).emoji} : ${res.text}`);  
+  const user1 = message.author
+  const user2 = mention
 
-  return m.reply({ embeds: [e], ephemeral: true });  
-}  
-await loading.delete().catch(() => {});  
+  if (user1.id === user2.id) {
+    return sendWarning(message, "⚠️ No puedes iniciar un chat contigo mismo.")
+  }
 
-const sel = new StringSelectMenuBuilder()  
-  .setCustomId(`select-${uid}`)  
-  .setPlaceholder('🌍 Selecciona idioma')  
-  .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));  
+  const lang1 = getUserLanguage(user1.id)
+  const lang2 = getUserLanguage(user2.id)
 
-m.reply({  
-  content: 'Selecciona idioma para guardar:',  
-  components: [new ActionRowBuilder().addComponents(sel)],  
-  ephemeral: true,  
-});
+  if (lang1 === lang2) {
+    return sendWarning(message, getTranslation(user1.id, "sameLanguage"))
+  }
 
+  activeChats.set(message.channel.id, { users: [user1.id, user2.id] })
+
+  const member1 = await message.guild.members.fetch(user1.id)
+  const member2 = await message.guild.members.fetch(user2.id)
+
+  const embed = new EmbedBuilder()
+    .setTitle("💬 Chat Automático Iniciado")
+    .setDescription(
+      `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}> (${lang1})\n**${member2.nickname || member2.user.username}** <@${member2.id}> (${lang2})`,
+    )
+    .setThumbnail(member1.user.displayAvatarURL({ extension: "png", size: 64 }))
+    .setImage(member2.user.displayAvatarURL({ extension: "png", size: 64 }))
+    .setColor("#00c7ff")
+    .setTimestamp()
+
+  return message.channel.send({ embeds: [embed] })
 }
 
-if (command === 'chat') {
-const mention = m.mentions.users.first();
-if (!mention) return sendWarning(m, '❌ Debes mencionar al usuario con quien quieres chatear.');
-const user1 = m.author;
-const user2 = mention;
-if (user1.id === user2.id) return sendWarning(m, '⚠️ No puedes iniciar un chat contigo mismo.');
+async function handleDisableChatCommand(message) {
+  if (message.author.username !== "flux_fer") {
+    return sendWarning(message, getTranslation(message.author.id, "notAuthorized"))
+  }
 
-// Verificar si los idiomas son iguales  
-const lang1 = getLang(user1.id);  
-const lang2 = getLang(user2.id);  
-if (lang1 === lang2) return sendWarning(m, T(user1.id, 'sameLanguage'));  
-
-// Iniciar el chat  
-activeChats.set(m.channel.id, { users: [user1.id, user2.id] });  
-const member1 = await m.guild.members.fetch(user1.id);  
-const member2 = await m.guild.members.fetch(user2.id);  
-const embed = new EmbedBuilder()  
-  .setTitle('💬 Chat Automático Iniciado')  
-  .setDescription(  
-    `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}> (${lang1})\n**${member2.nickname || member2.user.username}** <@${member2.id}> (${lang2})`  
-  )  
-  .setThumbnail(member1.user.displayAvatarURL({ extension: 'png', size: 64 }))  
-  .setImage(member2.user.displayAvatarURL({ extension: 'png', size: 64 }))  
-  .setColor('#00c7ff')  
-  .setTimestamp();  
-return m.channel.send({ embeds: [embed] });
-
+  if (activeChats.has(message.channel.id)) {
+    activeChats.delete(message.channel.id)
+    return message.reply({
+      content: getTranslation(message.author.id, "chatDeactivated"),
+      ephemeral: true,
+    })
+  } else {
+    return sendWarning(message, getTranslation(message.author.id, "chatNoSession"))
+  }
 }
 
-if (command === 'dchat') {
-if (m.author.username !== 'flux_fer')
-return sendWarning(m, T(m.author.id, 'notAuthorized'));
-if (activeChats.has(m.channel.id)) {
-activeChats.delete(m.channel.id);
-return m.reply({ content: T(m.author.id, 'chatDeactivated'), ephemeral: true });
-} else {
-return sendWarning(m, T(m.author.id, 'chatNoSession'));
-}
-}
+async function handleLanguageSelection(message) {
+  const userId = message.author.id
+  const selector = new StringSelectMenuBuilder()
+    .setCustomId(`select-${userId}`)
+    .setPlaceholder("🌍 Selecciona idioma")
+    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })))
 
-if (command === 'ID') {
-const uid = m.author.id;
-const sel = new StringSelectMenuBuilder()
-.setCustomId(select-${uid})
-.setPlaceholder('🌍 Selecciona idioma')
-.addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
-
-return m.reply({  
-  content: 'Selecciona un nuevo idioma para guardar:',  
-  components: [new ActionRowBuilder().addComponents(sel)],  
-  ephemeral: true,  
-});
-
-}
-});
-
-client.on('interactionCreate', async (i) => {
-const uid = i.user.id;
-const xxxSearchCache = new Map();
-if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
-const [_, uid2] = i.customId.split('-');
-if (i.user.id !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
-
-const query = pendingXXXSearch.get(i.user.id);
-if (!query) return i.reply({ content: '❌ No se encontró tu búsqueda previa.', ephemeral: true });
-
-const selectedSite = i.values[0];
-
-try {
-const searchUrl = https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:' + selectedSite)}&num=10;
-const res = await axios.get(searchUrl);
-const items = res.data.items;
-if (!items || items.length === 0)
-return i.reply({ content: '❌ No se encontraron resultados.', ephemeral: true });
-
-xxxSearchCache.set(i.user.id, { items, currentIndex: 0, query, site: selectedSite });  
-
-const item = items[0];  
-const title = item.title;  
-const link = item.link;  
-const context = item.displayLink;  
-const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';  
-
-const embed = new EmbedBuilder()  
-  .setTitle(`🔞 ${title.slice(0, 80)}...`)  
-  .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)  
-  .setColor('#ff3366')  
-  .setImage(thumb)  
-  .setFooter({ text: `Resultados para adultos (+18) — Resultado 1 de ${items.length}`, iconURL: 'https://i.imgur.com/botIcon.png' })  
-  .setTimestamp()  
-  .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });  
-
-const backBtn = new ButtonBuilder()  
-  .setCustomId(`xxxback-${i.user.id}`)  
-  .setLabel('⬅️')  
-  .setStyle(ButtonStyle.Primary)  
-  .setDisabled(true);  
-
-const nextBtn = new ButtonBuilder()  
-  .setCustomId(`xxxnext-${i.user.id}`)  
-  .setLabel('➡️')  
-  .setStyle(ButtonStyle.Primary)  
-  .setDisabled(items.length <= 1);  
-
-const row = new ActionRowBuilder().addComponents(backBtn, nextBtn);  
-
-await i.update({ content: '', embeds: [embed], components: [row] });  
-pendingXXXSearch.delete(i.user.id);
-
-} catch (err) {
-console.error('Error en búsqueda .xxx:', err.message);
-return i.reply({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', ephemeral: true });
-}
+  return message.reply({
+    content: "Selecciona un nuevo idioma para guardar:",
+    components: [new ActionRowBuilder().addComponents(selector)],
+    ephemeral: true,
+  })
 }
 
-if (i.isButton()) {
-const [action, uid] = i.customId.split('-');
-if (i.user.id !== uid) return i.reply({ content: '⛔ No puedes usar estos botones.', ephemeral: true });
+async function handleSelectMenu(interaction) {
+  const userId = interaction.user.id
 
-if (!xxxSearchCache.has(i.user.id)) {
-return i.reply({ content: '❌ No hay búsqueda activa para paginar.', ephemeral: true });
+  if (interaction.customId.startsWith("xxxsite-")) {
+    await handleAdultSiteSelection(interaction)
+  } else if (interaction.customId.startsWith("select-")) {
+    await handleLanguageSelectionMenu(interaction)
+  }
 }
 
-const data = xxxSearchCache.get(i.user.id);
-const { items, currentIndex } = data;
+async function handleAdultSiteSelection(interaction) {
+  const [_, userId] = interaction.customId.split("-")
+  if (interaction.user.id !== userId) {
+    return interaction.reply({ content: "⛔ No puedes usar este menú.", ephemeral: true })
+  }
 
-let newIndex = currentIndex;
+  const query = pendingXXXSearch.get(interaction.user.id)
+  if (!query) {
+    return interaction.reply({ content: "❌ No se encontró tu búsqueda previa.", ephemeral: true })
+  }
 
-if (action === 'xxxnext') {
-if (currentIndex < items.length - 1) newIndex++;
-} else if (action === 'xxxback') {
-if (currentIndex > 0) newIndex--;
+  const selectedSite = interaction.values[0]
+
+  try {
+    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${API_CONFIG.googleApiKey}&cx=${API_CONFIG.googleCx}&q=${encodeURIComponent(query + " site:" + selectedSite)}&num=10`
+    const response = await axios.get(searchUrl)
+    const items = response.data.items
+
+    if (!items || items.length === 0) {
+      return interaction.reply({ content: "❌ No se encontraron resultados.", ephemeral: true })
+    }
+
+    xxxSearchCache.set(interaction.user.id, {
+      items,
+      currentIndex: 0,
+      query,
+      site: selectedSite,
+    })
+
+    const item = items[0]
+    const embed = createAdultSearchEmbed(item, 0, items.length)
+    const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "xxx")
+
+    await interaction.update({
+      content: "",
+      embeds: [embed],
+      components: [buttons],
+    })
+
+    pendingXXXSearch.delete(interaction.user.id)
+  } catch (error) {
+    console.error("Error en búsqueda .xxx:", error.message)
+    return interaction.reply({
+      content: "❌ Error al buscar. Intenta de nuevo más tarde.",
+      ephemeral: true,
+    })
+  }
 }
 
-data.currentIndex = newIndex;
-xxxSearchCache.set(i.user.id, data);
+async function handleLanguageSelectionMenu(interaction) {
+  const [_, userId] = interaction.customId.split("-")
+  if (interaction.user.id !== userId) {
+    return interaction.reply({ content: "No es tu menú.", ephemeral: true })
+  }
 
-const item = items[newIndex];
-const title = item.title;
-const link = item.link;
-const context = item.displayLink;
-const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+  const selectedLang = interaction.values[0]
+  prefs[userId] = selectedLang
+  savePreferences()
 
-const embed = new EmbedBuilder()
-.setTitle(🔞 ${title.slice(0, 80)}...)
-.setDescription(**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context})
-.setColor('#ff3366')
-.setImage(thumb)
-.setFooter({ text: Resultados para adultos (+18) — Resultado ${newIndex + 1} de ${items.length}, iconURL: 'https://i.imgur.com/botIcon.png' })
-.setTimestamp()
-.addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
+  const langEmoji = LANGUAGES.find((l) => l.value === selectedLang).emoji
+  await interaction.update({
+    content: `${langEmoji} ${getTranslation(userId, "langSaved")}`,
+    components: [],
+    ephemeral: true,
+  })
 
-const backBtn = new ButtonBuilder()
-.setCustomId(xxxback-${i.user.id})
-.setLabel('⬅️')
-.setStyle(ButtonStyle.Primary)
-.setDisabled(newIndex === 0);
+  const note = await interaction.followUp({
+    content: "🎉 Listo! Usa .td o .chat ahora.",
+    ephemeral: true,
+  })
 
-const nextBtn = new ButtonBuilder()
-.setCustomId(xxxnext-${i.user.id})
-.setLabel('➡️')
-.setStyle(ButtonStyle.Primary)
-.setDisabled(newIndex === items.length - 1);
-
-const row = new ActionRowBuilder().addComponents(backBtn, nextBtn);
-
-await i.update({ embeds: [embed], components: [row] });
+  setTimeout(() => note.delete().catch(() => {}), 5000)
 }
 
-if (i.isStringSelectMenu()) {
-if (i.customId.startsWith('select-')) {
-const [_, uid2] = i.customId.split('-');
-if (uid !== uid2) return i.reply({ content: 'No es tu menú.', ephemeral: true });
-const v = i.values[0];
-prefs[uid] = v;
-save();
-await i.update({
-content: ${LANGUAGES.find((l) => l.value === v).emoji} ${T(uid, 'langSaved')},
-components: [],
-ephemeral: true,
-});
-const note = await i.followUp({ content: '🎉 Listo! Usa .td o .chat ahora.', ephemeral: true });
-setTimeout(() => note.delete().catch(() => {}), 5000);
-return;
-}
+async function handleButtonInteraction(interaction) {
+  const userId = interaction.user.id
+  const [action, uid] = interaction.customId.split("-")
+
+  if (userId !== uid) {
+    return interaction.reply({ content: "⛔ No puedes usar estos botones.", ephemeral: true })
+  }
+
+  if (action.startsWith("xxx")) {
+    await handleAdultSearchNavigation(interaction, action)
+  } else if (["prevImage", "nextImage"].includes(interaction.customId)) {
+    await handleImageNavigation(interaction)
+  }
 }
 
-if (i.isButton()) {
-const cache = imageSearchCache.get(uid);
-if (!cache) return i.deferUpdate();
+async function handleAdultSearchNavigation(interaction, action) {
+  const userId = interaction.user.id
 
-let newIndex = cache.index;  
-if (i.customId === 'prevImage' && newIndex > 0) newIndex--;  
-if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;  
+  if (!xxxSearchCache.has(userId)) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true })
+  }
 
-async function findValidImage(startIndex, direction) {  
-  let idx = startIndex;  
-  while (idx >= 0 && idx < cache.items.length) {  
-    if (await isImageUrlValid(cache.items[idx].link)) return idx;  
-    idx += direction;  
-  }  
-  return -1;  
-}  
+  const data = xxxSearchCache.get(userId)
+  const { items, currentIndex } = data
+  let newIndex = currentIndex
 
-const direction = newIndex < cache.index ? -1 : 1;  
-let validIndex = await findValidImage(newIndex, direction);  
+  if (action === "xxxnext" && currentIndex < items.length - 1) {
+    newIndex++
+  } else if (action === "xxxback" && currentIndex > 0) {
+    newIndex--
+  }
 
-if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {  
-  validIndex = cache.index;  
-}  
+  data.currentIndex = newIndex
+  xxxSearchCache.set(userId, data)
 
-if (validIndex === -1) return i.deferUpdate();  
+  const item = items[newIndex]
+  const embed = createAdultSearchEmbed(item, newIndex, items.length)
+  const buttons = createNavigationButtons(userId, newIndex, items.length, "xxx")
 
-cache.index = validIndex;  
-const img = cache.items[validIndex];  
-
-const embed = new EmbedBuilder()  
-  .setTitle(`📷 Resultados para: ${cache.query}`)  
-  .setImage(img.link)  
-  .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)  
-  .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })  
-  .setColor('#00c7ff');  
-
-await i.update({  
-  embeds: [embed],  
-  components: [  
-    new ActionRowBuilder().addComponents(  
-      new ButtonBuilder()  
-        .setCustomId('prevImage')  
-        .setLabel('⬅️')  
-        .setStyle(ButtonStyle.Primary)  
-        .setDisabled(validIndex === 0),  
-      new ButtonBuilder()  
-        .setCustomId('nextImage')  
-        .setLabel('➡️')  
-        .setStyle(ButtonStyle.Primary)  
-        .setDisabled(validIndex === cache.items.length - 1)  
-    )  
-  ]  
-});
-
+  await interaction.update({ embeds: [embed], components: [buttons] })
 }
-});
 
-client.login(process.env.DISCORD_TOKEN);
+async function handleImageNavigation(interaction) {
+  const userId = interaction.user.id
+  const cache = imageSearchCache.get(userId)
 
+  if (!cache) return interaction.deferUpdate()
 
+  let newIndex = cache.index
+  if (interaction.customId === "prevImage" && newIndex > 0) newIndex--
+  if (interaction.customId === "nextImage" && newIndex < cache.items.length - 1) newIndex++
 
+  const validIndex = await findValidImageIndex(cache.items, newIndex, newIndex < cache.index ? -1 : 1)
+
+  if (validIndex === -1) return interaction.deferUpdate()
+
+  cache.index = validIndex
+  const img = cache.items[validIndex]
+
+  const embed = new EmbedBuilder()
+    .setTitle(`📷 Resultados para: ${cache.query}`)
+    .setImage(img.link)
+    .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
+    .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
+    .setColor("#00c7ff")
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("prevImage")
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(validIndex === 0),
+    new ButtonBuilder()
+      .setCustomId("nextImage")
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(validIndex === cache.items.length - 1),
+  )
+
+  await interaction.update({ embeds: [embed], components: [buttons] })
+}
+
+// Helper functions
+async function findValidImageIndex(items, startIndex, direction) {
+  let idx = startIndex
+  while (idx >= 0 && idx < items.length) {
+    if (await isImageUrlValid(items[idx].link)) return idx
+    idx += direction
+  }
+  return -1
+}
+
+function createAdultSearchEmbed(item, index, total) {
+  const title = item.title
+  const link = item.link
+  const context = item.displayLink
+  const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || "https://i.imgur.com/defaultThumbnail.png"
+
+  return new EmbedBuilder()
+    .setTitle(`🔞 ${title.slice(0, 80)}...`)
+    .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
+    .setColor("#ff3366")
+    .setImage(thumb)
+    .setFooter({
+      text: `Resultados para adultos (+18) — Resultado ${index + 1} de ${total}`,
+      iconURL: "https://i.imgur.com/botIcon.png",
+    })
+    .setTimestamp()
+    .addFields({
+      name: "⚠️ Nota",
+      value: "Este enlace lleva a contenido para adultos. Asegúrate de tener +18.",
+    })
+}
+
+function createNavigationButtons(userId, currentIndex, total, prefix) {
+  const backBtn = new ButtonBuilder()
+    .setCustomId(`${prefix}back-${userId}`)
+    .setLabel("⬅️")
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(currentIndex === 0)
+
+  const nextBtn = new ButtonBuilder()
+    .setCustomId(`${prefix}next-${userId}`)
+    .setLabel("➡️")
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(currentIndex === total - 1)
+
+  return new ActionRowBuilder().addComponents(backBtn, nextBtn)
+}
+
+// Start the bot
+client.login(process.env.DISCORD_TOKEN)
