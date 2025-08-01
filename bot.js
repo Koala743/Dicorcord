@@ -130,6 +130,7 @@ async function sendWarning(interactionOrMessage, text) {
 
 const activeChats = new Map();
 const imageSearchCache = new Map();
+const personalTranslations = new Map();  // <--- Agrega esta línea
 
 const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
 const GOOGLE_CX = '34fe95d6cf39d4dd4';
@@ -203,6 +204,41 @@ if (chat) {
       });
     }
   }
+}
+
+if (command === 'you') {
+  const uid = m.author.id;
+  const sel = new StringSelectMenuBuilder()
+    .setCustomId(`youlang-${uid}`)
+    .setPlaceholder('🌍 Selecciona a qué idioma traducir tus mensajes para los demás')
+    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
+
+  return m.reply({
+    content: 'Selecciona el idioma en el que quieres que los demás vean tus mensajes:',
+    components: [new ActionRowBuilder().addComponents(sel)],
+    ephemeral: true,
+  });
+}
+
+const personalLang = personalTranslations.get(m.author.id);
+if (personalLang) {
+  const raw = m.content.trim();
+  // No traduzcas comandos
+  if (!raw.startsWith('.')) {
+    const res = await translate(raw, personalLang);
+    if (res && res.text) {
+      const emoji = LANGUAGES.find((l) => l.value === personalLang)?.emoji || '🌐';
+      const embed = new EmbedBuilder()
+        .setColor('#00c7ff')
+        .setDescription(`**${emoji} ${res.text}**\n\n*${m.author} (${getLang(m.author.id)})*`);
+      m.channel.send({ embeds: [embed] }).catch(() => {});
+    }
+  }
+}
+
+if (command === 'tyou') {
+  personalTranslations.delete(m.author.id);
+  return m.reply('🛑 Tu traducción automática ha sido desactivada.');
 }
 
   if (!m.content.startsWith('.')) return;
@@ -466,6 +502,22 @@ if (command === 'wex') {
 
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
+  
+  if (i.isStringSelectMenu()) {
+  if (i.customId.startsWith('youlang-')) {
+    const [_, uid2] = i.customId.split('-');
+    if (i.user.id !== uid2) return i.reply({ content: '⚠️ No es tu menú.', ephemeral: true });
+    const selectedLang = i.values[0];
+    personalTranslations.set(uid2, selectedLang);
+    await i.update({
+      content: `${LANGUAGES.find((l) => l.value === selectedLang).emoji} ✅ Tus mensajes ahora se traducirán automáticamente a ese idioma para los demás.`,
+      components: [],
+      ephemeral: true,
+    });
+    return;
+  }
+}
+  
   if (i.isStringSelectMenu()) {
     if (i.customId.startsWith('select-')) {
       const [_, uid2] = i.customId.split('-');
