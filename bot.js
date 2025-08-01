@@ -260,63 +260,40 @@ if (chat) {
     }
   }
 
-const { MessageActionRow, MessageButton } = require('discord.js');
-
 if (command === 'xxx') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Escribe lo que quieres buscar.\nEjemplo: `.xxx hentai big boobs`');
 
-  const siteOptions = [
-    { name: 'XVideos', site: 'xvideos.es', id: 'xvideos' },
-    { name: 'Pornhub', site: 'es.pornhub.com', id: 'pornhub' },
-    { name: 'Hentaila', site: 'hentaila.tv', id: 'hentaila' }
-  ];
-
-  const row = new MessageActionRow().addComponents(
-    siteOptions.map(opt =>
-      new MessageButton()
-        .setCustomId(opt.id)
-        .setLabel(opt.name)
-        .setStyle('PRIMARY')
-    )
+  const selectMenu = new MessageActionRow().addComponents(
+    new MessageSelectMenu()
+      .setCustomId(`xxxsite-${m.author.id}-${encodeURIComponent(query)}`)
+      .setPlaceholder('📺 Elige el sitio donde buscar')
+      .addOptions([
+        {
+          label: 'XVideos',
+          value: 'xvideos.es',
+          description: 'Buscar en xvideos.es',
+          emoji: '🔴'
+        },
+        {
+          label: 'Pornhub',
+          value: 'es.pornhub.com',
+          description: 'Buscar en pornhub.com',
+          emoji: '🟠'
+        },
+        {
+          label: 'Hentaila',
+          value: 'hentaila.tv',
+          description: 'Buscar en hentaila.tv',
+          emoji: '🟣'
+        }
+      ])
   );
 
-  const msg = await m.reply({
-    content: '🌐 Elige el sitio para buscar contenido +18:',
-    components: [row]
+  await m.reply({
+    content: '🔞 ¿Dónde quieres buscar el contenido?',
+    components: [selectMenu]
   });
-
-  try {
-    const interaction = await msg.channel.awaitMessageComponent({
-      filter: i => i.user.id === m.author.id,
-      time: 15000
-    });
-
-    const selected = siteOptions.find(opt => opt.id === interaction.customId);
-    if (!selected) return interaction.reply({ content: '❌ Opción no válida.', ephemeral: true });
-
-    await interaction.deferUpdate();
-
-    const searchURL = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:' + selected.site)}&num=5`;
-
-    const res = await axios.get(searchURL);
-    const items = res.data.items;
-
-    if (!items || items.length === 0)
-      return m.channel.send(`❌ No se encontraron resultados en ${selected.name}.`);
-
-    const video = items.find(item =>
-      item.link.includes('/video.') ||
-      item.link.includes('/view_video.php') ||
-      item.link.includes('/ver/')
-    ) || items[0];
-
-    return m.channel.send(`🔞 **Video encontrado en ${selected.name}**:\n${video.link}`);
-
-  } catch (err) {
-    console.error('Error en .xxx:', err.message);
-    return m.reply('❌ No seleccionaste ninguna opción a tiempo o hubo un error.');
-  }
 }
 
   if (command === 'mp4') {
@@ -470,6 +447,50 @@ if (command === 'xxx') {
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
 
+if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
+  const [_, uid, rawQuery] = i.customId.split('-');
+  if (i.user.id !== uid) return i.reply({ content: '❌ Este menú no es para ti.', ephemeral: true });
+
+  const query = decodeURIComponent(rawQuery);
+  const site = i.values[0];
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(`${query} site:${site}`)}&num=5`;
+    const res = await axios.get(url);
+    const items = res.data.items;
+
+    if (!items || items.length === 0)
+      return i.update({ content: '❌ No se encontraron resultados.', components: [] });
+
+    const result = items.find(item =>
+      item.link.includes('/video.') ||
+      item.link.includes('/view_video.php') ||
+      item.link.includes('/ver/')
+    ) || items[0];
+
+    const link = result.link;
+    const title = result.title;
+    const thumb = result.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🔞 ${title}`)
+      .setDescription(`👉 [Haz clic aquí para ver el video](${link})`)
+      .setImage(thumb)
+      .setColor('#ff3366')
+      .setFooter({ text: `Sitio: ${site}`, iconURL: 'https://i.imgur.com/botIcon.png' })
+      .setTimestamp();
+
+    await i.update({
+      embeds: [embed],
+      components: [],
+      ephemeral: true,
+    });
+
+  } catch (err) {
+    console.error('Error en selección xxx:', err.message);
+    await i.update({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', components: [] });
+  }
+}
 
   if (i.isStringSelectMenu()) {
     if (i.customId.startsWith('select-')) {
