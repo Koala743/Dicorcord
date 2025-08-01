@@ -42,8 +42,8 @@ const ROLE_CONFIG = {
 }
 
 const API_CONFIG = {
-  googleApiKey: "AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY",
-  googleCx: "34fe95d6cf39d4dd4",
+  googleApiKey: "AIzaSyCOY3_MeHHHLiOXq2tAUypm1aHbpkFwQ80",
+  googleCx: "f21e2b3468dc449e2",
   lingvaUrl: "https://lingva.ml/api/v1",
 }
 
