@@ -446,23 +446,6 @@ if (command === 'xxx') {
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
 
-  // 🟢 Menú de selección de idioma
-  if (i.isStringSelectMenu() && i.customId.startsWith('select-')) {
-    const [_, uid2] = i.customId.split('-');
-    if (uid !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
-    const v = i.values[0];
-    prefs[uid] = v;
-    save();
-    await i.update({
-      content: `${LANGUAGES.find((l) => l.value === v).emoji} ${T(uid, 'langSaved')}`,
-      components: [],
-      ephemeral: true,
-    });
-    const note = await i.followUp({ content: '🎉 Listo! Usa `.td` o `.chat` ahora.', ephemeral: true });
-    setTimeout(() => note.delete().catch(() => {}), 5000);
-    return;
-  }
-
   if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
   const [_, uid2] = i.customId.split('-');
   if (i.user.id !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
@@ -489,17 +472,27 @@ client.on('interactionCreate', async (i) => {
     const seenLinks = new Set();
     for (const item of allItems) {
       if (!seenLinks.has(item.link)) {
-        uniqueItems.push(item);
         seenLinks.add(item.link);
+        uniqueItems.push(item);
       }
     }
 
-    // 🔀 Mezclar resultados aleatoriamente
-    const items = shuffleArray(uniqueItems);
+    // 🔀 Mezclar
+    const shuffledItems = shuffleArray(uniqueItems);
 
-    if (!items || items.length === 0)
-      return i.reply({ content: '❌ No se encontraron resultados.', ephemeral: true });
+    // 🧹 Filtrar solo los que tengan imagen y título válido
+    const items = shuffledItems.filter(item =>
+      item.title && item.link && item.pagemap?.cse_thumbnail?.[0]?.src
+    );
 
+    if (!items || items.length === 0) {
+      return i.reply({
+        content: '❌ No se encontraron resultados con vista previa (imagen). Intenta con otra palabra o sitio.',
+        ephemeral: true,
+      });
+    }
+
+    // ✅ Guardar búsqueda y primer video
     xxxSearchCache.set(i.user.id, { items, currentIndex: 0, query, site: selectedSite });
     pendingXXXSearch.delete(i.user.id);
 
@@ -507,7 +500,7 @@ client.on('interactionCreate', async (i) => {
     const title = item.title;
     const link = item.link;
     const context = item.displayLink;
-    const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+    const thumb = item.pagemap.cse_thumbnail[0].src;
 
     const embed = new EmbedBuilder()
       .setTitle(`🔞 ${title.slice(0, 80)}...`)
