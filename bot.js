@@ -141,8 +141,8 @@ const imageSearchCache = new Map();
 const pendingXXXSearch = new Map();
 const xxxSearchCache = new Map(); // <-- AQUI
 
-const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
-const GOOGLE_CX = '34fe95d6cf39d4dd4';
+const GOOGLE_API_KEY = 'AIzaSyCOY3_MeHHHLiOXq2tAUypm1aHbpkFwQ80';
+const GOOGLE_CX = 'f21e2b3468dc449e2';
 
 client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
