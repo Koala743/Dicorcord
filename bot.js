@@ -144,8 +144,7 @@ client.on('messageCreate', async (m) => {
   }
 
   if (m.content.toLowerCase().startsWith('.td')) {
-    if (!CHANNELS.has(m.channel.id)) return;
-    if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
+    if (!m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
     const ref = await m.channel.messages.fetch(m.reference.messageId);
     const txt = ref.content,
       uid = m.author.id;
