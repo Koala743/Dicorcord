@@ -96,6 +96,23 @@ async function translate(text, lang) {
   }
 }
 
+async function askLangSelect(message) {
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('selectLang')
+    .setPlaceholder('🌐 Selecciona tu idioma preferido')
+    .addOptions(LANGUAGES.map(lang => ({
+      label: lang.label,
+      value: lang.value,
+      emoji: lang.emoji
+    })));
+
+  const row = new ActionRowBuilder().addComponents(select);
+  await message.reply({
+    content: '🌍 Por favor selecciona tu idioma:',
+    components: [row]
+  });
+}
+
 const activeChats = new Map();
 const imageSearchCache = new Map();
 
