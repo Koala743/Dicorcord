@@ -260,33 +260,42 @@ if (chat) {
     }
   }
 
+const { MessageActionRow, MessageButton } = require('discord.js');
+
 if (command === 'xxx') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Escribe lo que quieres buscar.\nEjemplo: `.xxx hentai big boobs`');
 
   const siteOptions = [
-    { name: 'XVideos', site: 'xvideos.es' },
-    { name: 'Pornhub', site: 'es.pornhub.com' },
-    { name: 'Hentaila', site: 'hentaila.tv' }
+    { name: 'XVideos', site: 'xvideos.es', id: 'xvideos' },
+    { name: 'Pornhub', site: 'es.pornhub.com', id: 'pornhub' },
+    { name: 'Hentaila', site: 'hentaila.tv', id: 'hentaila' }
   ];
 
-  let optionsText = '🌐 Elige el sitio para buscar:\n\n';
-  siteOptions.forEach((opt, i) => {
-    optionsText += `${i + 1}️⃣ ${opt.name}\n`;
+  const row = new MessageActionRow().addComponents(
+    siteOptions.map(opt =>
+      new MessageButton()
+        .setCustomId(opt.id)
+        .setLabel(opt.name)
+        .setStyle('PRIMARY')
+    )
+  );
+
+  const msg = await m.reply({
+    content: '🌐 Elige el sitio para buscar contenido +18:',
+    components: [row]
   });
 
-  await m.reply(optionsText + '\nResponde con el número (1, 2 o 3).');
-
   try {
-    const filter = res => res.author.id === m.author.id && /^[1-3]$/.test(res.content.trim());
-    const collected = await m.channel.awaitMessages({ filter, max: 1, time: 15000 });
+    const interaction = await msg.channel.awaitMessageComponent({
+      filter: i => i.user.id === m.author.id,
+      time: 15000
+    });
 
-    if (!collected.size) return m.reply('⏱️ No respondiste a tiempo.');
+    const selected = siteOptions.find(opt => opt.id === interaction.customId);
+    if (!selected) return interaction.reply({ content: '❌ Opción no válida.', ephemeral: true });
 
-    const userChoice = parseInt(collected.first().content.trim(), 10);
-    const selected = siteOptions[userChoice - 1];
-
-    if (!selected) return m.reply('❌ Opción no válida.');
+    await interaction.deferUpdate();
 
     const searchURL = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:' + selected.site)}&num=5`;
 
@@ -294,7 +303,7 @@ if (command === 'xxx') {
     const items = res.data.items;
 
     if (!items || items.length === 0)
-      return m.reply(`❌ No se encontraron resultados en ${selected.name}.`);
+      return m.channel.send(`❌ No se encontraron resultados en ${selected.name}.`);
 
     const video = items.find(item =>
       item.link.includes('/video.') ||
@@ -302,11 +311,11 @@ if (command === 'xxx') {
       item.link.includes('/ver/')
     ) || items[0];
 
-    return m.reply(`🔞 **Video encontrado en ${selected.name}**:\n${video.link}`);
-    
+    return m.channel.send(`🔞 **Video encontrado en ${selected.name}**:\n${video.link}`);
+
   } catch (err) {
     console.error('Error en .xxx:', err.message);
-    return m.reply('❌ Error al buscar. Intenta de nuevo más tarde.');
+    return m.reply('❌ No seleccionaste ninguna opción a tiempo o hubo un error.');
   }
 }
 
