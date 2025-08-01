@@ -996,6 +996,10 @@ async function handleRobloxNavigation(interaction, action) {
   const userId = interaction.user.id
   const cache = robloxSearchCache.get(userId)
 
+  if (interaction.replied || interaction.deferred) {
+    return
+  }
+
   if (!cache) {
     await logError(interaction.channel, new Error("Cache no encontrado"), `Usuario: ${userId}, Acción: ${action}`)
     return interaction.reply({
@@ -1968,9 +1972,14 @@ async function handleLanguageSelectionMenu(interaction) {
 async function handleButtonInteraction(interaction) {
   const userId = interaction.user.id
   const [action, uid] = interaction.customId.split("-")
+
   if (userId !== uid) {
-    return interaction.reply({ content: "⛔ No puedes usar estos botones.", ephemeral: true })
+    if (!interaction.replied && !interaction.deferred) {
+      return interaction.reply({ content: "⛔ No puedes usar estos botones.", ephemeral: true })
+    }
+    return
   }
+
   try {
     if (action.startsWith("xxx")) {
       await handleAdultSearchNavigation(interaction, action)
