@@ -260,7 +260,7 @@ if (chat) {
     }
   }
 
-if (command === 'Lista') {
+if (command === 'xxx') {
   const query = args.join(' ');
   if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
@@ -295,7 +295,7 @@ if (command === 'Lista') {
     components: [row],
     ephemeral: true,
   });
-}
+} 
 
 
   if (command === 'mp4') {
