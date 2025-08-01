@@ -106,14 +106,35 @@ client.once('ready', () => {
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
-  // Chat automático activo
   const chat = activeChats.get(m.channel.id);
   if (chat && chat.users.includes(m.author.id)) {
     const otherId = chat.users.find(id => id !== m.author.id);
     const otherLang = getLang(otherId);
-    const translated = await translate(m.content, otherLang);
-    if (translated && translated.text) {
-      m.channel.send(`<@${otherId}>: ${translated.text}`);
+    const senderLang = getLang(m.author.id);
+    const toOther = await translate(m.content, otherLang);
+    const toSender = await translate(m.content, senderLang);
+
+    if (toOther && toSender) {
+      const author = await m.guild.members.fetch(m.author.id);
+      const embedForOther = new EmbedBuilder()
+        .setAuthor({ name: `${author.displayName}`, iconURL: author.user.displayAvatarURL() })
+        .setDescription(`💬 ${toOther.text}`)
+        .setColor('#00c7ff')
+        .setFooter({ text: `Traducido a ${LANGUAGES.find(l => l.value === otherLang).label}` })
+        .setTimestamp();
+
+      const embedForSender = new EmbedBuilder()
+        .setAuthor({ name: `Tú (${author.displayName})`, iconURL: author.user.displayAvatarURL() })
+        .setDescription(`✉️ ${toSender.text}`)
+        .setColor('#cccccc')
+        .setFooter({ text: `Traducido a tu idioma: ${LANGUAGES.find(l => l.value === senderLang).label}` })
+        .setTimestamp();
+
+      const otherMention = `<@${otherId}>`;
+      await m.channel.send({ content: otherMention, embeds: [embedForOther] });
+      if (m.author.id !== client.user.id) {
+        await m.channel.send({ content: `<@${m.author.id}>`, embeds: [embedForSender] });
+      }
     }
   }
 
@@ -123,7 +144,6 @@ client.on('messageCreate', async (m) => {
   if (command === 'td') {
     if (!m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
     if (!prefs[m.author.id]) return askLangSelect(m);
-
     try {
       const ref = await m.channel.messages.fetch(m.reference.messageId);
       const res = await translate(ref.content, getLang(m.author.id));
@@ -133,7 +153,6 @@ client.on('messageCreate', async (m) => {
       const embed = new EmbedBuilder()
         .setColor('#00c7ff')
         .setDescription(`${LANGUAGES.find(l => l.value === getLang(m.author.id)).emoji} : ${res.text}`);
-
       return m.reply({ embeds: [embed] });
     } catch {
       return m.reply('❌ No se pudo traducir el mensaje.');
@@ -167,12 +186,10 @@ client.on('messageCreate', async (m) => {
 
   if (command === 'dchat') {
     if (m.author.username !== 'flux_fer') return m.reply(T(m.author.id, 'notAuthorized'));
-
     if (activeChats.has(m.channel.id)) {
       activeChats.delete(m.channel.id);
       return m.reply(T(m.author.id, 'chatDeactivated'));
     }
-
     return m.reply(T(m.author.id, 'mustReply'));
   }
 });
