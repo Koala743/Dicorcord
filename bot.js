@@ -163,36 +163,39 @@ client.on('messageCreate', async (m) => {
     return askLangSelect(m);
   }
 
-  if (command === 'chat') {
-    if (m.mentions.users.size !== 1) return m.reply('Debes mencionar exactamente a un usuario.');
-    const other = m.mentions.users.first();
-    if (other.id === m.author.id) return m.reply('No puedes chatear contigo mismo.');
-
-    activeChats.set(m.channel.id, { users: [m.author.id, other.id] });
-
-    const m1 = await m.guild.members.fetch(m.author.id);
-    const m2 = await m.guild.members.fetch(other.id);
-
+  if (m.content.toLowerCase().startsWith('.chat')) {
+    const mention = m.mentions.users.first();
+    if (!mention) return sendWarning(m, '❌ Debes mencionar al usuario con quien quieres chatear.');
+    const user1 = m.author;
+    const user2 = mention;
+    if (user1.id === user2.id) return sendWarning(m, '⚠️ No puedes iniciar un chat contigo mismo.');
+    activeChats.set(m.channel.id, { users: [user1.id, user2.id] });
+    const member1 = await m.guild.members.fetch(user1.id);
+    const member2 = await m.guild.members.fetch(user2.id);
     const embed = new EmbedBuilder()
       .setTitle('💬 Chat Automático Iniciado')
-      .setDescription(`Chat entre **${m1.nickname || m1.user.username}** y **${m2.nickname || m2.user.username}**`)
-      .setThumbnail(m1.user.displayAvatarURL({ size: 64 }))
-      .setImage(m2.user.displayAvatarURL({ size: 64 }))
+      .setDescription(
+        `Chat iniciado entre:\n**${member1.nickname || member1.user.username}** <@${member1.id}>\n**${member2.nickname || member2.user.username}** <@${member2.id}>`
+      )
+      .setThumbnail(member1.user.displayAvatarURL({ extension: 'png', size: 64 }))
+      .setImage(member2.user.displayAvatarURL({ extension: 'png', size: 64 }))
       .setColor('#00c7ff')
       .setTimestamp();
-
     return m.channel.send({ embeds: [embed] });
   }
 
-  if (command === 'dchat') {
-    if (m.author.username !== 'flux_fer') return m.reply(T(m.author.id, 'notAuthorized'));
+  if (m.content.toLowerCase().startsWith('.dchat')) {
+    if (m.author.username !== 'flux_fer')
+      return sendWarning(m, T(m.author.id, 'notAuthorized'));
     if (activeChats.has(m.channel.id)) {
       activeChats.delete(m.channel.id);
-      return m.reply(T(m.author.id, 'chatDeactivated'));
+      return m.reply({ content: T(m.author.id, 'chatDeactivated'), ephemeral: true });
+    } else {
+      return sendWarning(m, T(m.author.id, 'chatNoSession'));
     }
-    return m.reply(T(m.author.id, 'mustReply'));
   }
 });
+
 
 client.on('interactionCreate', async (i) => {
   if (i.isStringSelectMenu() && i.customId === 'selectLang') {
