@@ -260,6 +260,49 @@ if (chat) {
     }
   }
 
+if (command === 'xxx') {
+  if (!m.channel.nsfw) {
+    return m.reply('⚠️ Este comando solo puede usarse en canales NSFW.');
+  }
+
+  const query = args.join(' ');
+  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:xvideos.es OR site:es.pornhub.com OR site:hentaila.tv')}&num=5`;
+
+    const res = await axios.get(url);
+    const items = res.data.items;
+    if (!items || items.length === 0)
+      return m.reply('❌ No se encontraron resultados para tu búsqueda.');
+
+    const video = items.find(item =>
+      item.link.includes('/video.') ||
+      item.link.includes('/view_video.php') ||
+      item.link.includes('/ver/')
+    ) || items[0];
+
+    const title = video.title;
+    const link = video.link;
+    const context = video.displayLink;
+    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🔞 ${title.slice(0, 80)}...`)
+      .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
+      .setColor('#ff3366')
+      .setThumbnail(thumb)
+      .setFooter({ text: 'Resultados para adultos (+18)', iconURL: 'https://i.imgur.com/botIcon.png' })
+      .setTimestamp()
+      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
+
+    await m.channel.send({ embeds: [embed] });
+  } catch (err) {
+    console.error('Error en .xxx:', err.message);
+    return m.reply('❌ Error al buscar. Intenta de nuevo más tarde.');
+  }
+}
+
 if (command === 'wex') {
   const axios = require('axios');
   const cheerio = require('cheerio');
