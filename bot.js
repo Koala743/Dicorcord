@@ -100,17 +100,6 @@ function T(u, k) {
   return trans[getLang(u)]?.[k] || trans['es'][k];
 }
 
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
-
-
-
 async function isImageUrlValid(url) {
   try {
     const res = await axios.head(url, { timeout: 5000 });
@@ -220,75 +209,58 @@ if (chat) {
 
   if (!m.content.startsWith('.')) return;
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
-   if (command === 'web') {
-  const query = args.join(' ');
-  if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
 
-  try {
-    const MAX_RESULTS = 100;
-    const perPage = 10;
-    const allItems = [];
+  if (command === 'web') {
+    const query = args.join(' ');
+    if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
 
-    // 🔍 Buscar múltiples páginas de resultados
-    for (let start = 1; start <= MAX_RESULTS; start += perPage) {
-      const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=${perPage}&start=${start}`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&searchType=image&q=${encodeURIComponent(query)}&num=10`;
+
+    try {
       const res = await axios.get(url);
-      const items = res.data.items || [];
-      allItems.push(...items);
-    }
+      let items = res.data.items || [];
+      items = items.filter(img => img.link && img.link.startsWith('http'));
 
-    // ❌ Si no se encontró nada
-    if (!allItems.length) return m.reply(T(m.author.id, 'noValidImages'));
+      if (!items.length) return m.reply(T(m.author.id, 'noValidImages'));
 
-    // 🔀 Mezclar resultados
-    const shuffled = shuffleArray(allItems);
-
-    // 🔁 Buscar una imagen válida
-    let validIndex = -1;
-    for (let i = 0; i < shuffled.length; i++) {
-      if (shuffled[i].link && await isImageUrlValid(shuffled[i].link)) {
-        validIndex = i;
-        break;
+      let validIndex = -1;
+      for (let i = 0; i < items.length; i++) {
+        if (await isImageUrlValid(items[i].link)) {
+          validIndex = i;
+          break;
+        }
       }
+
+      if (validIndex === -1) return m.reply(T(m.author.id, 'noValidImages'));
+
+      imageSearchCache.set(m.author.id, { items, index: validIndex, query });
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📷 Resultados para: ${query}`)
+        .setImage(items[validIndex].link)
+        .setDescription(`[Página donde está la imagen](${items[validIndex].image.contextLink})`)
+        .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length}` })
+        .setColor('#00c7ff');
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('prevImage')
+          .setLabel('⬅️')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(validIndex === 0),
+        new ButtonBuilder()
+          .setCustomId('nextImage')
+          .setLabel('➡️')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(validIndex === items.length - 1)
+      );
+
+      await m.channel.send({ embeds: [embed], components: [row] });
+    } catch (err) {
+      const errMsg = err.response?.data?.error?.message || err.message;
+      return m.reply(`❌ Error buscando imágenes: ${errMsg}`);
     }
-
-    if (validIndex === -1) return m.reply(T(m.author.id, 'noValidImages'));
-
-    // Guardar en cache
-    imageSearchCache.set(m.author.id, {
-      items: shuffled,
-      index: validIndex,
-      query,
-    });
-
-    const item = shuffled[validIndex];
-    const embed = new EmbedBuilder()
-      .setTitle(`📷 Resultados para: ${query}`)
-      .setImage(item.link)
-      .setDescription(`[Página donde está la imagen](${item.image?.contextLink || item.link})`)
-      .setFooter({ text: `Imagen ${validIndex + 1} de ${shuffled.length}` })
-      .setColor('#00c7ff');
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('prevImage')
-        .setLabel('⬅️')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(validIndex === 0),
-      new ButtonBuilder()
-        .setCustomId('nextImage')
-        .setLabel('➡️')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(validIndex === shuffled.length - 1)
-    );
-
-    await m.channel.send({ embeds: [embed], components: [row] });
-
-  } catch (err) {
-    console.error('Error en .web:', err.message);
-    return m.reply(`❌ Error buscando imágenes: ${err.message}`);
   }
-}
 
 
 
@@ -483,7 +455,7 @@ client.on('interactionCreate', async (i) => {
     return;
   }
 
-  if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
+if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
   const [_, uid2] = i.customId.split('-');
   if (i.user.id !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
 
@@ -504,7 +476,6 @@ client.on('interactionCreate', async (i) => {
       allItems.push(...res.data.items);
     }
 
-    // 🔍 Eliminar duplicados por link
     const uniqueItems = [];
     const seenLinks = new Set();
     for (const item of allItems) {
@@ -514,7 +485,6 @@ client.on('interactionCreate', async (i) => {
       }
     }
 
-    // 🔀 Mezclar resultados aleatoriamente
     const items = shuffleArray(uniqueItems);
 
     if (!items || items.length === 0)
@@ -536,7 +506,10 @@ client.on('interactionCreate', async (i) => {
       .setImage(thumb)
       .setFooter({ text: `Resultado 1 de ${items.length}`, iconURL: 'https://i.imgur.com/botIcon.png' })
       .setTimestamp()
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
+      .addFields({
+        name: '⚠️ Nota',
+        value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.'
+      });
 
     const backBtn = new ButtonBuilder()
       .setCustomId(`xxxback-${i.user.id}`)
@@ -613,69 +586,59 @@ client.on('interactionCreate', async (i) => {
     }
 
     // 📷 Navegación en resultados de imagen (.web)
- const cache = imageSearchCache.get(uid);
-if (!cache) return i.deferUpdate();
+    const cache = imageSearchCache.get(uid);
+    if (!cache) return i.deferUpdate();
 
-let newIndex = cache.index;
+    let newIndex = cache.index;
+    if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
+    if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
 
-// Detectar dirección del cambio
-if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
-if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
-
-const direction = newIndex < cache.index ? -1 : 1;
-
-// 🔁 Función para encontrar una imagen válida desde un índice
-async function findValidImage(startIndex, direction) {
-  let idx = startIndex;
-
-  while (idx >= 0 && idx < cache.items.length) {
-    const item = cache.items[idx];
-    if (item?.link && item.link.startsWith('http') && await isImageUrlValid(item.link)) {
-      return idx;
+    async function findValidImage(startIndex, direction) {
+      let idx = startIndex;
+      while (idx >= 0 && idx < cache.items.length) {
+        if (await isImageUrlValid(cache.items[idx].link)) return idx;
+        idx += direction;
+      }
+      return -1;
     }
-    idx += direction;
-  }
 
-  // 🔄 Si ninguna válida, intentar escanear todo
-  for (let i = 0; i < cache.items.length; i++) {
-    const fallback = cache.items[i];
-    if (fallback?.link && await isImageUrlValid(fallback.link)) {
-      return i;
+    const direction = newIndex < cache.index ? -1 : 1;
+    let validIndex = await findValidImage(newIndex, direction);
+
+    if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
+      validIndex = cache.index;
     }
+
+    if (validIndex === -1) return i.deferUpdate();
+
+    cache.index = validIndex;
+    const img = cache.items[validIndex];
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📷 Resultados para: ${cache.query}`)
+      .setImage(img.link)
+      .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
+      .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
+      .setColor('#00c7ff');
+
+    await i.update({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('prevImage')
+            .setLabel('⬅️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(validIndex === 0),
+          new ButtonBuilder()
+            .setCustomId('nextImage')
+            .setLabel('➡️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(validIndex === cache.items.length - 1)
+        )
+      ]
+    });
   }
-
-  return -1; // Nada válido
-}
-
-let validIndex = await findValidImage(newIndex, direction);
-if (validIndex === -1) return i.reply({ content: '❌ No se pudo cargar ninguna imagen válida.', ephemeral: true });
-
-cache.index = validIndex;
-const img = cache.items[validIndex];
-
-const embed = new EmbedBuilder()
-  .setTitle(`📷 Resultados para: ${cache.query}`)
-  .setImage(img.link)
-  .setDescription(`[Página donde está la imagen](${img.image?.contextLink || img.link})`)
-  .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
-  .setColor('#00c7ff');
-
-await i.update({
-  embeds: [embed],
-  components: [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('prevImage')
-        .setLabel('⬅️')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(validIndex === 0),
-      new ButtonBuilder()
-        .setCustomId('nextImage')
-        .setLabel('➡️')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(validIndex === cache.items.length - 1)
-    )
-  ]
 });
 
 client.login(process.env.DISCORD_TOKEN);
