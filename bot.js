@@ -260,7 +260,7 @@ if (chat) {
     }
   }
 
-if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
+if (i.isStringSelectMenu() && i.customId.startsWith('xxx')) {
   const [_, uid, rawQuery] = i.customId.split('-');
   if (i.user.id !== uid) return i.reply({ content: '❌ Este menú no es para ti.', ephemeral: true });
 
