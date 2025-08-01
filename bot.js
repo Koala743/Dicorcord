@@ -132,6 +132,99 @@ const COMIC_SITES = [
   { label: "Ver Comics Porno XXX", value: "vercomicsporno.xxx", emoji: "🟢" },
 ]
 
+const COMMANDS_LIST = [
+  {
+    name: ".web [búsqueda]",
+    description: "Busca imágenes en Google con navegación por flechas",
+    example: ".web gatos",
+    category: "🔍 Búsqueda",
+  },
+  {
+    name: ".bs [búsqueda]",
+    description: "Búsqueda general en Google (texto, imágenes, videos, todo)",
+    example: ".bs recetas de pizza",
+    category: "🔍 Búsqueda",
+  },
+  {
+    name: ".cmx [búsqueda]",
+    description: "Busca comics adultos en sitios especializados",
+    example: ".cmx naruto",
+    category: "🔞 Adulto",
+  },
+  {
+    name: ".xxx [búsqueda]",
+    description: "Busca videos adultos en sitios especializados",
+    example: ".xxx anime",
+    category: "🔞 Adulto",
+  },
+  {
+    name: ".mp4 [búsqueda]",
+    description: "Busca videos en YouTube y devuelve el enlace",
+    example: ".mp4 música relajante",
+    category: "🎬 Video",
+  },
+  {
+    name: ".xml [búsqueda]",
+    description: "Busca videos en XNXX específicamente",
+    example: ".xml búsqueda",
+    category: "🔞 Adulto",
+  },
+  {
+    name: ".roblox [juego]",
+    description: "Busca servidores de Roblox para un juego específico",
+    example: ".roblox Adopt Me",
+    category: "🎮 Gaming",
+  },
+  {
+    name: ".td",
+    description: "Traduce un mensaje (responde a un mensaje para traducir)",
+    example: "Responder a un mensaje con .td",
+    category: "🌍 Traducción",
+  },
+  {
+    name: ".auto [idioma]",
+    description: "Activa traducción automática de tus mensajes al idioma seleccionado",
+    example: ".auto en (para inglés)",
+    category: "🌍 Traducción",
+  },
+  {
+    name: ".dauto",
+    description: "Desactiva la traducción automática de tus mensajes",
+    example: ".dauto",
+    category: "🌍 Traducción",
+  },
+  {
+    name: ".chat @usuario",
+    description: "Inicia chat con traducción automática entre dos usuarios",
+    example: ".chat @amigo",
+    category: "💬 Chat",
+  },
+  {
+    name: ".dchat",
+    description: "Finaliza el chat con traducción automática (solo admin)",
+    example: ".dchat",
+    category: "💬 Chat",
+  },
+  {
+    name: ".ID",
+    description: "Cambia tu idioma predeterminado para traducciones",
+    example: ".ID",
+    category: "⚙️ Configuración",
+  },
+  {
+    name: ".lista",
+    description: "Muestra todos los comandos disponibles con detalles",
+    example: ".lista",
+    category: "ℹ️ Ayuda",
+  },
+  {
+    name: ".apistats",
+    description: "Muestra estadísticas de uso de APIs (solo admin)",
+    example: ".apistats",
+    category: "📊 Admin",
+  },
+]
+
 class APIManager {
   constructor() {
     this.loadAPIStatus()
@@ -307,6 +400,8 @@ const xxxSearchCache = new Map()
 const pendingComicSearch = new Map()
 const comicSearchCache = new Map()
 const generalSearchCache = new Map()
+const robloxSearchCache = new Map()
+const autoTranslateUsers = new Map()
 let prefs = {}
 
 const translations = {
@@ -325,6 +420,10 @@ const translations = {
     sameLanguage: "⚠️ Ambos usuarios tienen el mismo idioma, no se inició el chat.",
     inviteRestricted:
       "⚠️ No podés enviar enlaces de invitación porque tenés el rol de Miembro, el cual está restringido. Tu mensaje fue eliminado automáticamente.",
+    autoTranslateOn: "🔄 Traducción automática ACTIVADA. Tus mensajes se traducirán a",
+    autoTranslateOff: "🛑 Traducción automática DESACTIVADA.",
+    autoTranslateNotActive: "⚠️ No tienes traducción automática activa.",
+    invalidLanguage: "⚠️ Idioma no válido. Usa códigos como: es, en, fr, de, pt, it, ru, ja, ko, zh-CN",
   },
   en: {
     mustReply: "⚠️ Use the command by replying to a message.",
@@ -341,6 +440,10 @@ const translations = {
     sameLanguage: "⚠️ Both users have the same language, chat not started.",
     inviteRestricted:
       "⚠️ You are not allowed to send invite links because you have the Member role, which is restricted. Your message was automatically deleted.",
+    autoTranslateOn: "🔄 Auto-translate ACTIVATED. Your messages will be translated to",
+    autoTranslateOff: "🛑 Auto-translate DEACTIVATED.",
+    autoTranslateNotActive: "⚠️ You don't have auto-translate active.",
+    invalidLanguage: "⚠️ Invalid language. Use codes like: es, en, fr, de, pt, it, ru, ja, ko, zh-CN",
   },
 }
 
@@ -407,6 +510,8 @@ client.on("messageCreate", async (message) => {
 
   await handleInviteRestrictions(message)
 
+  await handleAutoTranslate(message)
+
   await handleChatTranslation(message)
 
   if (message.content.startsWith(".")) {
@@ -421,6 +526,33 @@ client.on("interactionCreate", async (interaction) => {
     await handleButtonInteraction(interaction)
   }
 })
+
+async function handleAutoTranslate(message) {
+  const userId = message.author.id
+  const autoTranslateInfo = autoTranslateUsers.get(userId)
+
+  if (!autoTranslateInfo || message.content.startsWith(".")) return
+
+  const { targetLang } = autoTranslateInfo
+  const userLang = getUserLanguage(userId)
+
+  if (userLang === targetLang) return
+
+  try {
+    const result = await translateText(message.content, targetLang)
+    if (result && result.text && result.from !== targetLang) {
+      const targetLangEmoji = LANGUAGES.find((l) => l.value === targetLang)?.emoji || "🌐"
+      const embed = new EmbedBuilder()
+        .setColor("#00ff88")
+        .setDescription(`${targetLangEmoji} **Auto-traducido:** ${result.text}`)
+        .setFooter({ text: `Mensaje original de ${message.author.username}` })
+
+      await message.channel.send({ embeds: [embed] })
+    }
+  } catch (error) {
+    console.error("Error en auto-traducción:", error)
+  }
+}
 
 async function handleInviteRestrictions(message) {
   const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i
@@ -483,8 +615,9 @@ async function handleChatTranslation(message) {
 
 async function handleCommands(message) {
   const [command, ...args] = message.content.slice(1).trim().split(/ +/)
+  const cmd = command.toLowerCase()
 
-  switch (command) {
+  switch (cmd) {
     case "web":
       await handleWebSearch(message, args)
       break
@@ -503,8 +636,17 @@ async function handleCommands(message) {
     case "xml":
       await handleXMLSearch(message, args)
       break
+    case "roblox":
+      await handleRobloxSearch(message, args)
+      break
     case "td":
       await handleTranslate(message)
+      break
+    case "auto":
+      await handleAutoTranslateCommand(message, args)
+      break
+    case "dauto":
+      await handleDisableAutoTranslate(message)
       break
     case "chat":
       await handleChatCommand(message)
@@ -512,8 +654,11 @@ async function handleCommands(message) {
     case "dchat":
       await handleDisableChatCommand(message)
       break
-    case "ID":
+    case "id":
       await handleLanguageSelection(message)
+      break
+    case "lista":
+      await handleCommandsList(message)
       break
     case "apistats":
       if (message.author.username !== "flux_fer") {
@@ -541,6 +686,158 @@ async function handleCommands(message) {
         .setTimestamp()
 
       return message.reply({ embeds: [embed], ephemeral: true })
+  }
+}
+
+async function handleAutoTranslateCommand(message, args) {
+  const userId = message.author.id
+  const targetLang = args[0]?.toLowerCase()
+
+  if (!targetLang) {
+    const selector = new StringSelectMenuBuilder()
+      .setCustomId(`autoselect-${userId}`)
+      .setPlaceholder("🔄 Selecciona idioma para auto-traducción")
+      .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })))
+
+    return message.reply({
+      content: "Selecciona el idioma al que quieres que se traduzcan automáticamente tus mensajes:",
+      components: [new ActionRowBuilder().addComponents(selector)],
+      ephemeral: true,
+    })
+  }
+
+  const validLang = LANGUAGES.find((l) => l.value === targetLang)
+  if (!validLang) {
+    return message.reply({ content: getTranslation(userId, "invalidLanguage"), ephemeral: true })
+  }
+
+  autoTranslateUsers.set(userId, { targetLang })
+
+  const langEmoji = validLang.emoji
+  return message.reply({
+    content: `${langEmoji} ${getTranslation(userId, "autoTranslateOn")} **${validLang.label}**`,
+    ephemeral: true,
+  })
+}
+
+async function handleDisableAutoTranslate(message) {
+  const userId = message.author.id
+
+  if (!autoTranslateUsers.has(userId)) {
+    return message.reply({ content: getTranslation(userId, "autoTranslateNotActive"), ephemeral: true })
+  }
+
+  autoTranslateUsers.delete(userId)
+  return message.reply({ content: getTranslation(userId, "autoTranslateOff"), ephemeral: true })
+}
+
+async function handleCommandsList(message) {
+  const categories = {}
+
+  COMMANDS_LIST.forEach((cmd) => {
+    if (!categories[cmd.category]) {
+      categories[cmd.category] = []
+    }
+    categories[cmd.category].push(cmd)
+  })
+
+  const embeds = []
+
+  Object.keys(categories).forEach((category) => {
+    const embed = new EmbedBuilder().setTitle(`${category}`).setColor("#4285f4").setTimestamp()
+
+    categories[category].forEach((cmd) => {
+      embed.addFields({
+        name: cmd.name,
+        value: `${cmd.description}\n*Ejemplo: ${cmd.example}*`,
+        inline: false,
+      })
+    })
+
+    embeds.push(embed)
+  })
+
+  const mainEmbed = new EmbedBuilder()
+    .setTitle("📋 Lista de Comandos del Bot")
+    .setDescription("Aquí tienes todos los comandos disponibles organizados por categorías:")
+    .setColor("#00c7ff")
+    .setThumbnail(client.user.displayAvatarURL())
+    .setFooter({ text: `Total de comandos: ${COMMANDS_LIST.length}` })
+
+  await message.reply({ embeds: [mainEmbed] })
+
+  for (const embed of embeds) {
+    await message.channel.send({ embeds: [embed] })
+  }
+}
+
+async function handleRobloxSearch(message, args) {
+  const gameName = args.join(" ")
+  if (!gameName) return message.reply("⚠️ Debes escribir el nombre del juego de Roblox.")
+
+  try {
+    const searchUrl = `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(gameName)}&model.maxRows=10&model.startRowIndex=0`
+
+    const response = await axios.get(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    })
+
+    const games = response.data.games || []
+
+    if (!games.length) {
+      return message.reply("❌ No se encontraron juegos de Roblox con ese nombre.")
+    }
+
+    robloxSearchCache.set(message.author.id, { games, index: 0, query: gameName })
+
+    const game = games[0]
+    const embed = new EmbedBuilder()
+      .setTitle(`🎮 ${game.name}`)
+      .setDescription(
+        `**Jugadores activos:** ${game.playing.toLocaleString()}\n**Visitas totales:** ${game.visits.toLocaleString()}\n**Rating:** ${game.totalUpVotes}👍 / ${game.totalDownVotes}👎`,
+      )
+      .setColor("#00b2ff")
+      .setThumbnail(
+        `https://www.roblox.com/asset-thumbnail/image?assetId=${game.rootPlaceId}&width=150&height=150&format=png`,
+      )
+      .addFields(
+        {
+          name: "🔗 Enlaces",
+          value: `[🎮 Jugar](https://www.roblox.com/games/${game.rootPlaceId})\n[📊 Ver página](https://www.roblox.com/games/${game.rootPlaceId})`,
+          inline: true,
+        },
+        {
+          name: "📈 Estadísticas",
+          value: `Creado: ${new Date(game.created).toLocaleDateString()}\nActualizado: ${new Date(game.updated).toLocaleDateString()}`,
+          inline: true,
+        },
+      )
+      .setFooter({ text: `Juego ${1} de ${games.length} | Servidores disponibles` })
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`prevRoblox-${message.author.id}`)
+        .setLabel("⬅️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId(`nextRoblox-${message.author.id}`)
+        .setLabel("➡️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(games.length <= 1),
+      new ButtonBuilder()
+        .setCustomId(`playRoblox-${message.author.id}`)
+        .setLabel("🎮 Jugar")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(false),
+    )
+
+    await message.channel.send({ embeds: [embed], components: [row] })
+  } catch (error) {
+    console.error("Error en búsqueda de Roblox:", error.message)
+    return message.reply("❌ Error al buscar juegos de Roblox. Intenta de nuevo más tarde.")
   }
 }
 
@@ -915,9 +1212,30 @@ async function handleSelectMenu(interaction) {
     await handleAdultSiteSelection(interaction)
   } else if (interaction.customId.startsWith("comicsite-")) {
     await handleComicSiteSelection(interaction)
+  } else if (interaction.customId.startsWith("autoselect-")) {
+    await handleAutoTranslateSelection(interaction)
   } else if (interaction.customId.startsWith("select-")) {
     await handleLanguageSelectionMenu(interaction)
   }
+}
+
+async function handleAutoTranslateSelection(interaction) {
+  const [_, userId] = interaction.customId.split("-")
+  if (interaction.user.id !== userId) {
+    return interaction.reply({ content: "⛔ No puedes usar este menú.", ephemeral: true })
+  }
+
+  const selectedLang = interaction.values[0]
+  autoTranslateUsers.set(userId, { targetLang: selectedLang })
+
+  const langInfo = LANGUAGES.find((l) => l.value === selectedLang)
+  const langEmoji = langInfo.emoji
+
+  await interaction.update({
+    content: `${langEmoji} ${getTranslation(userId, "autoTranslateOn")} **${langInfo.label}**`,
+    components: [],
+    ephemeral: true,
+  })
 }
 
 async function handleComicSiteSelection(interaction) {
@@ -1055,11 +1373,91 @@ async function handleButtonInteraction(interaction) {
     await handleAdultSearchNavigation(interaction, action)
   } else if (action.startsWith("comic")) {
     await handleComicSearchNavigation(interaction, action)
-  } else if (action.startsWith("General")) {
+  } else if (action.startsWith("General") || action.includes("General")) {
     await handleGeneralSearchNavigation(interaction, action)
+  } else if (action.startsWith("Roblox") || action.includes("Roblox")) {
+    await handleRobloxNavigation(interaction, action)
   } else if (["prevImage", "nextImage"].includes(interaction.customId)) {
     await handleImageNavigation(interaction)
   }
+}
+
+async function handleRobloxNavigation(interaction, action) {
+  const userId = interaction.user.id
+
+  if (action === "playRoblox") {
+    const cache = robloxSearchCache.get(userId)
+    if (!cache) return interaction.reply({ content: "❌ No hay juego seleccionado.", ephemeral: true })
+
+    const game = cache.games[cache.index]
+    const playUrl = `https://www.roblox.com/games/${game.rootPlaceId}`
+
+    return interaction.reply({
+      content: `🎮 **${game.name}**\n🔗 ${playUrl}\n\n*Clic en el enlace para jugar directamente*`,
+      ephemeral: true,
+    })
+  }
+
+  if (!robloxSearchCache.has(userId)) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true })
+  }
+
+  const data = robloxSearchCache.get(userId)
+  const { games, index } = data
+  let newIndex = index
+
+  if (action === "nextRoblox" && index < games.length - 1) {
+    newIndex++
+  } else if (action === "prevRoblox" && index > 0) {
+    newIndex--
+  }
+
+  data.index = newIndex
+  robloxSearchCache.set(userId, data)
+
+  const game = games[newIndex]
+  const embed = new EmbedBuilder()
+    .setTitle(`🎮 ${game.name}`)
+    .setDescription(
+      `**Jugadores activos:** ${game.playing.toLocaleString()}\n**Visitas totales:** ${game.visits.toLocaleString()}\n**Rating:** ${game.totalUpVotes}👍 / ${game.totalDownVotes}👎`,
+    )
+    .setColor("#00b2ff")
+    .setThumbnail(
+      `https://www.roblox.com/asset-thumbnail/image?assetId=${game.rootPlaceId}&width=150&height=150&format=png`,
+    )
+    .addFields(
+      {
+        name: "🔗 Enlaces",
+        value: `[🎮 Jugar](https://www.roblox.com/games/${game.rootPlaceId})\n[📊 Ver página](https://www.roblox.com/games/${game.rootPlaceId})`,
+        inline: true,
+      },
+      {
+        name: "📈 Estadísticas",
+        value: `Creado: ${new Date(game.created).toLocaleDateString()}\nActualizado: ${new Date(game.updated).toLocaleDateString()}`,
+        inline: true,
+      },
+    )
+    .setFooter({ text: `Juego ${newIndex + 1} de ${games.length} | Servidores disponibles` })
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`prevRoblox-${userId}`)
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === 0),
+    new ButtonBuilder()
+      .setCustomId(`nextRoblox-${userId}`)
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === games.length - 1),
+    new ButtonBuilder()
+      .setCustomId(`playRoblox-${userId}`)
+      .setLabel("🎮 Jugar")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(false),
+  )
+
+  await interaction.update({ embeds: [embed], components: [buttons] })
 }
 
 async function handleGeneralSearchNavigation(interaction, action) {
