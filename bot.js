@@ -131,7 +131,7 @@ async function sendWarning(interactionOrMessage, text) {
 const activeChats = new Map();
 const imageSearchCache = new Map();
 const pendingXXXSearch = new Map();
-
+const xxxSearchCache = new Map(); // <-- AQUI
 
 const GOOGLE_API_KEY = 'AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY';
 const GOOGLE_CX = '34fe95d6cf39d4dd4';
@@ -437,7 +437,7 @@ if (command === 'xxx') {
 
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
-  const xxxSearchCache = new Map();
+  
 if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
   const [_, uid2] = i.customId.split('-');
   if (i.user.id !== uid2) return i.reply({ content: '⛔ No puedes usar este menú.', ephemeral: true });
