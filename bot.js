@@ -776,11 +776,29 @@ async function handleRobloxSearch(message, args) {
   if (!input) return message.reply("⚠️ Debes escribir el ID del juego de Roblox o el nombre.")
 
   try {
-    let placeId = input
+    let universeId = null
+    let placeId = null
+    let gameData = null
 
-    // Si no es un número, buscar el juego por nombre primero
-    if (isNaN(input)) {
-      const searchUrl = `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(input)}&model.maxRows=1&model.startRowIndex=0`
+    // Si es un número, asumir que es un ID
+    if (!isNaN(input)) {
+      placeId = input
+
+      // Obtener universeId desde placeId
+      const placeInfoUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
+      try {
+        const placeInfoResponse = await axios.get(placeInfoUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        })
+        universeId = placeInfoResponse.data.universeId
+      } catch (error) {
+        return message.reply("❌ No se pudo encontrar el juego con ese ID.")
+      }
+    } else {
+      // Buscar por nombre con búsqueda difusa
+      const searchUrl = `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(input)}&model.maxRows=10&model.startRowIndex=0`
 
       const searchResponse = await axios.get(searchUrl, {
         headers: {
@@ -790,100 +808,182 @@ async function handleRobloxSearch(message, args) {
 
       const games = searchResponse.data.games || []
       if (!games.length) {
-        return message.reply("❌ No se encontró ningún juego con ese nombre.")
-      }
+        // Intentar búsqueda más amplia si no encuentra nada
+        const broadSearchUrl = `https://catalog.roblox.com/v1/search/items?category=Experiences&keyword=${encodeURIComponent(input)}&limit=10`
 
-      placeId = games[0].rootPlaceId
+        try {
+          const broadSearchResponse = await axios.get(broadSearchUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          })
+
+          const catalogGames = broadSearchResponse.data.data || []
+          if (!catalogGames.length) {
+            return message.reply(
+              "❌ No se encontró ningún juego con ese nombre. Intenta con palabras clave diferentes.",
+            )
+          }
+
+          placeId = catalogGames[0].id
+          universeId = catalogGames[0].universeId
+        } catch (error) {
+          return message.reply("❌ No se encontró ningún juego con ese nombre.")
+        }
+      } else {
+        // Buscar el juego más similar usando coincidencia difusa
+        const bestMatch = games.reduce((best, current) => {
+          const currentScore = calculateSimilarity(input.toLowerCase(), current.name.toLowerCase())
+          const bestScore = calculateSimilarity(input.toLowerCase(), best.name.toLowerCase())
+          return currentScore > bestScore ? current : best
+        })
+
+        placeId = bestMatch.rootPlaceId
+        universeId = bestMatch.universeId
+      }
     }
 
-    // Obtener información del juego
-    const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${placeId}`
+    // Obtener información detallada del juego
+    const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${universeId}`
     const gameInfoResponse = await axios.get(gameInfoUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
     })
 
-    const gameData = gameInfoResponse.data.data?.[0]
+    gameData = gameInfoResponse.data.data?.[0]
     if (!gameData) {
       return message.reply("❌ No se pudo obtener información del juego.")
     }
 
-    // Obtener servidores del juego
-    const serversUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&limit=100`
-    const serversResponse = await axios.get(serversUrl, {
+    // Obtener servidores públicos
+    const publicServersUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&limit=100`
+    const publicServersResponse = await axios.get(publicServersUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
     })
 
-    const serversData = serversResponse.data
-    const servers = serversData.data || []
+    const publicServers = publicServersResponse.data.data || []
 
-    if (!servers.length) {
-      return message.reply("❌ No se encontraron servidores activos para este juego.")
+    // Obtener servidores VIP/Privados
+    let vipServers = []
+    try {
+      const vipServersUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Friend?sortOrder=Desc&limit=100`
+      const vipServersResponse = await axios.get(vipServersUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      })
+      vipServers = vipServersResponse.data.data || []
+    } catch (error) {
+      console.log("No se pudieron obtener servidores VIP")
     }
 
     // Calcular estadísticas
-    const totalServers = servers.length
-    const totalPlayers = servers.reduce((sum, server) => sum + server.playing, 0)
-    const maxPlayers = servers.reduce((sum, server) => sum + server.maxPlayers, 0)
-    const averagePlayers = Math.round(totalPlayers / totalServers)
+    const totalPublicServers = publicServers.length
+    const totalVipServers = vipServers.length
+    const totalServers = totalPublicServers + totalVipServers
 
-    // Encontrar el servidor con más jugadores
-    const fullestServer = servers.reduce((prev, current) => (prev.playing > current.playing ? prev : current))
+    const publicPlayers = publicServers.reduce((sum, server) => sum + server.playing, 0)
+    const vipPlayers = vipServers.reduce((sum, server) => sum + server.playing, 0)
+    const totalPlayers = publicPlayers + vipPlayers
 
+    const publicMaxPlayers = publicServers.reduce((sum, server) => sum + server.maxPlayers, 0)
+    const vipMaxPlayers = vipServers.reduce((sum, server) => sum + server.maxPlayers, 0)
+    const totalMaxPlayers = publicMaxPlayers + vipMaxPlayers
+
+    // Encontrar servidores destacados
+    const fullestPublicServer =
+      publicServers.length > 0
+        ? publicServers.reduce((prev, current) => (prev.playing > current.playing ? prev : current))
+        : null
+
+    const fullestVipServer =
+      vipServers.length > 0
+        ? vipServers.reduce((prev, current) => (prev.playing > current.playing ? prev : current))
+        : null
+
+    // Guardar en cache para navegación
     robloxSearchCache.set(message.author.id, {
-      servers,
+      publicServers,
+      vipServers,
       index: 0,
+      serverType: "public", // 'public' o 'vip'
       gameData,
       placeId,
+      universeId,
       totalServers,
       totalPlayers,
-      maxPlayers,
+      totalMaxPlayers,
+      publicPlayers,
+      vipPlayers,
+      totalPublicServers,
+      totalVipServers,
     })
 
+    // Crear embed con información completa
     const embed = new EmbedBuilder()
       .setTitle(`🎮 ${gameData.name}`)
-      .setDescription(`**📊 Estadísticas de Servidores:**
-🟢 **Servidores activos:** ${totalServers}
-👥 **Jugadores totales:** ${totalPlayers}/${maxPlayers}
-📈 **Promedio por servidor:** ${averagePlayers} jugadores
-🔥 **Servidor más lleno:** ${fullestServer.playing}/${fullestServer.maxPlayers} jugadores`)
+      .setDescription(`**📊 Estadísticas Completas del Juego:**
+
+**👥 JUGADORES TOTALES: ${totalPlayers.toLocaleString()}/${totalMaxPlayers.toLocaleString()}**
+
+**🌐 Servidores Públicos:**
+🟢 Servidores: ${totalPublicServers}
+👥 Jugadores: ${publicPlayers.toLocaleString()}/${publicMaxPlayers.toLocaleString()}
+
+**💎 Servidores VIP/Privados:**
+🔒 Servidores: ${totalVipServers}
+👥 Jugadores: ${vipPlayers.toLocaleString()}/${vipMaxPlayers.toLocaleString()}
+
+**📈 Información General:**
+⭐ Rating: ${gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${gameData.totalDownVotes?.toLocaleString() || 0}👎
+🎯 Visitas: ${gameData.visits?.toLocaleString() || "N/A"}
+🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}`)
       .setColor("#00b2ff")
       .setThumbnail(`https://www.roblox.com/asset-thumbnail/image?assetId=${placeId}&width=150&height=150&format=png`)
-      .addFields(
-        {
-          name: "🎯 Servidor Destacado",
-          value: `**ID:** ${fullestServer.id}
-**Jugadores:** ${fullestServer.playing}/${fullestServer.maxPlayers}
-**Ping:** ${fullestServer.ping || "N/A"}ms`,
-          inline: true,
-        },
-        {
-          name: "🔗 Enlaces",
-          value: `[🎮 Jugar](https://www.roblox.com/games/${placeId})
-[📊 Ver página](https://www.roblox.com/games/${placeId})`,
-          inline: true,
-        },
-      )
-      .setFooter({ text: `Servidor 1 de ${totalServers} | Actualizado hace unos segundos` })
+      .setFooter({
+        text: `ID: ${placeId} | Universe ID: ${universeId} | Total de servidores: ${totalServers}`,
+      })
       .setTimestamp()
 
+    // Agregar información de servidores destacados si existen
+    if (fullestPublicServer) {
+      embed.addFields({
+        name: "🔥 Servidor Público Más Lleno",
+        value: `**ID:** ${fullestPublicServer.id}
+**Jugadores:** ${fullestPublicServer.playing}/${fullestPublicServer.maxPlayers}
+**Ping:** ${fullestPublicServer.ping || "N/A"}ms`,
+        inline: true,
+      })
+    }
+
+    if (fullestVipServer) {
+      embed.addFields({
+        name: "💎 Servidor VIP Más Lleno",
+        value: `**ID:** ${fullestVipServer.id}
+**Jugadores:** ${fullestVipServer.playing}/${fullestVipServer.maxPlayers}
+**Ping:** ${fullestVipServer.ping || "N/A"}ms`,
+        inline: true,
+      })
+    }
+
+    // Botones de navegación y acciones
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`prevRoblox-${message.author.id}`)
-        .setLabel("⬅️ Anterior")
+        .setCustomId(`publicRoblox-${message.author.id}`)
+        .setLabel("🌐 Ver Públicos")
         .setStyle(ButtonStyle.Primary)
-        .setDisabled(true),
+        .setDisabled(totalPublicServers === 0),
       new ButtonBuilder()
-        .setCustomId(`nextRoblox-${message.author.id}`)
-        .setLabel("➡️ Siguiente")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(servers.length <= 1),
+        .setCustomId(`vipRoblox-${message.author.id}`)
+        .setLabel("💎 Ver VIP")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(totalVipServers === 0),
       new ButtonBuilder()
-        .setCustomId(`joinRoblox-${message.author.id}`)
-        .setLabel("🚀 Unirse")
+        .setCustomId(`playRoblox-${message.author.id}`)
+        .setLabel("🎮 Jugar")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`refreshRoblox-${message.author.id}`)
@@ -896,6 +996,300 @@ async function handleRobloxSearch(message, args) {
     console.error("Error en búsqueda de Roblox:", error.message)
     return message.reply(`❌ Error al obtener información de Roblox: ${error.message}`)
   }
+}
+
+// Agregar función para calcular similitud de strings (búsqueda difusa)
+function calculateSimilarity(str1, str2) {
+  const longer = str1.length > str2.length ? str1 : str2
+  const shorter = str1.length > str2.length ? str2 : str1
+
+  if (longer.length === 0) return 1.0
+
+  const editDistance = levenshteinDistance(longer, shorter)
+  return (longer.length - editDistance) / longer.length
+}
+
+function levenshteinDistance(str1, str2) {
+  const matrix = []
+
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i]
+  }
+
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j
+  }
+
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+      }
+    }
+  }
+
+  return matrix[str2.length][str1.length]
+}
+
+// Actualizar la función handleRobloxNavigation para manejar los nuevos botones:
+
+async function handleRobloxNavigation(interaction, action) {
+  const userId = interaction.user.id
+  const cache = robloxSearchCache.get(userId)
+
+  if (!cache) {
+    return interaction.reply({ content: "❌ No hay datos de juego disponibles.", ephemeral: true })
+  }
+
+  if (action === "playRoblox") {
+    const playUrl = `https://www.roblox.com/games/${cache.placeId}`
+    return interaction.reply({
+      content: `🎮 **${cache.gameData.name}**
+🔗 ${playUrl}
+
+*Clic en el enlace para jugar directamente*`,
+      ephemeral: true,
+    })
+  }
+
+  if (action === "publicRoblox") {
+    // Mostrar navegación de servidores públicos
+    if (cache.publicServers.length === 0) {
+      return interaction.reply({ content: "❌ No hay servidores públicos disponibles.", ephemeral: true })
+    }
+
+    cache.serverType = "public"
+    cache.index = 0
+    robloxSearchCache.set(userId, cache)
+
+    const server = cache.publicServers[0]
+    const embed = new EmbedBuilder()
+      .setTitle(`🌐 ${cache.gameData.name} - Servidores Públicos`)
+      .setDescription(`**📊 Servidor Público ${cache.index + 1} de ${cache.totalPublicServers}**
+
+**👥 Jugadores:** ${server.playing}/${server.maxPlayers}
+**🆔 ID del Servidor:** ${server.id}
+**📡 Ping:** ${server.ping || "N/A"}ms
+**🌍 Región:** ${server.location || "Global"}
+
+**📈 Estadísticas Públicas:**
+🟢 Total de servidores públicos: ${cache.totalPublicServers}
+👥 Total de jugadores públicos: ${cache.publicPlayers.toLocaleString()}`)
+      .setColor("#4CAF50")
+      .setThumbnail(
+        `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+      )
+      .setFooter({ text: `Servidor público ${cache.index + 1}/${cache.totalPublicServers}` })
+      .setTimestamp()
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`prevRoblox-${userId}`)
+        .setLabel("⬅️ Anterior")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId(`nextRoblox-${userId}`)
+        .setLabel("➡️ Siguiente")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(cache.publicServers.length <= 1),
+      new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
+    )
+
+    return interaction.update({ embeds: [embed], components: [buttons] })
+  }
+
+  if (action === "vipRoblox") {
+    // Mostrar navegación de servidores VIP
+    if (cache.vipServers.length === 0) {
+      return interaction.reply({ content: "❌ No hay servidores VIP disponibles.", ephemeral: true })
+    }
+
+    cache.serverType = "vip"
+    cache.index = 0
+    robloxSearchCache.set(userId, cache)
+
+    const server = cache.vipServers[0]
+    const embed = new EmbedBuilder()
+      .setTitle(`💎 ${cache.gameData.name} - Servidores VIP`)
+      .setDescription(`**📊 Servidor VIP ${cache.index + 1} de ${cache.totalVipServers}**
+
+**👥 Jugadores:** ${server.playing}/${server.maxPlayers}
+**🆔 ID del Servidor:** ${server.id}
+**📡 Ping:** ${server.ping || "N/A"}ms
+**🔒 Tipo:** Servidor Privado/VIP
+
+**💎 Estadísticas VIP:**
+🔒 Total de servidores VIP: ${cache.totalVipServers}
+👥 Total de jugadores VIP: ${cache.vipPlayers.toLocaleString()}`)
+      .setColor("#9C27B0")
+      .setThumbnail(
+        `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+      )
+      .setFooter({ text: `Servidor VIP ${cache.index + 1}/${cache.totalVipServers}` })
+      .setTimestamp()
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`prevRoblox-${userId}`)
+        .setLabel("⬅️ Anterior")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId(`nextRoblox-${userId}`)
+        .setLabel("➡️ Siguiente")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(cache.vipServers.length <= 1),
+      new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
+    )
+
+    return interaction.update({ embeds: [embed], components: [buttons] })
+  }
+
+  if (action === "backRoblox") {
+    // Volver a la vista principal
+    const embed = new EmbedBuilder()
+      .setTitle(`🎮 ${cache.gameData.name}`)
+      .setDescription(`**📊 Estadísticas Completas del Juego:**
+
+**👥 JUGADORES TOTALES: ${cache.totalPlayers.toLocaleString()}/${cache.totalMaxPlayers.toLocaleString()}**
+
+**🌐 Servidores Públicos:**
+🟢 Servidores: ${cache.totalPublicServers}
+👥 Jugadores: ${cache.publicPlayers.toLocaleString()}
+
+**💎 Servidores VIP/Privados:**
+🔒 Servidores: ${cache.totalVipServers}
+👥 Jugadores: ${cache.vipPlayers.toLocaleString()}
+
+**📈 Información General:**
+⭐ Rating: ${cache.gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${cache.gameData.totalDownVotes?.toLocaleString() || 0}👎
+🎯 Visitas: ${cache.gameData.visits?.toLocaleString() || "N/A"}`)
+      .setColor("#00b2ff")
+      .setThumbnail(
+        `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+      )
+      .setFooter({
+        text: `ID: ${cache.placeId} | Total de servidores: ${cache.totalServers}`,
+      })
+      .setTimestamp()
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`publicRoblox-${userId}`)
+        .setLabel("🌐 Ver Públicos")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(cache.totalPublicServers === 0),
+      new ButtonBuilder()
+        .setCustomId(`vipRoblox-${userId}`)
+        .setLabel("💎 Ver VIP")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(cache.totalVipServers === 0),
+      new ButtonBuilder().setCustomId(`playRoblox-${userId}`).setLabel("🎮 Jugar").setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`refreshRoblox-${userId}`)
+        .setLabel("🔄 Actualizar")
+        .setStyle(ButtonStyle.Secondary),
+    )
+
+    return interaction.update({ embeds: [embed], components: [buttons] })
+  }
+
+  if (action === "joinRoblox") {
+    const currentServers = cache.serverType === "public" ? cache.publicServers : cache.vipServers
+    const server = currentServers[cache.index]
+    const joinUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id}`
+
+    return interaction.reply({
+      content: `🚀 **Unirse al Servidor ${cache.serverType === "public" ? "Público" : "VIP"}**
+🎮 **Juego:** ${cache.gameData.name}
+👥 **Jugadores:** ${server.playing}/${server.maxPlayers}
+🔗 **Link:** ${joinUrl}
+
+*Clic en el enlace para jugar directamente*`,
+      ephemeral: true,
+    })
+  }
+
+  if (action === "refreshRoblox") {
+    // Recargar todos los datos del juego
+    try {
+      await interaction.deferUpdate()
+
+      // Volver a ejecutar la búsqueda con los datos actuales
+      const newMessage = {
+        author: { id: userId },
+        reply: (content) => interaction.editReply(content),
+        channel: interaction.channel,
+      }
+
+      // Simular args con el placeId actual
+      await handleRobloxSearch(newMessage, [cache.placeId])
+    } catch (error) {
+      return interaction.editReply({ content: "❌ Error al actualizar datos del servidor." })
+    }
+    return
+  }
+
+  // Navegación entre servidores del tipo actual
+  const currentServers = cache.serverType === "public" ? cache.publicServers : cache.vipServers
+  const maxServers = cache.serverType === "public" ? cache.totalPublicServers : cache.totalVipServers
+
+  let newIndex = cache.index
+
+  if (action === "nextRoblox" && cache.index < currentServers.length - 1) {
+    newIndex++
+  } else if (action === "prevRoblox" && cache.index > 0) {
+    newIndex--
+  }
+
+  cache.index = newIndex
+  robloxSearchCache.set(userId, cache)
+
+  const server = currentServers[newIndex]
+  const serverTypeText = cache.serverType === "public" ? "Público" : "VIP"
+  const serverTypeEmoji = cache.serverType === "public" ? "🌐" : "💎"
+  const serverTypeColor = cache.serverType === "public" ? "#4CAF50" : "#9C27B0"
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${serverTypeEmoji} ${cache.gameData.name} - Servidores ${serverTypeText}s`)
+    .setDescription(`**📊 Servidor ${serverTypeText} ${newIndex + 1} de ${maxServers}**
+
+**👥 Jugadores:** ${server.playing}/${server.maxPlayers}
+**🆔 ID del Servidor:** ${server.id}
+**📡 Ping:** ${server.ping || "N/A"}ms
+${cache.serverType === "public" ? "**🌍 Región:** " + (server.location || "Global") : "**🔒 Tipo:** Servidor Privado/VIP"}
+
+**📈 Estadísticas ${serverTypeText}s:**
+${serverTypeEmoji} Total de servidores ${cache.serverType === "public" ? "públicos" : "VIP"}: ${maxServers}
+👥 Total de jugadores ${cache.serverType === "public" ? "públicos" : "VIP"}: ${cache.serverType === "public" ? cache.publicPlayers.toLocaleString() : cache.vipPlayers.toLocaleString()}`)
+    .setColor(serverTypeColor)
+    .setThumbnail(
+      `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+    )
+    .setFooter({ text: `Servidor ${serverTypeText.toLowerCase()} ${newIndex + 1}/${maxServers}` })
+    .setTimestamp()
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`prevRoblox-${userId}`)
+      .setLabel("⬅️ Anterior")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === 0),
+    new ButtonBuilder()
+      .setCustomId(`nextRoblox-${userId}`)
+      .setLabel("➡️ Siguiente")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === currentServers.length - 1),
+    new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
+  )
+
+  await interaction.update({ embeds: [embed], components: [buttons] })
 }
 
 async function handleGeneralSearch(message, args) {
@@ -1437,163 +1831,6 @@ async function handleButtonInteraction(interaction) {
   } else if (["prevImage", "nextImage"].includes(interaction.customId)) {
     await handleImageNavigation(interaction)
   }
-}
-
-async function handleRobloxNavigation(interaction, action) {
-  const userId = interaction.user.id
-
-  if (action === "joinRoblox") {
-    const cache = robloxSearchCache.get(userId)
-    if (!cache) return interaction.reply({ content: "❌ No hay servidor seleccionado.", ephemeral: true })
-
-    const server = cache.servers[cache.index]
-    const joinUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id}`
-
-    return interaction.reply({
-      content: `🚀 **Unirse al Servidor**
-🎮 **Juego:** ${cache.gameData.name}
-👥 **Jugadores:** ${server.playing}/${server.maxPlayers}
-🔗 **Link:** ${joinUrl}
-
-*Clic en el enlace para unirte directamente al servidor*`,
-      ephemeral: true,
-    })
-  }
-
-  if (action === "refreshRoblox") {
-    // Recargar datos del servidor
-    const cache = robloxSearchCache.get(userId)
-    if (!cache) return interaction.reply({ content: "❌ No hay datos para actualizar.", ephemeral: true })
-
-    try {
-      const serversUrl = `https://games.roblox.com/v1/games/${cache.placeId}/servers/Public?sortOrder=Asc&limit=100`
-      const serversResponse = await axios.get(serversUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      })
-
-      const servers = serversResponse.data.data || []
-      if (!servers.length) {
-        return interaction.reply({ content: "❌ No hay servidores activos en este momento.", ephemeral: true })
-      }
-
-      // Actualizar cache
-      const totalServers = servers.length
-      const totalPlayers = servers.reduce((sum, server) => sum + server.playing, 0)
-      const maxPlayers = servers.reduce((sum, server) => sum + server.maxPlayers, 0)
-
-      cache.servers = servers
-      cache.totalServers = totalServers
-      cache.totalPlayers = totalPlayers
-      cache.maxPlayers = maxPlayers
-      cache.index = 0
-
-      robloxSearchCache.set(userId, cache)
-
-      const server = servers[0]
-      const averagePlayers = Math.round(totalPlayers / totalServers)
-
-      const embed = new EmbedBuilder()
-        .setTitle(`🎮 ${cache.gameData.name} (Actualizado)`)
-        .setDescription(`**📊 Estadísticas de Servidores:**
-🟢 **Servidores activos:** ${totalServers}
-👥 **Jugadores totales:** ${totalPlayers}/${maxPlayers}
-📈 **Promedio por servidor:** ${averagePlayers} jugadores`)
-        .setColor("#00ff88")
-        .setThumbnail(
-          `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
-        )
-        .addFields({
-          name: "🎯 Servidor Actual",
-          value: `**ID:** ${server.id}
-**Jugadores:** ${server.playing}/${server.maxPlayers}
-**Ping:** ${server.ping || "N/A"}ms`,
-          inline: true,
-        })
-        .setFooter({ text: `Servidor 1 de ${totalServers} | Recién actualizado` })
-        .setTimestamp()
-
-      const buttons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`prevRoblox-${userId}`)
-          .setLabel("⬅️ Anterior")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(true),
-        new ButtonBuilder()
-          .setCustomId(`nextRoblox-${userId}`)
-          .setLabel("➡️ Siguiente")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(servers.length <= 1),
-        new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId(`refreshRoblox-${userId}`)
-          .setLabel("🔄 Actualizar")
-          .setStyle(ButtonStyle.Secondary),
-      )
-
-      return interaction.update({ embeds: [embed], components: [buttons] })
-    } catch (error) {
-      return interaction.reply({ content: "❌ Error al actualizar datos del servidor.", ephemeral: true })
-    }
-  }
-
-  if (!robloxSearchCache.has(userId)) {
-    return interaction.reply({ content: "❌ No hay búsqueda activa para navegar.", ephemeral: true })
-  }
-
-  const data = robloxSearchCache.get(userId)
-  const { servers, index } = data
-  let newIndex = index
-
-  if (action === "nextRoblox" && index < servers.length - 1) {
-    newIndex++
-  } else if (action === "prevRoblox" && index > 0) {
-    newIndex--
-  }
-
-  data.index = newIndex
-  robloxSearchCache.set(userId, data)
-
-  const server = servers[newIndex]
-  const embed = new EmbedBuilder()
-    .setTitle(`🎮 ${data.gameData.name}`)
-    .setDescription(`**📊 Estadísticas Generales:**
-🟢 **Servidores activos:** ${data.totalServers}
-👥 **Jugadores totales:** ${data.totalPlayers}/${data.maxPlayers}`)
-    .setColor("#00b2ff")
-    .setThumbnail(
-      `https://www.roblox.com/asset-thumbnail/image?assetId=${data.placeId}&width=150&height=150&format=png`,
-    )
-    .addFields({
-      name: "🎯 Servidor Actual",
-      value: `**ID:** ${server.id}
-**Jugadores:** ${server.playing}/${server.maxPlayers}
-**Ping:** ${server.ping || "N/A"}ms`,
-      inline: true,
-    })
-    .setFooter({ text: `Servidor ${newIndex + 1} de ${servers.length}` })
-    .setTimestamp()
-
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`prevRoblox-${userId}`)
-      .setLabel("⬅️ Anterior")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(newIndex === 0),
-    new ButtonBuilder()
-      .setCustomId(`nextRoblox-${userId}`)
-      .setLabel("➡️ Siguiente")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(newIndex === servers.length - 1),
-    new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`refreshRoblox-${userId}`)
-      .setLabel("🔄 Actualizar")
-      .setStyle(ButtonStyle.Secondary),
-  )
-
-  await interaction.update({ embeds: [embed], components: [buttons] })
 }
 
 async function handleGeneralSearchNavigation(interaction, action) {
