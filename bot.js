@@ -15,7 +15,6 @@ const CHANNELS = new Set([
   '1381953561008541920',
   '1386131661942554685',
   '1299860715884249088',
-  '1399055360014422149',
 ]);
 
 const LANGUAGES = [
@@ -33,15 +32,39 @@ const LANGUAGES = [
 
 const trans = {
   es: {
-    mustReply: '⚠️ Usa el comando con un mensaje válido.',
+    mustReply: '⚠️ Usa el comando respondiendo a un mensaje.',
     timeout: '⏳ Tiempo agotado. Usa el comando nuevamente.',
     alreadyInLang: '⚠️ El mensaje ya está en tu idioma.',
-    notAuthorized: '⚠️ No eres el usuario autorizado.',
-    noSearchQuery: '⚠️ Debes proporcionar texto para buscar.',
-    noImagesFound: '❌ No se encontraron imágenes para esa búsqueda.',
-    noValidImages: '❌ No se encontraron imágenes válidas.',
-    chatDeactivated: '🛑 Chat automático desactivado.'
-  }
+    notYours: '⚠️ No puedes traducir tu propio idioma.',
+    langSaved: '🎉 Idioma guardado exitosamente.',
+    dtSuccess: '✅ Mensajes eliminados exitosamente.',
+    dtFail: '❌ No se pudo eliminar mensajes. ¿Tengo permisos?',
+    dtChooseAmount: '🗑️ Selecciona la cantidad de mensajes a eliminar:',
+    noPermDT: '⚠️ Solo el usuario **flux_fer** puede usar este comando.',
+    chatActivated: '💬 Chat de traducción automática ACTIVADO para los usuarios seleccionados.',
+    chatDeactivated: '🛑 Chat de traducción automática FINALIZADO.',
+    chatNoSession: '❌ No hay chat activo para finalizar.',
+    chatSelectUsers: '🌐 Selecciona con quién quieres hablar (tú ya estás incluido):',
+    notAuthorized: '⚠️ No eres el usuario autorizado para usar este comando.',
+    selectOneUser: '⚠️ Debes seleccionar exactamente un usuario para chatear.',
+  },
+  en: {
+    mustReply: '⚠️ Use the command by replying to a message.',
+    timeout: '⏳ Time ran out. Use the command again.',
+    alreadyInLang: '⚠️ Message already in your language.',
+    notYours: "⚠️ You can't translate your own language.",
+    langSaved: '🎉 Language saved successfully.',
+    dtSuccess: '✅ Messages deleted successfully.',
+    dtFail: "❌ Couldn't delete messages. Do I have permissions?",
+    dtChooseAmount: '🗑️ Select the amount of messages to delete:',
+    noPermDT: '⚠️ Only user **flux_fer** can use this command.',
+    chatActivated: '💬 Auto-translate chat ACTIVATED for selected users.',
+    chatDeactivated: '🛑 Auto-translate chat STOPPED.',
+    chatNoSession: '❌ No active chat session to stop.',
+    chatSelectUsers: '🌐 Select who you want to chat with (you are included):',
+    notAuthorized: '⚠️ You are not authorized to use this command.',
+    selectOneUser: '⚠️ You must select exactly one user to chat with.',
+  },
 };
 
 const PREFS = './langPrefs.json';
@@ -122,61 +145,39 @@ client.on('messageCreate', async (m) => {
     }
   }
 
-  if (m.content.toLowerCase().startsWith('.dt')) {
-    if (m.author.username !== 'flux_fer') {
-      return sendWarning(m, T(m.author.id, 'noPermDT'));
-    }
-    const uid = m.author.id;
-    const buttons = [5, 10, 25, 50, 100, 200, 300, 400].map((num) =>
-      new ButtonBuilder()
-        .setCustomId(`delAmount-${uid}-${num}`)
-        .setLabel(num.toString())
-        .setStyle(ButtonStyle.Secondary)
-    );
-    const rows = [];
-    for (let i = 0; i < buttons.length; i += 5) {
-      rows.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));
-    }
-    return m.reply({
-      content: T(uid, 'dtChooseAmount'),
-      components: rows,
-      ephemeral: true,
-    });
-  }
 
   if (m.content.toLowerCase().startsWith('.td')) {
-    if (!CHANNELS.has(m.channel.id)) return;
-    if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
-    const ref = await m.channel.messages.fetch(m.reference.messageId);
-    const txt = ref.content,
-      uid = m.author.id;
-    const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
-    const lang = getLang(uid);
-    if (prefs[uid]) {
-      const res = await translate(txt, lang);
-      await loading.delete().catch(() => {});
-      if (!res) return m.reply({ content: T(uid, 'timeout'), ephemeral: true });
-      if (res.from === lang) return m.reply({ content: T(uid, 'alreadyInLang'), ephemeral: true });
-
-      const e = new EmbedBuilder()
-        .setColor('#00c7ff')
-        .setDescription(`${LANGUAGES.find((l) => l.value === lang).emoji} : ${res.text}`);
-
-      return m.reply({ embeds: [e], ephemeral: true });
-    }
+  if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
+  const ref = await m.channel.messages.fetch(m.reference.messageId);
+  const txt = ref.content,
+    uid = m.author.id;
+  const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
+  const lang = getLang(uid);
+  if (prefs[uid]) {
+    const res = await translate(txt, lang);
     await loading.delete().catch(() => {});
+    if (!res) return m.reply({ content: T(uid, 'timeout'), ephemeral: true });
+    if (res.from === lang) return m.reply({ content: T(uid, 'alreadyInLang'), ephemeral: true });
 
-    const sel = new StringSelectMenuBuilder()
-      .setCustomId(`select-${uid}`)
-      .setPlaceholder('🌍 Selecciona idioma')
-      .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
+    const e = new EmbedBuilder()
+      .setColor('#00c7ff')
+      .setDescription(`${LANGUAGES.find((l) => l.value === lang).emoji} : ${res.text}`);
 
-    m.reply({
-      content: 'Selecciona idioma para guardar:',
-      components: [new ActionRowBuilder().addComponents(sel)],
-      ephemeral: true,
-    });
+    return m.reply({ embeds: [e], ephemeral: true });
   }
+  await loading.delete().catch(() => {});
+
+  const sel = new StringSelectMenuBuilder()
+    .setCustomId(`select-${uid}`)
+    .setPlaceholder('🌍 Selecciona idioma')
+    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
+
+  m.reply({
+    content: 'Selecciona idioma para guardar:',
+    components: [new ActionRowBuilder().addComponents(sel)],
+    ephemeral: true,
+  });
+}
 
   const chat = activeChats.get(m.channel.id);
   if (chat) {
@@ -242,19 +243,6 @@ client.on('messageCreate', async (m) => {
 
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
-  if (i.isButton()) {
-    if (i.customId.startsWith(`delAmount-${uid}-`)) {
-      const amount = parseInt(i.customId.split('-')[2], 10);
-      try {
-        await i.deferReply({ ephemeral: true });
-        await i.channel.bulkDelete(amount + 1, true);
-        await i.editReply({ content: T(uid, 'dtSuccess') });
-      } catch {
-        await i.editReply({ content: T(uid, 'dtFail') });
-      }
-      return;
-    }
-  }
 
   if (i.isStringSelectMenu()) {
     if (i.customId.startsWith('select-')) {
