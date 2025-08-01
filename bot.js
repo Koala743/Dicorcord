@@ -9,7 +9,6 @@ const {
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
-const pLimit = require('p-limit');
 
 const client = new Client({
   intents: [
@@ -84,9 +83,6 @@ const trans = {
 
 const PREFS = './langPrefs.json';
 let prefs = {};
-const translationCache = new Map();
-const limit = pLimit(2); // Limitar a 2 solicitudes concurrentes a la API
-
 function load() {
   try {
     prefs = JSON.parse(fs.readFileSync(PREFS));
@@ -94,15 +90,12 @@ function load() {
     prefs = {};
   }
 }
-
 function save() {
   fs.writeFileSync(PREFS, JSON.stringify(prefs, null, 2));
 }
-
 function getLang(u) {
   return prefs[u] || 'es';
 }
-
 function T(u, k) {
   return trans[getLang(u)]?.[k] || trans['es'][k];
 }
@@ -118,35 +111,21 @@ async function isImageUrlValid(url) {
 }
 
 async function translate(t, lang) {
-  return limit(async () => {
-    const cacheKey = `${t}:${lang}`;
-    if (translationCache.has(cacheKey)) {
-      return translationCache.get(cacheKey);
-    }
-
-    try {
-      const r = await axios.get(
-        `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(t)}`,
-        { timeout: 2000 }
-      );
-      if (r.data?.translation) {
-        const result = { text: r.data.translation, from: r.data.from };
-        translationCache.set(cacheKey, result);
-        if (translationCache.size > 1000) {
-          translationCache.delete(translationCache.keys().next().value);
-        }
-        return result;
-      }
-    } catch {}
-    return null;
-  });
+  try {
+    const r = await axios.get(
+      `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(t)}`
+    );
+    if (r.data?.translation)
+      return { text: r.data.translation, from: r.data.from };
+  } catch {}
+  return null;
 }
 
 async function sendWarning(interactionOrMessage, text) {
   const reply = await interactionOrMessage.reply({ content: text, ephemeral: true });
   setTimeout(() => {
     if (reply?.delete) reply.delete().catch(() => {});
-  }, 2000);
+  }, 5000);
 }
 
 const activeChats = new Map();
@@ -161,7 +140,7 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (m) => {
-  if (m.author.bot || !m.content || !m.content.trim()) return;
+  if (m.author.bot || !m.content) return;
 
   // Manejo de invitaciones
   const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i;
@@ -194,33 +173,50 @@ client.on('messageCreate', async (m) => {
     }
   }
 
-  // Lógica del chat automático
+ 
   const chat = activeChats.get(m.channel.id);
-  if (chat) {
-    const { users } = chat;
-    if (users.includes(m.author.id)) {
-      const raw = m.content.trim();
-      if (m.stickers.size > 0 || raw.startsWith('.')) return;
+if (!chat) return;
 
-      const otherUserId = users.find((u) => u !== m.author.id);
-      const toLang = getLang(otherUserId);
+const { users } = chat;
+if (!users.includes(m.author.id)) return;
 
-      try {
-        const res = await translate(raw, toLang);
-        if (res && res.text) {
-          const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-          await m.channel.send({
-            content: `${targetLangEmoji} **<@${otherUserId}>:** ${res.text}`,
-          });
-        } else {
-          await sendWarning(m, `⚠️ No se pudo traducir el mensaje al idioma de <@${otherUserId}>.`);
-        }
-      } catch (err) {
-        console.error('Error en traducción:', err);
-        await sendWarning(m, `❌ Error al traducir al idioma de <@${otherUserId}>.`);
-      }
-    }
+const raw = m.content?.trim();
+if (!raw) return;
+
+// --- Rápida detección de mensajes inútiles ---
+if (
+  m.stickers.size > 0 ||
+  raw.length <= 2 || // atajo para ignorar mensajes muy cortos
+  raw.startsWith('.') || // comando rápido
+  /^[<:]?a?:.+?:\d+[>]?$/.test(raw) || // emojis custom
+  /^\p{Emoji}+$|^\p{Emoji_Presentation}+$/u.test(raw) // emojis normales
+) return;
+
+// --- Proceso de traducción ---
+try {
+  const otherUserId = users.find((u) => u !== m.author.id);
+  const toLang = getLang(otherUserId);
+  const res = await translate(raw, toLang);
+
+  if (res?.text) {
+    const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+    const embed = new EmbedBuilder()
+      .setColor('#00c7ff')
+      .setDescription(`**${targetLangEmoji} ${res.text}**\n\n*<@${m.author.id}> (${getLang(m.author.id)})*`);
+    await m.channel.send({ embeds: [embed] });
+  } else {
+    await m.channel.send({
+      content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
+      ephemeral: true,
+    });
   }
+} catch (err) {
+  console.error('Error en traducción:', err);
+  await m.channel.send({
+    content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
+    ephemeral: true,
+  });
+}
 
   if (!m.content.startsWith('.')) return;
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
@@ -378,10 +374,12 @@ client.on('messageCreate', async (m) => {
     const user2 = mention;
     if (user1.id === user2.id) return sendWarning(m, '⚠️ No puedes iniciar un chat contigo mismo.');
 
+    // Verificar si los idiomas son iguales
     const lang1 = getLang(user1.id);
     const lang2 = getLang(user2.id);
     if (lang1 === lang2) return sendWarning(m, T(user1.id, 'sameLanguage'));
 
+    // Iniciar el chat
     activeChats.set(m.channel.id, { users: [user1.id, user2.id] });
     const member1 = await m.guild.members.fetch(user1.id);
     const member2 = await m.guild.members.fetch(user2.id);
