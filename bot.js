@@ -163,12 +163,6 @@ const COMMANDS_LIST = [
     category: "🎬 Video",
   },
   {
-    name: ".xml [búsqueda]",
-    description: "Busca videos en XNXX específicamente",
-    example: ".xml búsqueda",
-    category: "🔞 Adulto",
-  },
-  {
     name: ".roblox [juego]",
     description: "Busca servidores de Roblox para un juego específico",
     example: ".roblox Adopt Me",
@@ -220,6 +214,18 @@ const COMMANDS_LIST = [
     name: ".apistats",
     description: "Muestra estadísticas de uso de APIs (solo admin)",
     example: ".apistats",
+    category: "📊 Admin",
+  },
+  {
+    name: ".error",
+    description: "Activa el registro de errores (solo admin)",
+    example: ".error",
+    category: "📊 Admin",
+  },
+  {
+    name: ".derror",
+    description: "Desactiva el registro de errores (solo admin)",
+    example: ".derror",
     category: "📊 Admin",
   },
 ]
@@ -381,6 +387,7 @@ const generalSearchCache = new Map()
 const robloxSearchCache = new Map()
 const autoTranslateUsers = new Map()
 let prefs = {}
+let errorLoggingEnabled = false
 
 const translations = {
   es: {
@@ -451,6 +458,8 @@ function getTranslation(userId, key) {
 }
 
 async function logError(channel, error, context = "") {
+  if (!errorLoggingEnabled) return
+
   const errorEmbed = new EmbedBuilder()
     .setTitle("🚨 Error Detectado")
     .setDescription(
@@ -570,7 +579,7 @@ async function getPlayerAvatars(playerIds) {
     return playerIds.map((id) => ({
       targetId: id,
       state: "Completed",
-      imageUrl: `https://tr.rbxcdn.com/30DAY-AvatarHeadshot-${id}-Png/150/150/AvatarHeadshot/Webp/noFilter`,
+      imageUrl: `https://www.roblox.com/headshot-thumbnail/image?userId=${id}&width=150&height=150&format=png`,
     }))
   }
 }
@@ -890,7 +899,7 @@ async function handleAllPlayersView(interaction, cache) {
           const avatarData = playerAvatars.find((a) => a.targetId == playerToken)
           const avatarUrl = avatarData
             ? avatarData.imageUrl
-            : `https://tr.rbxcdn.com/30DAY-AvatarHeadshot-${playerToken}-Png/150/150/AvatarHeadshot/Webp/noFilter`
+            : `https://www.roblox.com/headshot-thumbnail/image?userId=${playerToken}&width=150&height=150&format=png`
 
           playerList += `  ${totalPlayersShown + 1}. **${playerName}** (ID: \`${playerToken}\`)\n`
           playerList += `     🖼️ [Avatar](${avatarUrl})\n`
@@ -900,7 +909,7 @@ async function handleAllPlayersView(interaction, cache) {
         await logError(interaction.channel, error, "Error obteniendo datos de jugadores")
         server.playerTokens.forEach((playerToken, playerIndex) => {
           if (totalPlayersShown >= 30) return
-          const avatarUrl = `https://tr.rbxcdn.com/30DAY-AvatarHeadshot-${playerToken}-Png/150/150/AvatarHeadshot/Webp/noFilter`
+          const avatarUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${playerToken}&width=150&height=150&format=png`
           playerList += `  ${totalPlayersShown + 1}. **Jugador_${playerIndex + 1}** (ID: \`${playerToken}\`)\n`
           playerList += `     🖼️ [Avatar](${avatarUrl})\n`
           totalPlayersShown++
@@ -1024,17 +1033,135 @@ async function handleRobloxNavigation(interaction, action) {
     } else if (action === "refreshRoblox") {
       try {
         await interaction.deferUpdate()
-        const newMessage = {
-          author: { id: userId },
-          reply: (content) => interaction.editReply(content),
-          channel: interaction.channel,
+
+        // Actualizar datos del juego
+        const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${cache.universeId}`
+        const gameInfoResponse = await axios.get(gameInfoUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        })
+        const gameData = gameInfoResponse.data.data?.[0]
+
+        if (!gameData) {
+          return interaction.editReply({ content: "❌ Error al actualizar datos del servidor." })
         }
-        await handleRobloxSearch(newMessage, [cache.placeId])
+
+        // Actualizar servidores públicos
+        const publicServersUrl = `https://games.roblox.com/v1/games/${cache.placeId}/servers/Public?sortOrder=Desc&limit=100`
+        const publicServersResponse = await axios.get(publicServersUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        })
+        const publicServers = publicServersResponse.data.data || []
+
+        // Actualizar servidores VIP
+        let vipServers = []
+        try {
+          const vipServersUrl = `https://games.roblox.com/v1/games/${cache.placeId}/servers/Friend?sortOrder=Desc&limit=100`
+          const vipServersResponse = await axios.get(vipServersUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          })
+          vipServers = vipServersResponse.data.data || []
+        } catch (error) {
+          console.log("No se pudieron obtener servidores VIP")
+        }
+
+        // Recalcular estadísticas
+        const totalPublicServers = publicServers.length
+        const totalVipServers = vipServers.length
+        const totalServers = totalPublicServers + totalVipServers
+        const publicPlayers = publicServers.reduce((sum, server) => sum + server.playing, 0)
+        const vipPlayers = vipServers.reduce((sum, server) => sum + server.playing, 0)
+        const totalPlayers = publicPlayers + vipPlayers
+        const publicMaxPlayers = publicServers.reduce((sum, server) => sum + server.maxPlayers, 0)
+        const vipMaxPlayers = vipServers.reduce((sum, server) => sum + server.maxPlayers, 0)
+        const totalMaxPlayers = publicMaxPlayers + vipMaxPlayers
+
+        // Actualizar cache
+        cache.gameData = gameData
+        cache.publicServers = publicServers
+        cache.vipServers = vipServers
+        cache.allServers = [...publicServers, ...vipServers]
+        cache.totalServers = totalServers
+        cache.totalPlayers = totalPlayers
+        cache.totalMaxPlayers = totalMaxPlayers
+        cache.publicPlayers = publicPlayers
+        cache.vipPlayers = vipPlayers
+        cache.totalPublicServers = totalPublicServers
+        cache.totalVipServers = totalVipServers
+
+        robloxSearchCache.set(userId, cache)
+
+        // Crear embed actualizado
+        const embed = new EmbedBuilder()
+          .setTitle(`🎮 ${gameData.name}`)
+          .setDescription(`**📊 Estadísticas Completas del Juego:**
+
+**👥 JUGADORES TOTALES: ${totalPlayers.toLocaleString()}/${totalMaxPlayers.toLocaleString()}**
+
+**🌐 Servidores Públicos:**
+🟢 Servidores: ${totalPublicServers}
+👥 Jugadores: ${publicPlayers.toLocaleString()}/${publicMaxPlayers.toLocaleString()}
+
+**💎 Servidores VIP/Privados:**
+🔒 Servidores: ${totalVipServers}
+👥 Jugadores: ${vipPlayers.toLocaleString()}/${vipMaxPlayers.toLocaleString()}
+
+**📈 Información General:**
+⭐ Rating: ${gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${gameData.totalDownVotes?.toLocaleString() || 0}👎
+🎯 Visitas: ${gameData.visits?.toLocaleString() || "N/A"}
+🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}`)
+          .setColor("#00b2ff")
+          .setThumbnail(
+            `https://www.roblox.com/asset-thumbnail/image?assetId=${cache.placeId}&width=150&height=150&format=png`,
+          )
+          .setFooter({
+            text: `ID: ${cache.placeId} | Universe ID: ${cache.universeId} | Total de servidores: ${totalServers} | 🔄 Actualizado`,
+          })
+          .setTimestamp()
+
+        const row1 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`publicRoblox-${userId}`)
+            .setLabel("🌐 Ver Públicos")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(totalPublicServers === 0),
+          new ButtonBuilder()
+            .setCustomId(`vipRoblox-${userId}`)
+            .setLabel("💎 Ver VIP")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(totalVipServers === 0),
+          new ButtonBuilder().setCustomId(`playRoblox-${userId}`).setLabel("🎮 Jugar").setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`refreshRoblox-${userId}`)
+            .setLabel("🔄 Actualizar")
+            .setStyle(ButtonStyle.Secondary),
+        )
+
+        const row2 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`allServersRoblox-${userId}`)
+            .setLabel("📋 Todos los Servidores")
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`allPlayersRoblox-${userId}`)
+            .setLabel("👥 Todos los Jugadores")
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`playerCountRoblox-${userId}`)
+            .setLabel("📊 Contador Jugadores")
+            .setStyle(ButtonStyle.Secondary),
+        )
+
+        return interaction.editReply({ embeds: [embed], components: [row1, row2] })
       } catch (error) {
         await logError(interaction.channel, error, "Error refrescando datos de Roblox")
         return interaction.editReply({ content: "❌ Error al actualizar datos del servidor." })
       }
-      return
     } else if (action === "backRoblox") {
       const embed = new EmbedBuilder()
         .setTitle(`🎮 ${cache.gameData.name}`)
@@ -1386,9 +1513,6 @@ async function handleCommands(message) {
       case "mp4":
         await handleVideoSearch(message, args)
         break
-      case "xml":
-        await handleXMLSearch(message, args)
-        break
       case "roblox":
         await handleRobloxSearch(message, args)
         break
@@ -1413,6 +1537,18 @@ async function handleCommands(message) {
       case "lista":
         await handleCommandsList(message)
         break
+      case "error":
+        if (message.author.username !== "flux_fer") {
+          return sendWarning(message, "⚠️ Solo el administrador puede activar el registro de errores.")
+        }
+        errorLoggingEnabled = true
+        return message.reply("✅ Registro de errores ACTIVADO. Los errores se mostrarán en el chat.")
+      case "derror":
+        if (message.author.username !== "flux_fer") {
+          return sendWarning(message, "⚠️ Solo el administrador puede desactivar el registro de errores.")
+        }
+        errorLoggingEnabled = false
+        return message.reply("🛑 Registro de errores DESACTIVADO. Los errores no se mostrarán en el chat.")
       case "apistats":
         if (message.author.username !== "flux_fer") {
           return sendWarning(message, "⚠️ Solo el administrador puede ver las estadísticas.")
@@ -1431,6 +1567,11 @@ async function handleCommands(message) {
             {
               name: "🎬 YouTube Data API",
               value: `Activas: ${youtubeStats.active}/${youtubeStats.total}\nRequests hoy: ${youtubeStats.totalRequests}`,
+              inline: true,
+            },
+            {
+              name: "🚨 Sistema de Errores",
+              value: `Estado: ${errorLoggingEnabled ? "🟢 Activado" : "🔴 Desactivado"}`,
               inline: true,
             },
           )
@@ -1611,12 +1752,12 @@ async function handleWebSearch(message, args) {
       .setColor("#00c7ff")
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId("prevImage")
+        .setCustomId(`prevImage-${message.author.id}`)
         .setLabel("⬅️")
         .setStyle(ButtonStyle.Primary)
         .setDisabled(validIndex === 0),
       new ButtonBuilder()
-        .setCustomId("nextImage")
+        .setCustomId(`nextImage-${message.author.id}`)
         .setLabel("➡️")
         .setStyle(ButtonStyle.Primary)
         .setDisabled(validIndex === items.length - 1),
@@ -1689,41 +1830,6 @@ async function handleVideoSearch(message, args) {
     }
     await logError(message.channel, error, "Error en búsqueda de video YouTube")
     return message.reply("❌ Error al buscar el video.")
-  }
-}
-
-async function handleXMLSearch(message, args) {
-  const query = args.join(" ")
-  if (!query) return message.reply("⚠️ ¡Escribe algo para buscar un video, compa!")
-  const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&q=${encodeURIComponent(query + " site:www.xnxx.es")}&num=5`
-  try {
-    const response = await makeGoogleAPIRequest(url, "google")
-    const items = response.data.items
-    if (!items || items.length === 0) {
-      return message.reply("❌ No se encontraron videos, ¡intenta otra cosa!")
-    }
-    const video = items.find((item) => item.link.includes("/video-")) || items[0]
-    const title = video.title
-    const link = video.link
-    const context = video.displayLink
-    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src
-    const apiInfo = apiManager.getCurrentAPIInfo("google")
-    const embed = new EmbedBuilder()
-      .setTitle(`🎬 ${title.slice(0, 80)}...`)
-      .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
-      .setColor("#ff0066")
-      .setThumbnail(thumb || "https://i.imgur.com/defaultThumbnail.png")
-      .setFooter({
-        text: `API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
-        iconURL: "https://i.imgur.com/botIcon.png",
-      })
-      .setTimestamp()
-      .addFields({ name: "⚠️ Nota", value: "Este enlace lleva a la página del video" })
-    await message.channel.send({ embeds: [embed] })
-  } catch (error) {
-    console.error("Error en búsqueda XML:", error.message)
-    await logError(message.channel, error, "Error en búsqueda XML")
-    return message.reply("❌ ¡Algo salió mal, compa! Intenta de nuevo.")
   }
 }
 
@@ -1971,9 +2077,16 @@ async function handleLanguageSelectionMenu(interaction) {
 
 async function handleButtonInteraction(interaction) {
   const userId = interaction.user.id
-  const [action, uid] = interaction.customId.split("-")
+  const customId = interaction.customId
 
-  if (userId !== uid) {
+  // Extraer userId del customId para verificar permisos
+  let buttonUserId = null
+  if (customId.includes("-")) {
+    const parts = customId.split("-")
+    buttonUserId = parts[parts.length - 1] // El userId siempre está al final
+  }
+
+  if (userId !== buttonUserId) {
     if (!interaction.replied && !interaction.deferred) {
       return interaction.reply({ content: "⛔ No puedes usar estos botones.", ephemeral: true })
     }
@@ -1981,15 +2094,15 @@ async function handleButtonInteraction(interaction) {
   }
 
   try {
-    if (action.startsWith("xxx")) {
-      await handleAdultSearchNavigation(interaction, action)
-    } else if (action.startsWith("comic")) {
-      await handleComicSearchNavigation(interaction, action)
-    } else if (action.startsWith("General") || action.includes("General")) {
-      await handleGeneralSearchNavigation(interaction, action)
-    } else if (action.includes("Roblox")) {
-      await handleRobloxNavigation(interaction, action)
-    } else if (["prevImage", "nextImage"].includes(interaction.customId)) {
+    if (customId.startsWith("xxx")) {
+      await handleAdultSearchNavigation(interaction, customId.split("-")[0])
+    } else if (customId.startsWith("comic")) {
+      await handleComicSearchNavigation(interaction, customId.split("-")[0])
+    } else if (customId.startsWith("prevGeneral") || customId.startsWith("nextGeneral")) {
+      await handleGeneralSearchNavigation(interaction, customId.split("-")[0])
+    } else if (customId.includes("Roblox")) {
+      await handleRobloxNavigation(interaction, customId.split("-")[0])
+    } else if (customId.startsWith("prevImage") || customId.startsWith("nextImage")) {
       await handleImageNavigation(interaction)
     }
   } catch (error) {
@@ -2086,11 +2199,14 @@ async function handleImageNavigation(interaction) {
   const userId = interaction.user.id
   const cache = imageSearchCache.get(userId)
   if (!cache) return interaction.deferUpdate()
+
   let newIndex = cache.index
-  if (interaction.customId === "prevImage" && newIndex > 0) newIndex--
-  if (interaction.customId === "nextImage" && newIndex < cache.items.length - 1) newIndex++
+  if (interaction.customId.startsWith("prevImage") && newIndex > 0) newIndex--
+  if (interaction.customId.startsWith("nextImage") && newIndex < cache.items.length - 1) newIndex++
+
   const validIndex = await findValidImageIndex(cache.items, newIndex, newIndex < cache.index ? -1 : 1)
   if (validIndex === -1) return interaction.deferUpdate()
+
   cache.index = validIndex
   const img = cache.items[validIndex]
   const apiInfo = apiManager.getCurrentAPIInfo("google")
@@ -2104,12 +2220,12 @@ async function handleImageNavigation(interaction) {
     .setColor("#00c7ff")
   const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId("prevImage")
+      .setCustomId(`prevImage-${userId}`)
       .setLabel("⬅️")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(validIndex === 0),
     new ButtonBuilder()
-      .setCustomId("nextImage")
+      .setCustomId(`nextImage-${userId}`)
       .setLabel("➡️")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(validIndex === cache.items.length - 1),
