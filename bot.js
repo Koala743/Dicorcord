@@ -10,7 +10,6 @@ const {
 const axios = require("axios")
 const fs = require("fs")
 
-// Bot configuration
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -20,7 +19,6 @@ const client = new Client({
   ],
 })
 
-// Constants
 const CHANNELS = new Set(["1381953561008541920", "1386131661942554685", "1299860715884249088"])
 
 const LANGUAGES = [
@@ -41,22 +39,20 @@ const ROLE_CONFIG = {
   allowed: new Set(["1244056080825454642", "1305327128341905459", "1244039798696710212"]),
 }
 
-// Reemplaza la sección API_CONFIG con esta nueva estructura:
-
 const API_POOLS = {
   google: [
     {
-      id: "api_1",
+      id: "google_1",
       apiKey: "AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY",
       cx: "34fe95d6cf39d4dd4",
       active: true,
       quotaExhausted: false,
       dailyRequests: 0,
-      maxDailyRequests: 100, // Límite diario de Google Custom Search
+      maxDailyRequests: 100,
       lastReset: new Date().toDateString(),
     },
     {
-      id: "api_2",
+      id: "google_2",
       apiKey: "AIzaSyCOY3_MeHHHLiOXq2tAUypm1aHbpkFwQ80",
       cx: "f21e2b3468dc449e2",
       active: true,
@@ -65,11 +61,10 @@ const API_POOLS = {
       maxDailyRequests: 100,
       lastReset: new Date().toDateString(),
     },
-    // 🔥 AGREGA MÁS APIs AQUÍ - EJEMPLOS:
     {
-      id: "api_3",
-      apiKey: "TU_API_KEY_3_AQUI", // Reemplaza con tu API Key
-      cx: "TU_CX_3_AQUI", // Reemplaza con tu Custom Search Engine ID
+      id: "google_3",
+      apiKey: "TU_API_KEY_3_AQUI",
+      cx: "TU_CX_3_AQUI",
       active: true,
       quotaExhausted: false,
       dailyRequests: 0,
@@ -77,7 +72,7 @@ const API_POOLS = {
       lastReset: new Date().toDateString(),
     },
     {
-      id: "api_4",
+      id: "google_4",
       apiKey: "TU_API_KEY_4_AQUI",
       cx: "TU_CX_4_AQUI",
       active: true,
@@ -87,7 +82,7 @@ const API_POOLS = {
       lastReset: new Date().toDateString(),
     },
     {
-      id: "api_5",
+      id: "google_5",
       apiKey: "TU_API_KEY_5_AQUI",
       cx: "TU_CX_5_AQUI",
       active: true,
@@ -96,56 +91,65 @@ const API_POOLS = {
       maxDailyRequests: 100,
       lastReset: new Date().toDateString(),
     },
-    // Puedes agregar tantas como quieras siguiendo el mismo patrón
   ],
 
-  // 🌟 PUEDES AGREGAR MÁS TIPOS DE APIs AQUÍ:
   youtube: [
     {
       id: "youtube_1",
-      apiKey: "TU_YOUTUBE_API_KEY_1",
-      active: true,
-      quotaExhausted: false,
-      dailyRequests: 0,
-      maxDailyRequests: 10000, // YouTube tiene límites más altos
-      lastReset: new Date().toDateString(),
-    },
-    {
-      id: "youtube_2",
-      apiKey: "TU_YOUTUBE_API_KEY_2",
+      apiKey: "AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY",
       active: true,
       quotaExhausted: false,
       dailyRequests: 0,
       maxDailyRequests: 10000,
       lastReset: new Date().toDateString(),
     },
-    // Agrega más YouTube APIs aquí
+    {
+      id: "youtube_2",
+      apiKey: "AIzaSyCOY3_MeHHHLiOXq2tAUypm1aHbpkFwQ80",
+      active: true,
+      quotaExhausted: false,
+      dailyRequests: 0,
+      maxDailyRequests: 10000,
+      lastReset: new Date().toDateString(),
+    },
+    {
+      id: "youtube_3",
+      apiKey: "TU_YOUTUBE_API_KEY_3",
+      active: true,
+      quotaExhausted: false,
+      dailyRequests: 0,
+      maxDailyRequests: 10000,
+      lastReset: new Date().toDateString(),
+    },
   ],
 }
 
-// Sistema de gestión de APIs
+const COMIC_SITES = [
+  { label: "Chochox", value: "chochox.com", emoji: "🔴" },
+  { label: "ReyComix", value: "reycomix.com", emoji: "🔵" },
+  { label: "Ver Comics Porno", value: "ver-comics-porno.com", emoji: "🟣" },
+  { label: "Hitomi", value: "hitomi.la", emoji: "🟠" },
+  { label: "Ver Comics Porno XXX", value: "vercomicsporno.xxx", emoji: "🟢" },
+]
+
 class APIManager {
   constructor() {
     this.loadAPIStatus()
     this.resetDailyCounters()
   }
 
-  // Obtener la próxima API disponible
   getNextAvailableAPI(type = "google") {
     const apis = API_POOLS[type]
     if (!apis) return null
 
-    // Buscar API activa y no agotada
     for (const api of apis) {
       if (api.active && !api.quotaExhausted && api.dailyRequests < api.maxDailyRequests) {
         return api
       }
     }
 
-    // Si todas están agotadas, reiniciar contadores si es un nuevo día
     this.resetDailyCounters()
 
-    // Intentar de nuevo después del reset
     for (const api of apis) {
       if (api.active && !api.quotaExhausted) {
         return api
@@ -155,7 +159,6 @@ class APIManager {
     return null
   }
 
-  // Marcar API como agotada
   markAPIAsExhausted(apiId, type = "google") {
     const apis = API_POOLS[type]
     const api = apis.find((a) => a.id === apiId)
@@ -166,14 +169,12 @@ class APIManager {
     }
   }
 
-  // Incrementar contador de requests
   incrementRequestCount(apiId, type = "google") {
     const apis = API_POOLS[type]
     const api = apis.find((a) => a.id === apiId)
     if (api) {
       api.dailyRequests++
 
-      // Si alcanza el límite, marcar como agotada
       if (api.dailyRequests >= api.maxDailyRequests) {
         api.quotaExhausted = true
         console.log(`📊 API ${apiId} alcanzó el límite diario (${api.maxDailyRequests} requests)`)
@@ -183,7 +184,6 @@ class APIManager {
     }
   }
 
-  // Resetear contadores diarios
   resetDailyCounters() {
     const today = new Date().toDateString()
 
@@ -201,7 +201,6 @@ class APIManager {
     this.saveAPIStatus()
   }
 
-  // Guardar estado de APIs
   saveAPIStatus() {
     try {
       fs.writeFileSync("./apiStatus.json", JSON.stringify(API_POOLS, null, 2))
@@ -210,13 +209,11 @@ class APIManager {
     }
   }
 
-  // Cargar estado de APIs
   loadAPIStatus() {
     try {
       const data = fs.readFileSync("./apiStatus.json", "utf8")
       const savedPools = JSON.parse(data)
 
-      // Merge con la configuración actual
       Object.keys(savedPools).forEach((type) => {
         if (API_POOLS[type]) {
           savedPools[type].forEach((savedApi) => {
@@ -235,7 +232,6 @@ class APIManager {
     }
   }
 
-  // Obtener estadísticas de APIs
   getAPIStats(type = "google") {
     const apis = API_POOLS[type]
     const active = apis.filter((a) => a.active && !a.quotaExhausted).length
@@ -244,12 +240,23 @@ class APIManager {
 
     return { active, total, totalRequests }
   }
+
+  getCurrentAPIInfo(type = "google") {
+    const api = this.getNextAvailableAPI(type)
+    if (!api) return null
+
+    const remaining = api.maxDailyRequests - api.dailyRequests
+    return {
+      id: api.id,
+      remaining: remaining,
+      used: api.dailyRequests,
+      max: api.maxDailyRequests,
+    }
+  }
 }
 
-// Inicializar el gestor de APIs
 const apiManager = new APIManager()
 
-// Función mejorada para hacer requests con rotación automática
 async function makeGoogleAPIRequest(url, type = "google") {
   let attempts = 0
   const maxAttempts = API_POOLS[type].length
@@ -261,7 +268,6 @@ async function makeGoogleAPIRequest(url, type = "google") {
       throw new Error(`❌ Todas las APIs de ${type} están agotadas. Intenta mañana.`)
     }
 
-    // Construir URL con la API actual
     const finalUrl = url.replace("GOOGLE_API_KEY", api.apiKey).replace("GOOGLE_CX", api.cx)
 
     try {
@@ -269,14 +275,12 @@ async function makeGoogleAPIRequest(url, type = "google") {
 
       const response = await axios.get(finalUrl)
 
-      // Incrementar contador si la request fue exitosa
       apiManager.incrementRequestCount(api.id, type)
 
       return response
     } catch (error) {
       attempts++
 
-      // Detectar si es error de cuota agotada
       if (
         error.response?.status === 429 ||
         error.response?.data?.error?.message?.includes("quota") ||
@@ -287,7 +291,6 @@ async function makeGoogleAPIRequest(url, type = "google") {
         continue
       }
 
-      // Si es otro tipo de error, lanzarlo
       if (attempts >= maxAttempts) {
         throw error
       }
@@ -297,14 +300,15 @@ async function makeGoogleAPIRequest(url, type = "google") {
   throw new Error(`❌ Todas las APIs de ${type} fallaron después de ${maxAttempts} intentos`)
 }
 
-// Global state
 const activeChats = new Map()
 const imageSearchCache = new Map()
 const pendingXXXSearch = new Map()
 const xxxSearchCache = new Map()
+const pendingComicSearch = new Map()
+const comicSearchCache = new Map()
+const generalSearchCache = new Map()
 let prefs = {}
 
-// Translations
 const translations = {
   es: {
     mustReply: "⚠️ Usa el comando respondiendo a un mensaje.",
@@ -340,7 +344,6 @@ const translations = {
   },
 }
 
-// Utility functions
 function loadPreferences() {
   try {
     prefs = JSON.parse(fs.readFileSync("./langPrefs.json"))
@@ -374,7 +377,7 @@ async function isImageUrlValid(url) {
 
 async function translateText(text, targetLang) {
   try {
-    const response = await axios.get(`${API_POOLS.lingvaUrl}/auto/${targetLang}/${encodeURIComponent(text)}`)
+    const response = await axios.get(`https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`)
     if (response.data?.translation) {
       return {
         text: response.data.translation,
@@ -394,7 +397,6 @@ async function sendWarning(interactionOrMessage, text) {
   }, 5000)
 }
 
-// Event handlers
 client.once("ready", () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`)
   loadPreferences()
@@ -403,13 +405,10 @@ client.once("ready", () => {
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.content) return
 
-  // Handle invite link restrictions
   await handleInviteRestrictions(message)
 
-  // Handle active chat translations
   await handleChatTranslation(message)
 
-  // Handle commands
   if (message.content.startsWith(".")) {
     await handleCommands(message)
   }
@@ -423,7 +422,6 @@ client.on("interactionCreate", async (interaction) => {
   }
 })
 
-// Handler functions
 async function handleInviteRestrictions(message) {
   const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i
 
@@ -490,8 +488,14 @@ async function handleCommands(message) {
     case "web":
       await handleWebSearch(message, args)
       break
+    case "bs":
+      await handleGeneralSearch(message, args)
+      break
     case "xxx":
       await handleAdultSearch(message, args)
+      break
+    case "cmx":
+      await handleComicSearch(message, args)
       break
     case "mp4":
       await handleVideoSearch(message, args)
@@ -511,7 +515,6 @@ async function handleCommands(message) {
     case "ID":
       await handleLanguageSelection(message)
       break
-    // Agregar comando para ver estadísticas de APIs
     case "apistats":
       if (message.author.username !== "flux_fer") {
         return sendWarning(message, "⚠️ Solo el administrador puede ver las estadísticas.")
@@ -541,15 +544,89 @@ async function handleCommands(message) {
   }
 }
 
-// Actualizar la función handleWebSearch para usar el nuevo sistema:
+async function handleGeneralSearch(message, args) {
+  const query = args.join(" ")
+  if (!query) return message.reply(getTranslation(message.author.id, "noSearchQuery"))
+
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
+  if (!apiInfo) {
+    return message.reply("❌ Todas las APIs están agotadas. Intenta mañana.")
+  }
+
+  const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&q=${encodeURIComponent(query)}&num=10`
+
+  try {
+    const response = await makeGoogleAPIRequest(url, "google")
+    const items = response.data.items || []
+
+    if (!items.length) {
+      return message.reply("❌ No se encontraron resultados.")
+    }
+
+    generalSearchCache.set(message.author.id, { items, index: 0, query })
+
+    const item = items[0]
+    const embed = new EmbedBuilder()
+      .setTitle(`🔍 ${item.title}`)
+      .setDescription(`${item.snippet}\n\n[🔗 Ver página completa](${item.link})`)
+      .setColor("#4285f4")
+      .setFooter({
+        text: `Resultado 1 de ${items.length} | API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
+      })
+      .setTimestamp()
+
+    if (item.pagemap?.cse_image?.[0]?.src) {
+      embed.setThumbnail(item.pagemap.cse_image[0].src)
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`prevGeneral-${message.author.id}`)
+        .setLabel("⬅️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId(`nextGeneral-${message.author.id}`)
+        .setLabel("➡️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(items.length <= 1),
+    )
+
+    await message.channel.send({ embeds: [embed], components: [row] })
+  } catch (error) {
+    const errorMsg = error.message || "Error desconocido"
+    console.error("Error en búsqueda general:", errorMsg)
+    return message.reply(`❌ Error en la búsqueda: ${errorMsg}`)
+  }
+}
+
+async function handleComicSearch(message, args) {
+  const query = args.join(" ")
+  if (!query) return message.reply("⚠️ Debes escribir algo para buscar.")
+
+  const userId = message.author.id
+  pendingComicSearch.set(userId, query)
+
+  const siteSelector = new StringSelectMenuBuilder()
+    .setCustomId(`comicsite-${userId}`)
+    .setPlaceholder("📚 Selecciona el sitio para buscar comics")
+    .addOptions(COMIC_SITES)
+
+  return message.reply({
+    content: "Selecciona el sitio donde deseas buscar comics:",
+    components: [new ActionRowBuilder().addComponents(siteSelector)],
+    ephemeral: true,
+  })
+}
 
 async function handleWebSearch(message, args) {
   const query = args.join(" ")
   if (!query) return message.reply(getTranslation(message.author.id, "noSearchQuery"))
 
-  // Mostrar estadísticas de APIs disponibles
-  const stats = apiManager.getAPIStats("google")
-  console.log(`📊 APIs Google disponibles: ${stats.active}/${stats.total} | Requests hoy: ${stats.totalRequests}`)
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
+  if (!apiInfo) {
+    return message.reply("❌ Todas las APIs están agotadas. Intenta mañana.")
+  }
 
   const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&searchType=image&q=${encodeURIComponent(query)}&num=10`
 
@@ -576,11 +653,14 @@ async function handleWebSearch(message, args) {
 
     imageSearchCache.set(message.author.id, { items, index: validIndex, query })
 
+    const currentApiInfo = apiManager.getCurrentAPIInfo("google")
     const embed = new EmbedBuilder()
       .setTitle(`📷 Resultados para: ${query}`)
       .setImage(items[validIndex].link)
       .setDescription(`[Página donde está la imagen](${items[validIndex].image.contextLink})`)
-      .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length} | APIs activas: ${stats.active}/${stats.total}` })
+      .setFooter({
+        text: `Imagen ${validIndex + 1} de ${items.length} | API: ${currentApiInfo.id} | Quedan: ${currentApiInfo.remaining}/${currentApiInfo.max}`,
+      })
       .setColor("#00c7ff")
 
     const row = new ActionRowBuilder().addComponents(
@@ -627,14 +707,14 @@ async function handleAdultSearch(message, args) {
   })
 }
 
-// Actualizar handleVideoSearch para usar YouTube API con rotación:
-
 async function handleVideoSearch(message, args) {
   const query = args.join(" ")
   if (!query) return message.reply("⚠️ Debes escribir algo para buscar el video.")
 
-  const stats = apiManager.getAPIStats("youtube")
-  console.log(`📊 APIs YouTube disponibles: ${stats.active}/${stats.total}`)
+  const apiInfo = apiManager.getCurrentAPIInfo("youtube")
+  if (!apiInfo) {
+    return message.reply("❌ Todas las APIs de YouTube están agotadas. Intenta mañana.")
+  }
 
   try {
     const api = apiManager.getNextAvailableAPI("youtube")
@@ -661,19 +741,19 @@ async function handleVideoSearch(message, args) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
     const title = item.snippet.title
 
-    await message.channel.send(`🎬 ${title}`)
+    const currentApiInfo = apiManager.getCurrentAPIInfo("youtube")
+    await message.channel.send(
+      `🎬 ${title}\n📊 API: ${currentApiInfo.id} | Quedan: ${currentApiInfo.remaining}/${currentApiInfo.max}`,
+    )
     return message.channel.send(videoUrl)
   } catch (error) {
     if (error.response?.status === 429) {
       console.log("⚠️ Cuota de YouTube agotada, intentando con otra API...")
-      // El sistema automáticamente intentará con la siguiente API
       return message.reply("⚠️ Cuota agotada, intentando con otra API...")
     }
     return message.reply("❌ Error al buscar el video.")
   }
 }
-
-// Actualizar las otras funciones de búsqueda para usar el nuevo sistema:
 
 async function handleXMLSearch(message, args) {
   const query = args.join(" ")
@@ -695,12 +775,16 @@ async function handleXMLSearch(message, args) {
     const context = video.displayLink
     const thumb = video.pagemap?.cse_thumbnail?.[0]?.src
 
+    const apiInfo = apiManager.getCurrentAPIInfo("google")
     const embed = new EmbedBuilder()
       .setTitle(`🎬 ${title.slice(0, 80)}...`)
       .setDescription(`**🔥 Clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Fuente**: ${context}`)
       .setColor("#ff0066")
       .setThumbnail(thumb || "https://i.imgur.com/defaultThumbnail.png")
-      .setFooter({ text: "Buscado con Bot_v, ¡a darle caña!", iconURL: "https://i.imgur.com/botIcon.png" })
+      .setFooter({
+        text: `API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
+        iconURL: "https://i.imgur.com/botIcon.png",
+      })
       .setTimestamp()
       .addFields({ name: "⚠️ Nota", value: "Este enlace lleva a la página del video" })
 
@@ -829,8 +913,59 @@ async function handleSelectMenu(interaction) {
 
   if (interaction.customId.startsWith("xxxsite-")) {
     await handleAdultSiteSelection(interaction)
+  } else if (interaction.customId.startsWith("comicsite-")) {
+    await handleComicSiteSelection(interaction)
   } else if (interaction.customId.startsWith("select-")) {
     await handleLanguageSelectionMenu(interaction)
+  }
+}
+
+async function handleComicSiteSelection(interaction) {
+  const [_, userId] = interaction.customId.split("-")
+  if (interaction.user.id !== userId) {
+    return interaction.reply({ content: "⛔ No puedes usar este menú.", ephemeral: true })
+  }
+
+  const query = pendingComicSearch.get(interaction.user.id)
+  if (!query) {
+    return interaction.reply({ content: "❌ No se encontró tu búsqueda previa.", ephemeral: true })
+  }
+
+  const selectedSite = interaction.values[0]
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&q=${encodeURIComponent(query + " site:" + selectedSite)}&num=10`
+    const response = await makeGoogleAPIRequest(url, "google")
+    const items = response.data.items
+
+    if (!items || items.length === 0) {
+      return interaction.reply({ content: "❌ No se encontraron comics.", ephemeral: true })
+    }
+
+    comicSearchCache.set(interaction.user.id, {
+      items,
+      currentIndex: 0,
+      query,
+      site: selectedSite,
+    })
+
+    const item = items[0]
+    const embed = createComicSearchEmbed(item, 0, items.length)
+    const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic")
+
+    await interaction.update({
+      content: "",
+      embeds: [embed],
+      components: [buttons],
+    })
+
+    pendingComicSearch.delete(interaction.user.id)
+  } catch (error) {
+    console.error("Error en búsqueda de comics:", error.message)
+    return interaction.reply({
+      content: "❌ Error al buscar comics. Intenta de nuevo más tarde.",
+      ephemeral: true,
+    })
   }
 }
 
@@ -918,9 +1053,92 @@ async function handleButtonInteraction(interaction) {
 
   if (action.startsWith("xxx")) {
     await handleAdultSearchNavigation(interaction, action)
+  } else if (action.startsWith("comic")) {
+    await handleComicSearchNavigation(interaction, action)
+  } else if (action.startsWith("General")) {
+    await handleGeneralSearchNavigation(interaction, action)
   } else if (["prevImage", "nextImage"].includes(interaction.customId)) {
     await handleImageNavigation(interaction)
   }
+}
+
+async function handleGeneralSearchNavigation(interaction, action) {
+  const userId = interaction.user.id
+
+  if (!generalSearchCache.has(userId)) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true })
+  }
+
+  const data = generalSearchCache.get(userId)
+  const { items, index } = data
+  let newIndex = index
+
+  if (action === "nextGeneral" && index < items.length - 1) {
+    newIndex++
+  } else if (action === "prevGeneral" && index > 0) {
+    newIndex--
+  }
+
+  data.index = newIndex
+  generalSearchCache.set(userId, data)
+
+  const item = items[newIndex]
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🔍 ${item.title}`)
+    .setDescription(`${item.snippet}\n\n[🔗 Ver página completa](${item.link})`)
+    .setColor("#4285f4")
+    .setFooter({
+      text: `Resultado ${newIndex + 1} de ${items.length} | API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
+    })
+    .setTimestamp()
+
+  if (item.pagemap?.cse_image?.[0]?.src) {
+    embed.setThumbnail(item.pagemap.cse_image[0].src)
+  }
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`prevGeneral-${userId}`)
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === 0),
+    new ButtonBuilder()
+      .setCustomId(`nextGeneral-${userId}`)
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === items.length - 1),
+  )
+
+  await interaction.update({ embeds: [embed], components: [buttons] })
+}
+
+async function handleComicSearchNavigation(interaction, action) {
+  const userId = interaction.user.id
+
+  if (!comicSearchCache.has(userId)) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true })
+  }
+
+  const data = comicSearchCache.get(userId)
+  const { items, currentIndex } = data
+  let newIndex = currentIndex
+
+  if (action === "comicnext" && currentIndex < items.length - 1) {
+    newIndex++
+  } else if (action === "comicback" && currentIndex > 0) {
+    newIndex--
+  }
+
+  data.currentIndex = newIndex
+  comicSearchCache.set(userId, data)
+
+  const item = items[newIndex]
+  const embed = createComicSearchEmbed(item, newIndex, items.length)
+  const buttons = createNavigationButtons(userId, newIndex, items.length, "comic")
+
+  await interaction.update({ embeds: [embed], components: [buttons] })
 }
 
 async function handleAdultSearchNavigation(interaction, action) {
@@ -967,11 +1185,14 @@ async function handleImageNavigation(interaction) {
   cache.index = validIndex
   const img = cache.items[validIndex]
 
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
   const embed = new EmbedBuilder()
     .setTitle(`📷 Resultados para: ${cache.query}`)
     .setImage(img.link)
     .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
-    .setFooter({ text: `Imagen ${validIndex + 1} de ${cache.items.length}` })
+    .setFooter({
+      text: `Imagen ${validIndex + 1} de ${cache.items.length} | API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
+    })
     .setColor("#00c7ff")
 
   const buttons = new ActionRowBuilder().addComponents(
@@ -990,7 +1211,6 @@ async function handleImageNavigation(interaction) {
   await interaction.update({ embeds: [embed], components: [buttons] })
 }
 
-// Helper functions
 async function findValidImageIndex(items, startIndex, direction) {
   let idx = startIndex
   while (idx >= 0 && idx < items.length) {
@@ -1000,11 +1220,37 @@ async function findValidImageIndex(items, startIndex, direction) {
   return -1
 }
 
+function createComicSearchEmbed(item, index, total) {
+  const title = item.title
+  const link = item.link
+  const context = item.displayLink
+  const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || item.pagemap?.cse_image?.[0]?.src
+
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
+
+  return new EmbedBuilder()
+    .setTitle(`📚 ${title.slice(0, 80)}...`)
+    .setDescription(`**📖 Clic para leer el comic 📖**\n[📚 Ir al comic](${link})\n\n🌐 **Sitio**: ${context}`)
+    .setColor("#9b59b6")
+    .setImage(thumb)
+    .setFooter({
+      text: `Comic ${index + 1} de ${total} | API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
+      iconURL: "https://i.imgur.com/comicIcon.png",
+    })
+    .setTimestamp()
+    .addFields({
+      name: "📚 Nota",
+      value: "Este enlace lleva al comic completo para leer.",
+    })
+}
+
 function createAdultSearchEmbed(item, index, total) {
   const title = item.title
   const link = item.link
   const context = item.displayLink
   const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || "https://i.imgur.com/defaultThumbnail.png"
+
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
 
   return new EmbedBuilder()
     .setTitle(`🔞 ${title.slice(0, 80)}...`)
@@ -1012,7 +1258,7 @@ function createAdultSearchEmbed(item, index, total) {
     .setColor("#ff3366")
     .setImage(thumb)
     .setFooter({
-      text: `Resultados para adultos (+18) — Resultado ${index + 1} de ${total}`,
+      text: `Resultado ${index + 1} de ${total} | API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
       iconURL: "https://i.imgur.com/botIcon.png",
     })
     .setTimestamp()
@@ -1038,5 +1284,4 @@ function createNavigationButtons(userId, currentIndex, total, prefix) {
   return new ActionRowBuilder().addComponents(backBtn, nextBtn)
 }
 
-// Start the bot
 client.login(process.env.DISCORD_TOKEN)
