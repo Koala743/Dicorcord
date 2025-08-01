@@ -262,15 +262,39 @@ if (chat) {
 
 if (command === 'xxx') {
   const query = args.join(' ');
-  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+  if (!query) return m.reply('⚠️ Escribe lo que quieres buscar.\nEjemplo: `.xxx hentai big boobs`');
+
+  const siteOptions = [
+    { name: 'XVideos', site: 'xvideos.es' },
+    { name: 'Pornhub', site: 'es.pornhub.com' },
+    { name: 'Hentaila', site: 'hentaila.tv' }
+  ];
+
+  let optionsText = '🌐 Elige el sitio para buscar:\n\n';
+  siteOptions.forEach((opt, i) => {
+    optionsText += `${i + 1}️⃣ ${opt.name}\n`;
+  });
+
+  await m.reply(optionsText + '\nResponde con el número (1, 2 o 3).');
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:xvideos.es OR site:es.pornhub.com OR site:hentaila.tv')}&num=5`;
+    const filter = res => res.author.id === m.author.id && /^[1-3]$/.test(res.content.trim());
+    const collected = await m.channel.awaitMessages({ filter, max: 1, time: 15000 });
 
-    const res = await axios.get(url);
+    if (!collected.size) return m.reply('⏱️ No respondiste a tiempo.');
+
+    const userChoice = parseInt(collected.first().content.trim(), 10);
+    const selected = siteOptions[userChoice - 1];
+
+    if (!selected) return m.reply('❌ Opción no válida.');
+
+    const searchURL = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query + ' site:' + selected.site)}&num=5`;
+
+    const res = await axios.get(searchURL);
     const items = res.data.items;
+
     if (!items || items.length === 0)
-      return m.reply('❌ No se encontraron resultados para tu búsqueda.');
+      return m.reply(`❌ No se encontraron resultados en ${selected.name}.`);
 
     const video = items.find(item =>
       item.link.includes('/video.') ||
@@ -278,21 +302,8 @@ if (command === 'xxx') {
       item.link.includes('/ver/')
     ) || items[0];
 
-    const title = video.title;
-    const link = video.link;
-    const context = video.displayLink;
-    const thumb = video.pagemap?.cse_thumbnail?.[0]?.src || 'https://i.imgur.com/defaultThumbnail.png';
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🔞 ${title.slice(0, 80)}...`)
-      .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
-      .setColor('#ff3366')
-      .setThumbnail(thumb)
-      .setFooter({ text: 'Resultados para adultos (+18)', iconURL: 'https://i.imgur.com/botIcon.png' })
-      .setTimestamp()
-      .addFields({ name: '⚠️ Nota', value: 'Este enlace lleva a contenido para adultos. Asegúrate de tener +18.' });
-
-    await m.channel.send({ embeds: [embed] });
+    return m.reply(`🔞 **Video encontrado en ${selected.name}**:\n${video.link}`);
+    
   } catch (err) {
     console.error('Error en .xxx:', err.message);
     return m.reply('❌ Error al buscar. Intenta de nuevo más tarde.');
