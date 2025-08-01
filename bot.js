@@ -266,7 +266,9 @@ if (chat) {
 
 if (command === 'xxx') {
   const query = args.join(' ');
-  if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+  if (!query) {
+    return m.reply('⚠️ Debes escribir algo para buscar.');
+  }
 
   const uid = m.author.id;
   pendingXXXSearch.set(uid, query);
@@ -275,14 +277,28 @@ if (command === 'xxx') {
     .setCustomId(`xxxsite-${uid}`)
     .setPlaceholder('🔞 Selecciona el sitio para buscar contenido adulto')
     .addOptions([
-      { label: 'Xvideos', value: 'xvideos.es', emoji: '🔴' },
-      { label: 'Pornhub', value: 'es.pornhub.com', emoji: '🔵' },
-      { label: 'Hentaila', value: 'hentaila.tv', emoji: '🟣' },
+      {
+        label: 'Xvideos',
+        value: 'xvideos.es',
+        emoji: '🔴',
+      },
+      {
+        label: 'Pornhub',
+        value: 'es.pornhub.com',
+        emoji: '🔵',
+      },
+      {
+        label: 'Hentaila',
+        value: 'hentaila.tv',
+        emoji: '🟣',
+      },
     ]);
+
+  const row = new ActionRowBuilder().addComponents(siteSelector);
 
   return m.reply({
     content: 'Selecciona el sitio donde deseas buscar:',
-    components: [new ActionRowBuilder().addComponents(siteSelector)],
+    components: [row],
     ephemeral: true,
   });
 }
