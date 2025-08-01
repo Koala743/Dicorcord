@@ -1,4 +1,12 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const {
+  Client,
+  GatewayIntentBits,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+} = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 
@@ -145,39 +153,39 @@ client.on('messageCreate', async (m) => {
     }
   }
 
-
+  
   if (m.content.toLowerCase().startsWith('.td')) {
-  if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
-  const ref = await m.channel.messages.fetch(m.reference.messageId);
-  const txt = ref.content,
-    uid = m.author.id;
-  const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
-  const lang = getLang(uid);
-  if (prefs[uid]) {
-    const res = await translate(txt, lang);
+    if (!m.reference?.messageId) return sendWarning(m, T(m.author.id, 'mustReply'));
+    const ref = await m.channel.messages.fetch(m.reference.messageId);
+    const txt = ref.content,
+      uid = m.author.id;
+    const loading = await m.reply({ content: '⌛ Traduciendo...', ephemeral: true });
+    const lang = getLang(uid);
+    if (prefs[uid]) {
+      const res = await translate(txt, lang);
+      await loading.delete().catch(() => {});
+      if (!res) return m.reply({ content: T(uid, 'timeout'), ephemeral: true });
+      if (res.from === lang) return m.reply({ content: T(uid, 'alreadyInLang'), ephemeral: true });
+
+      const e = new EmbedBuilder()
+        .setColor('#00c7ff')
+        .setDescription(`${LANGUAGES.find((l) => l.value === lang).emoji} : ${res.text}`);
+
+      return m.reply({ embeds: [e], ephemeral: true });
+    }
     await loading.delete().catch(() => {});
-    if (!res) return m.reply({ content: T(uid, 'timeout'), ephemeral: true });
-    if (res.from === lang) return m.reply({ content: T(uid, 'alreadyInLang'), ephemeral: true });
 
-    const e = new EmbedBuilder()
-      .setColor('#00c7ff')
-      .setDescription(`${LANGUAGES.find((l) => l.value === lang).emoji} : ${res.text}`);
+    const sel = new StringSelectMenuBuilder()
+      .setCustomId(`select-${uid}`)
+      .setPlaceholder('🌍 Selecciona idioma')
+      .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
 
-    return m.reply({ embeds: [e], ephemeral: true });
+    m.reply({
+      content: 'Selecciona idioma para guardar:',
+      components: [new ActionRowBuilder().addComponents(sel)],
+      ephemeral: true,
+    });
   }
-  await loading.delete().catch(() => {});
-
-  const sel = new StringSelectMenuBuilder()
-    .setCustomId(`select-${uid}`)
-    .setPlaceholder('🌍 Selecciona idioma')
-    .addOptions(LANGUAGES.map((l) => ({ label: l.label, value: l.value, emoji: l.emoji })));
-
-  m.reply({
-    content: 'Selecciona idioma para guardar:',
-    components: [new ActionRowBuilder().addComponents(sel)],
-    ephemeral: true,
-  });
-}
 
   const chat = activeChats.get(m.channel.id);
   if (chat) {
@@ -243,6 +251,7 @@ client.on('messageCreate', async (m) => {
 
 client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
+  
 
   if (i.isStringSelectMenu()) {
     if (i.customId.startsWith('select-')) {
