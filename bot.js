@@ -175,50 +175,42 @@ client.on('messageCreate', async (m) => {
 
  
   const chat = activeChats.get(m.channel.id);
-if (!chat) return;
-
-const { users } = chat;
-if (!users.includes(m.author.id)) return;
-
-const raw = m.content?.trim();
-if (!raw) return;
-
-// --- Rápida detección de mensajes inútiles ---
-if (
-  m.stickers.size > 0 ||
-  raw.length <= 2 || // atajo para ignorar mensajes muy cortos
-  raw.startsWith('.') || // comando rápido
-  /^[<:]?a?:.+?:\d+[>]?$/.test(raw) || // emojis custom
-  /^\p{Emoji}+$|^\p{Emoji_Presentation}+$/u.test(raw) // emojis normales
-) return;
-
-// --- Proceso de traducción ---
-try {
-  const otherUserId = users.find((u) => u !== m.author.id);
-  const toLang = getLang(otherUserId);
-  const res = await translate(raw, toLang);
-
-  if (res?.text) {
-    const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
-    const embed = new EmbedBuilder()
-      .setColor('#00c7ff')
-      .setDescription(`**${targetLangEmoji} ${res.text}**\n\n*<@${m.author.id}> (${getLang(m.author.id)})*`);
-    await m.channel.send({ embeds: [embed] });
-  } else {
-    await m.channel.send({
-      content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
-      ephemeral: true,
-    });
-  }
-} catch (err) {
-  console.error('Error en traducción:', err);
-  await m.channel.send({
-    content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
-    ephemeral: true,
-  });
-}
+if (chat) {
+  const { users } = chat;
+  if (users.includes(m.author.id)) {
+    const otherUserId = users.find((u) => u !== m.author.id);
+    const toLang = getLang(otherUserId);
+    const raw = m.content.trim();
+    if (
+      !raw ||
+      m.stickers.size > 0 ||
+      (raw.length < 4 && raw.startsWith('.')) ||
+      /^<a?:.+?:\d+>$/.test(raw) ||
+      [...raw].every(char => /\p{Emoji_Presentation}|\p{Emoji}/u.test(char))
+    ) return;
+    try {
+      const res = await translate(raw, toLang);
+      if (res && res.text) {
+        const targetLangEmoji = LANGUAGES.find((l) => l.value === toLang)?.emoji || '🌐';
+        const embed = new EmbedBuilder()
+          .setColor('#00c7ff')
+          .setDescription(`**${targetLangEmoji} ${res.text}**\n\n*<@${m.author.id}> (${getLang(m.author.id)})*`);
+        await m.channel.send({ embeds: [embed] });
+      } else {
+        await m.channel.send({
+          content: `⚠️ No se pudo traducir el mensaje de <@${m.author.id}> al idioma de <@${otherUserId}>.`,
+          ephemeral: true,
+        });
+      }
+    } catch (err) {
+      console.error('Error en traducción:', err);
+      await m.channel.send({
+        content: `❌ Error al traducir el mensaje al idioma de <@${otherUserId}>.`,
+        ephemeral: true,
+      });
     }
   }
+}
 
   if (!m.content.startsWith('.')) return;
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
