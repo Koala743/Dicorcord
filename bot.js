@@ -124,7 +124,7 @@ async function translateWithCache(text, lang) {
     const start = Date.now();
     const r = await axios.get(
       `https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`,
-      { timeout: 300 } // Timeout de 3 segundos
+      { timeout: 2000 } // Timeout de 3 segundos
     );
     const end = Date.now();
     console.log(`Traducción tomó ${end - start}ms para "${text}" a ${lang}`);
