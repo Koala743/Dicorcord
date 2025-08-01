@@ -217,6 +217,8 @@ try {
     ephemeral: true,
   });
 }
+    }
+  }
 
   if (!m.content.startsWith('.')) return;
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
