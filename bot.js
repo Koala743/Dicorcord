@@ -472,21 +472,14 @@ if (i.isStringSelectMenu() && i.customId.startsWith('xxxsite-')) {
 
     const link = result.link;
     const title = result.title;
-    
-    // Extraer imagen si existe en pagemap
-    let thumbnail = null;
-    if (result.pagemap?.cse_image?.length > 0) {
-      thumbnail = result.pagemap.cse_image[0].src;
-    }
 
     await i.update({
-      content: `🔞 **${title}**\n👉 [Haz clic aquí para verlo directamente](${link})${thumbnail ? `\n\n![Miniatura](${thumbnail})` : ''}`,
+      content: `🔞 **${title}**\n👉 [Haz clic aquí para verlo directamente](${link})`,
       components: [],
       ephemeral: true,
     });
 
   } catch (err) {
-    console.error(err);
     await i.update({ content: '❌ Error al buscar. Intenta de nuevo más tarde.', components: [] });
   }
 }
