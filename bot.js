@@ -1744,9 +1744,6 @@ async function handleCommands(message) {
   }
 }
 
-// Resto de funciones (handleAutoTranslateCommand, handleDisableAutoTranslate, etc.)
-// ... [Incluir todas las demás funciones del código original] ...
-
 async function handleSelectMenu(interaction) {
   const { customId, values, user } = interaction
 
@@ -1765,10 +1762,187 @@ async function handleSelectMenu(interaction) {
 async function handleButtonInteraction(interaction) {
   const { customId } = interaction
 
-  if (customId.startsWith("roblox")) {
+  if (customId.includes("Roblox")) {
     const action = customId.split("-")[0]
     await handleRobloxNavigation(interaction, action)
+  } else if (customId === "prev" || customId === "next") {
+    await handleImageNavigation(interaction)
+  } else if (customId === "prevBs" || customId === "nextBs") {
+    await handleGeneralSearchNavigation(interaction)
+  } else if (customId === "prevXxx" || customId === "nextXxx") {
+    await handleXXXNavigation(interaction)
+  } else if (customId === "prevCmx" || customId === "nextCmx") {
+    await handleComicNavigation(interaction)
   }
+}
+
+async function handleImageNavigation(interaction) {
+  const cacheKey = `webSearch-${interaction.user.id}`
+  const cache = imageSearchCache.get(cacheKey)
+
+  if (!cache) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa.", ephemeral: true })
+  }
+
+  let newIndex = cache.index
+  if (interaction.customId === "next" && cache.index < cache.images.length - 1) {
+    newIndex++
+  } else if (interaction.customId === "prev" && cache.index > 0) {
+    newIndex--
+  }
+
+  cache.index = newIndex
+  imageSearchCache.set(cacheKey, cache)
+
+  const embed = new EmbedBuilder()
+    .setColor("#0099ff")
+    .setTitle("🔍 Búsqueda de imágenes")
+    .setImage(cache.images[newIndex])
+    .setFooter({ text: `Imagen ${newIndex + 1}/${cache.images.length}` })
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("prev")
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === 0),
+    new ButtonBuilder()
+      .setCustomId("next")
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === cache.images.length - 1),
+  )
+
+  await interaction.update({ embeds: [embed], components: [row] })
+}
+
+async function handleGeneralSearchNavigation(interaction) {
+  const cacheKey = `generalSearch-${interaction.user.id}`
+  const cache = generalSearchCache.get(cacheKey)
+
+  if (!cache) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa.", ephemeral: true })
+  }
+
+  let newIndex = cache.index
+  if (interaction.customId === "nextBs" && cache.index < cache.results.length - 1) {
+    newIndex++
+  } else if (interaction.customId === "prevBs" && cache.index > 0) {
+    newIndex--
+  }
+
+  cache.index = newIndex
+  generalSearchCache.set(cacheKey, cache)
+
+  const result = cache.results[newIndex]
+  const embed = new EmbedBuilder()
+    .setColor("#0099ff")
+    .setTitle("🔍 Búsqueda general")
+    .setDescription(result.snippet)
+    .setURL(result.link)
+    .addFields({ name: "Fuente", value: result.link })
+    .setFooter({ text: `Resultado ${newIndex + 1}/${cache.results.length}` })
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("prevBs")
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === 0),
+    new ButtonBuilder()
+      .setCustomId("nextBs")
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === cache.results.length - 1),
+  )
+
+  await interaction.update({ embeds: [embed], components: [row] })
+}
+
+async function handleXXXNavigation(interaction) {
+  const cacheKey = `xxxSearch-${interaction.user.id}`
+  const cache = xxxSearchCache.get(cacheKey)
+
+  if (!cache) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa.", ephemeral: true })
+  }
+
+  let newIndex = cache.index
+  if (interaction.customId === "nextXxx" && cache.index < cache.results.length - 1) {
+    newIndex++
+  } else if (interaction.customId === "prevXxx" && cache.index > 0) {
+    newIndex--
+  }
+
+  cache.index = newIndex
+  xxxSearchCache.set(cacheKey, cache)
+
+  const result = cache.results[newIndex]
+  const embed = new EmbedBuilder()
+    .setColor("#FF0000")
+    .setTitle("🔞 Búsqueda XXX")
+    .setDescription(result.snippet)
+    .setURL(result.link)
+    .addFields({ name: "Fuente", value: result.link })
+    .setFooter({ text: `Resultado ${newIndex + 1}/${cache.results.length}` })
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("prevXxx")
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === 0),
+    new ButtonBuilder()
+      .setCustomId("nextXxx")
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === cache.results.length - 1),
+  )
+
+  await interaction.update({ embeds: [embed], components: [row] })
+}
+
+async function handleComicNavigation(interaction) {
+  const cacheKey = `comicSearch-${interaction.user.id}`
+  const cache = comicSearchCache.get(cacheKey)
+
+  if (!cache) {
+    return interaction.reply({ content: "❌ No hay búsqueda activa.", ephemeral: true })
+  }
+
+  let newIndex = cache.index
+  if (interaction.customId === "nextCmx" && cache.index < cache.results.length - 1) {
+    newIndex++
+  } else if (interaction.customId === "prevCmx" && cache.index > 0) {
+    newIndex--
+  }
+
+  cache.index = newIndex
+  comicSearchCache.set(cacheKey, cache)
+
+  const result = cache.results[newIndex]
+  const embed = new EmbedBuilder()
+    .setColor("#FF69B4")
+    .setTitle("🔞 Búsqueda de Comics")
+    .setDescription(result.snippet)
+    .setURL(result.link)
+    .addFields({ name: "Fuente", value: result.link })
+    .setFooter({ text: `Resultado ${newIndex + 1}/${cache.results.length}` })
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("prevCmx")
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === 0),
+    new ButtonBuilder()
+      .setCustomId("nextCmx")
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(newIndex === cache.results.length - 1),
+  )
+
+  await interaction.update({ embeds: [embed], components: [row] })
 }
 
 async function handleWebSearch(message, args) {
