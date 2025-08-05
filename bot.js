@@ -510,25 +510,25 @@ async function isImageUrlValid(url) {
 // Función mejorada de traducción con mejor manejo de errores y textos largos
 async function translateText(text, targetLang) {
   if (!text || text.trim().length === 0) return null
-  
+
   // Dividir textos muy largos en chunks más pequeños
   const maxChunkSize = 4000
   const chunks = []
-  
+
   if (text.length > maxChunkSize) {
     // Dividir por párrafos primero
-    const paragraphs = text.split('\n\n')
-    let currentChunk = ''
-    
+    const paragraphs = text.split("\n\n")
+    let currentChunk = ""
+
     for (const paragraph of paragraphs) {
       if ((currentChunk + paragraph).length > maxChunkSize && currentChunk.length > 0) {
         chunks.push(currentChunk.trim())
         currentChunk = paragraph
       } else {
-        currentChunk += (currentChunk ? '\n\n' : '') + paragraph
+        currentChunk += (currentChunk ? "\n\n" : "") + paragraph
       }
     }
-    
+
     if (currentChunk.trim()) {
       chunks.push(currentChunk.trim())
     }
@@ -537,67 +537,74 @@ async function translateText(text, targetLang) {
   }
 
   const translationServices = [
-    'https://lingva.ml/api/v1/auto',
-    'https://translate.argosopentech.com/translate',
-    'https://api.mymemory.translated.net/get'
+    "https://lingva.ml/api/v1/auto",
+    "https://translate.argosopentech.com/translate",
+    "https://api.mymemory.translated.net/get",
   ]
 
-  let translatedChunks = []
-  
+  const translatedChunks = []
+
   for (const chunk of chunks) {
     let translated = null
-    
+
     // Intentar con múltiples servicios
     for (const serviceBase of translationServices) {
       try {
-        if (serviceBase.includes('lingva.ml')) {
+        if (serviceBase.includes("lingva.ml")) {
           const response = await axios.get(`${serviceBase}/${targetLang}/${encodeURIComponent(chunk)}`, {
             timeout: 10000,
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
           })
-          
+
           if (response.data?.translation) {
             translated = {
               text: response.data.translation,
-              from: response.data.from || 'auto'
+              from: response.data.from || "auto",
             }
             break
           }
-        } else if (serviceBase.includes('mymemory')) {
-          const response = await axios.get(`${serviceBase}?q=${encodeURIComponent(chunk)}&langpair=auto|${targetLang}`, {
-            timeout: 10000,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-          })
-          
+        } else if (serviceBase.includes("mymemory")) {
+          const response = await axios.get(
+            `${serviceBase}?q=${encodeURIComponent(chunk)}&langpair=auto|${targetLang}`,
+            {
+              timeout: 10000,
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              },
+            },
+          )
+
           if (response.data?.responseData?.translatedText) {
             translated = {
               text: response.data.responseData.translatedText,
-              from: 'auto'
+              from: "auto",
             }
             break
           }
-        } else if (serviceBase.includes('argosopentech')) {
-          const response = await axios.post(serviceBase, {
-            q: chunk,
-            source: 'auto',
-            target: targetLang,
-            format: 'text'
-          }, {
-            timeout: 10000,
-            headers: {
-              'Content-Type': 'application/json',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-          })
-          
+        } else if (serviceBase.includes("argosopentech")) {
+          const response = await axios.post(
+            serviceBase,
+            {
+              q: chunk,
+              source: "auto",
+              target: targetLang,
+              format: "text",
+            },
+            {
+              timeout: 10000,
+              headers: {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              },
+            },
+          )
+
           if (response.data?.translatedText) {
             translated = {
               text: response.data.translatedText,
-              from: 'auto'
+              from: "auto",
             }
             break
           }
@@ -607,7 +614,7 @@ async function translateText(text, targetLang) {
         continue
       }
     }
-    
+
     if (translated) {
       translatedChunks.push(translated.text)
     } else {
@@ -615,14 +622,14 @@ async function translateText(text, targetLang) {
       translatedChunks.push(chunk)
     }
   }
-  
+
   if (translatedChunks.length > 0) {
     return {
-      text: translatedChunks.join('\n\n'),
-      from: 'auto'
+      text: translatedChunks.join("\n\n"),
+      from: "auto",
     }
   }
-  
+
   return null
 }
 
@@ -714,11 +721,14 @@ async function getPlayerAvatars(playerIds) {
 
 async function getGamePasses(universeId) {
   try {
-    const response = await axios.get(`https://games.roblox.com/v1/games/${universeId}/game-passes?sortOrder=Asc&limit=100`, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    const response = await axios.get(
+      `https://games.roblox.com/v1/games/${universeId}/game-passes?sortOrder=Asc&limit=100`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
       },
-    })
+    )
     return response.data.data || []
   } catch (error) {
     console.log("Error obteniendo pases del juego:", error.message)
@@ -728,56 +738,175 @@ async function getGamePasses(universeId) {
 
 async function getGameIcon(universeId) {
   try {
-    const response = await axios.get(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false`, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    const response = await axios.get(
+      `https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
       },
-    })
-    return response.data.data?.[0]?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
+    )
+    return (
+      response.data.data?.[0]?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
+    )
   } catch (error) {
     console.log("Error obteniendo icono del juego:", error.message)
     return `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
   }
 }
 
-// Nueva función para búsqueda profunda de comics en Chochox
+// Función mejorada para búsqueda profunda de comics en Chochox
 async function getChochoxComicPages(comicUrl) {
   try {
     const response = await axios.get(comicUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        DNT: "1",
+        Connection: "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
       },
+      timeout: 15000,
     })
-    
+
     const html = response.data
     const pages = []
-    
-    // Buscar patrones de imágenes en Chochox
+
+    // Extraer el nombre base del comic desde la URL
+    const urlParts = comicUrl.split("/")
+    const comicName = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2]
+
+    // Patrones mejorados para detectar imágenes del comic
     const imagePatterns = [
-      /https:\/\/[^"'\s]+\.(?:jpg|jpeg|png|gif|webp)/gi,
-      /"(https:\/\/[^"]+\.(?:jpg|jpeg|png|gif|webp))"/gi,
-      /'(https:\/\/[^']+\.(?:jpg|jpeg|png|gif|webp))'/gi
+      // Patrón específico para Chochox con números
+      new RegExp(`${comicName.replace(/[^a-zA-Z0-9]/g, "[^a-zA-Z0-9]*")}-?\\d+\\.(jpg|jpeg|png|gif|webp)`, "gi"),
+      // Patrón general para imágenes numeradas
+      /[a-zA-Z0-9\-_]+\\d+\\.(jpg|jpeg|png|gif|webp)/gi,
+      // URLs completas de imágenes
+      /https?:\/\/[^"'\s]+\.(jpg|jpeg|png|gif|webp)/gi,
+      // Imágenes en data-src o src
+      /(?:data-src|src)=["']([^"']+\.(jpg|jpeg|png|gif|webp))[^"']*/gi,
     ]
-    
+
+    const foundImages = new Set()
+
     for (const pattern of imagePatterns) {
       const matches = html.match(pattern)
       if (matches) {
-        matches.forEach(match => {
-          const cleanUrl = match.replace(/['"]/g, '')
-          if (cleanUrl.includes('chochox') || cleanUrl.includes('cdn')) {
-            pages.push(cleanUrl)
+        matches.forEach((match) => {
+          let imageUrl = match
+
+          // Limpiar la URL si es necesario
+          if (match.includes("data-src=") || match.includes("src=")) {
+            const urlMatch = match.match(/["']([^"']+)["']/)
+            if (urlMatch) {
+              imageUrl = urlMatch[1]
+            }
+          }
+
+          // Asegurar que sea una URL completa
+          if (imageUrl.startsWith("//")) {
+            imageUrl = "https:" + imageUrl
+          } else if (imageUrl.startsWith("/")) {
+            imageUrl = "https://chochox.com" + imageUrl
+          } else if (!imageUrl.startsWith("http")) {
+            imageUrl = "https://chochox.com/" + imageUrl
+          }
+
+          // Verificar que contenga el dominio correcto y sea una imagen
+          if (
+            (imageUrl.includes("chochox") || imageUrl.includes("cdn")) &&
+            /\.(jpg|jpeg|png|gif|webp)$/i.test(imageUrl)
+          ) {
+            foundImages.add(imageUrl)
           }
         })
       }
     }
-    
-    // Remover duplicados y ordenar
-    const uniquePages = [...new Set(pages)]
-    return uniquePages.slice(0, 50) // Limitar a 50 páginas máximo
-    
+
+    // Convertir a array y ordenar por número
+    const imageArray = Array.from(foundImages)
+
+    // Función para extraer número de la imagen
+    const extractNumber = (url) => {
+      const matches = url.match(/(\d+)(?=\.(jpg|jpeg|png|gif|webp))/i)
+      return matches ? Number.parseInt(matches[1]) : 0
+    }
+
+    // Ordenar por número
+    imageArray.sort((a, b) => {
+      const numA = extractNumber(a)
+      const numB = extractNumber(b)
+      return numA - numB
+    })
+
+    console.log(`Encontradas ${imageArray.length} imágenes para ${comicName}`)
+
+    return imageArray.slice(0, 100) // Limitar a 100 páginas máximo
   } catch (error) {
     console.log("Error obteniendo páginas del comic:", error.message)
-    return []
+
+    // Intentar método alternativo si falla el primero
+    try {
+      // Generar URLs basadas en patrones comunes
+      const urlParts = comicUrl.split("/")
+      const comicName = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2]
+      const baseUrl = `https://chochox.com/wp-content/uploads/`
+
+      const generatedPages = []
+      for (let i = 1; i <= 50; i++) {
+        const paddedNumber = i.toString().padStart(2, "0")
+        const possibleUrls = [
+          `${baseUrl}${comicName}-${paddedNumber}.jpg`,
+          `${baseUrl}${comicName}-${i}.jpg`,
+          `${baseUrl}${comicName}_${paddedNumber}.jpg`,
+          `${baseUrl}${comicName}_${i}.jpg`,
+        ]
+        generatedPages.push(...possibleUrls)
+      }
+
+      return generatedPages.slice(0, 20) // Limitar a 20 intentos
+    } catch (fallbackError) {
+      console.log("Error en método alternativo:", fallbackError.message)
+      return []
+    }
+  }
+}
+
+// Función para extraer video directo de sitios XXX
+async function extractDirectVideoUrl(pageUrl, site) {
+  try {
+    const response = await axios.get(pageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      timeout: 10000,
+    })
+
+    const html = response.data
+    let videoUrl = null
+
+    if (site.includes("xvideos")) {
+      // Patrón para Xvideos
+      const match =
+        html.match(/html5player\.setVideoUrlHigh$$'([^']+)'$$/) ||
+        html.match(/html5player\.setVideoUrlLow$$'([^']+)'$$/) ||
+        html.match(/setVideoTitle\('[^']*',\s*'[^']*',\s*'([^']+)'/)
+      if (match) videoUrl = match[1]
+    } else if (site.includes("pornhub")) {
+      // Patrón para Pornhub
+      const match =
+        html.match(/"videoUrl":"([^"]+)"/) || html.match(/var\s+flashvars[^=]*=\s*{[^}]*"quality_\d+p":"([^"]+)"/)
+      if (match) videoUrl = match[1].replace(/\\u002F/g, "/")
+    }
+
+    return videoUrl
+  } catch (error) {
+    console.log("Error extrayendo URL de video:", error.message)
+    return null
   }
 }
 
@@ -860,7 +989,7 @@ async function handleRobloxSearch(message, args) {
     savedGames[gameData.name] = {
       placeId: placeId,
       universeId: universeId,
-      name: gameData.name
+      name: gameData.name,
     }
     saveSavedGames()
 
@@ -907,8 +1036,10 @@ async function handleRobloxSearch(message, args) {
       gameIcon,
       playerPage: 0,
       serverPage: 0,
+      serverListPage: 0, // Para navegación de lista de servidores
     })
 
+    const apiInfo = apiManager.getCurrentAPIInfo("google")
     const embed = new EmbedBuilder()
       .setTitle(`🎮 ${gameData.name}`)
       .setDescription(`**📊 Estadísticas del Juego:**
@@ -922,7 +1053,9 @@ async function handleRobloxSearch(message, args) {
 **📈 Información General:**
 ⭐ Rating: ${gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${gameData.totalDownVotes?.toLocaleString() || 0}👎
 🎯 Visitas: ${gameData.visits?.toLocaleString() || "N/A"}
-🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}`)
+🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}
+
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
       .setColor("#00b2ff")
       .setThumbnail(gameIcon)
       .setFooter({
@@ -969,35 +1102,39 @@ async function handleRobloxSearch(message, args) {
   }
 }
 
+// Función mejorada para mostrar todos los jugadores con avatares reales
 async function handleAllPlayersView(interaction, cache, page = 0) {
   const { allServers, gameData, gameIcon } = cache
   if (allServers.length === 0) {
     return interaction.reply({ content: "❌ No hay servidores con jugadores disponibles.", ephemeral: true })
   }
 
-  await interaction.deferUpdate()
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate()
+  }
 
-  let allPlayersData = []
-  
+  const allPlayersData = []
+
   for (let serverIndex = 0; serverIndex < allServers.length; serverIndex++) {
     const server = allServers[serverIndex]
     if (server.playerTokens && server.playerTokens.length > 0) {
       try {
         const playerNames = await getPlayerNames(server.playerTokens)
         const playerAvatars = await getPlayerAvatars(server.playerTokens)
-        
+
         server.playerTokens.forEach((playerToken, playerIndex) => {
           const playerData = playerNames.find((p) => p.id === playerToken)
           const playerName = playerData ? playerData.displayName || playerData.name : `Jugador_${playerIndex + 1}`
           const avatarData = playerAvatars.find((a) => a.targetId == playerToken)
-          const avatarUrl = avatarData?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/420/420/Avatar/Png`
-          
+          const avatarUrl =
+            avatarData?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/420/420/Avatar/Png`
+
           allPlayersData.push({
             name: playerName,
             id: playerToken,
             avatar: avatarUrl,
             serverId: server.id,
-            serverIndex: serverIndex + 1
+            serverIndex: serverIndex + 1,
           })
         })
       } catch (error) {
@@ -1014,15 +1151,18 @@ async function handleAllPlayersView(interaction, cache, page = 0) {
 
   // Crear embeds individuales para cada jugador con su avatar
   const embeds = []
-  
-  // Embed principal
+
+  // Embed principal con información de API
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
   const mainEmbed = new EmbedBuilder()
     .setTitle(`👥 ${gameData.name} - Todos los Jugadores`)
-    .setDescription(`**Página ${page + 1}/${totalPages} | Total: ${allPlayersData.length} jugadores**`)
+    .setDescription(`**Página ${page + 1}/${totalPages} | Total: ${allPlayersData.length} jugadores**
+    
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
     .setColor("#00FF00")
     .setThumbnail(gameIcon)
     .setTimestamp()
-  
+
   embeds.push(mainEmbed)
 
   // Embeds para cada jugador con su avatar
@@ -1033,7 +1173,7 @@ async function handleAllPlayersView(interaction, cache, page = 0) {
       .setDescription(`**ID:** \`${player.id}\`\n**Servidor:** ${player.serverIndex}`)
       .setImage(player.avatar)
       .setColor("#4CAF50")
-    
+
     embeds.push(playerEmbed)
   })
 
@@ -1057,7 +1197,11 @@ async function handleAllPlayersView(interaction, cache, page = 0) {
   cache.playerPage = page
   robloxSearchCache.set(interaction.user.id, cache)
 
-  await interaction.editReply({ embeds: embeds, components: [buttons] })
+  if (interaction.deferred) {
+    await interaction.editReply({ embeds: embeds, components: [buttons] })
+  } else {
+    await interaction.update({ embeds: embeds, components: [buttons] })
+  }
 }
 
 async function handlePlayerCountView(interaction, cache, page = 0, filterType = "all") {
@@ -1076,7 +1220,10 @@ async function handlePlayerCountView(interaction, cache, page = 0, filterType = 
 
   // Aplicar filtros
   if (filterType === "emptiest") {
-    serverStats = serverStats.filter(s => s.players < s.maxPlayers).sort((a, b) => a.players - b.players).slice(0, 10)
+    serverStats = serverStats
+      .filter((s) => s.players < s.maxPlayers)
+      .sort((a, b) => a.players - b.players)
+      .slice(0, 10)
   } else if (filterType === "fullest") {
     serverStats = serverStats.sort((a, b) => b.players - a.players).slice(0, 10)
   } else if (filterType === "random") {
@@ -1101,9 +1248,11 @@ async function handlePlayerCountView(interaction, cache, page = 0, filterType = 
     countByServer += `📡 Ping: ${server.ping}ms\n\n`
   })
 
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
   countByServer += `\n**📈 RESUMEN TOTAL:**\n`
   countByServer += `👥 Total General: ${totalPlayers}\n`
-  countByServer += `🖥️ Total Servidores: ${totalServers}`
+  countByServer += `🖥️ Total Servidores: ${totalServers}\n`
+  countByServer += `**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`
 
   const embed = new EmbedBuilder()
     .setTitle(`📊 ${gameData.name} - Contador de Jugadores`)
@@ -1155,15 +1304,20 @@ async function handlePlayerCountView(interaction, cache, page = 0, filterType = 
 async function handleGamePassesView(interaction, cache, page = 0) {
   const { universeId, gameData, gameIcon } = cache
 
-  await interaction.deferUpdate()
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate()
+  }
 
   try {
     const gamePasses = await getGamePasses(universeId)
-    
+
     if (gamePasses.length === 0) {
+      const apiInfo = apiManager.getCurrentAPIInfo("google")
       const embed = new EmbedBuilder()
         .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
-        .setDescription("❌ Este juego no tiene pases disponibles.")
+        .setDescription(`❌ Este juego no tiene pases disponibles.
+        
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
         .setColor("#FFA500")
         .setThumbnail(gameIcon)
 
@@ -1184,15 +1338,18 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     const currentPasses = gamePasses.slice(startIndex, endIndex)
 
     const embeds = []
-    
-    // Embed principal
+
+    // Embed principal con información de API
+    const apiInfo = apiManager.getCurrentAPIInfo("google")
     const mainEmbed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
-      .setDescription(`**Página ${page + 1}/${totalPages} | Total: ${gamePasses.length} pases**`)
+      .setDescription(`**Página ${page + 1}/${totalPages} | Total: ${gamePasses.length} pases**
+      
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
       .setColor("#FFD700")
       .setThumbnail(gameIcon)
       .setTimestamp()
-    
+
     embeds.push(mainEmbed)
 
     // Embeds individuales para cada pase con su imagen
@@ -1201,13 +1358,15 @@ async function handleGamePassesView(interaction, cache, page = 0) {
       const globalIndex = startIndex + i + 1
       const price = pass.price ? `${pass.price} Robux` : "Gratis"
       const passIcon = `https://thumbnails.roblox.com/v1/game-passes?gamePassIds=${pass.id}&size=420x420&format=Png`
-      
+
       const passEmbed = new EmbedBuilder()
         .setTitle(`${globalIndex}. ${pass.name}`)
-        .setDescription(`💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})`)
+        .setDescription(
+          `💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})`,
+        )
         .setImage(passIcon)
         .setColor("#FFD700")
-      
+
       embeds.push(passEmbed)
     }
 
@@ -1233,12 +1392,14 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     robloxSearchCache.set(interaction.user.id, cache)
 
     await interaction.editReply({ embeds: embeds, components: [buttons] })
-
   } catch (error) {
     await logError(interaction.channel, error, "Error obteniendo pases del juego")
+    const apiInfo = apiManager.getCurrentAPIInfo("google")
     const embed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
-      .setDescription("❌ Error al obtener los pases del juego.")
+      .setDescription(`❌ Error al obtener los pases del juego.
+      
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
       .setColor("#FF0000")
       .setThumbnail(gameIcon)
 
@@ -1251,6 +1412,63 @@ async function handleGamePassesView(interaction, cache, page = 0) {
 
     await interaction.editReply({ embeds: [embed], components: [backButton] })
   }
+}
+
+// Función mejorada para mostrar servidores en grupos de 20
+async function handleServerListView(interaction, cache, page = 0) {
+  const { publicServers, gameData, gameIcon } = cache
+
+  if (publicServers.length === 0) {
+    return interaction.reply({ content: "❌ No hay servidores públicos disponibles.", ephemeral: true })
+  }
+
+  const serversPerPage = 20
+  const totalPages = Math.ceil(publicServers.length / serversPerPage)
+  const startIndex = page * serversPerPage
+  const endIndex = startIndex + serversPerPage
+  const currentServers = publicServers.slice(startIndex, endIndex)
+
+  let serverList = `**🌐 LISTA DE SERVIDORES (Página ${page + 1}/${totalPages}):**\n\n`
+
+  currentServers.forEach((server, index) => {
+    const globalIndex = startIndex + index + 1
+    serverList += `**${globalIndex}.** 👥 ${server.playing}/${server.maxPlayers} | 📡 ${server.ping || "N/A"}ms\n`
+    serverList += `🆔 \`${server.id}\` | 🌍 ${server.location || "Global"}\n`
+    serverList += `🚀 [Unirse](https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id})\n\n`
+  })
+
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
+  serverList += `**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🌐 ${gameData.name} - Lista de Servidores`)
+    .setDescription(serverList)
+    .setColor("#4CAF50")
+    .setThumbnail(gameIcon)
+    .setFooter({ text: `Página ${page + 1}/${totalPages} | Total: ${publicServers.length} servidores` })
+    .setTimestamp()
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`prevServerListRoblox-${interaction.user.id}`)
+      .setLabel("⬅️ Anterior")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(page === 0),
+    new ButtonBuilder()
+      .setCustomId(`nextServerListRoblox-${interaction.user.id}`)
+      .setLabel("➡️ Siguiente")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(page >= totalPages - 1),
+    new ButtonBuilder()
+      .setCustomId(`backRoblox-${interaction.user.id}`)
+      .setLabel("🔙 Volver")
+      .setStyle(ButtonStyle.Secondary),
+  )
+
+  cache.serverListPage = page
+  robloxSearchCache.set(interaction.user.id, cache)
+
+  await interaction.update({ embeds: [embed], components: [buttons] })
 }
 
 async function handleRobloxNavigation(interaction, action) {
@@ -1294,6 +1512,10 @@ async function handleRobloxNavigation(interaction, action) {
       await handleGamePassesView(interaction, cache, Math.max(0, cache.passPage - 1))
     } else if (action === "nextPassesRoblox") {
       await handleGamePassesView(interaction, cache, cache.passPage + 1)
+    } else if (action === "prevServerListRoblox") {
+      await handleServerListView(interaction, cache, Math.max(0, cache.serverListPage - 1))
+    } else if (action === "nextServerListRoblox") {
+      await handleServerListView(interaction, cache, cache.serverListPage + 1)
     } else if (action === "playRoblox") {
       const playUrl = `https://www.roblox.com/games/${cache.placeId}`
       return interaction.reply({
@@ -1340,6 +1562,7 @@ async function handleRobloxNavigation(interaction, action) {
         robloxSearchCache.set(userId, cache)
 
         // Crear embed actualizado
+        const apiInfo = apiManager.getCurrentAPIInfo("google")
         const embed = new EmbedBuilder()
           .setTitle(`🎮 ${gameData.name}`)
           .setDescription(`**📊 Estadísticas del Juego:**
@@ -1353,7 +1576,9 @@ async function handleRobloxNavigation(interaction, action) {
 **📈 Información General:**
 ⭐ Rating: ${gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${gameData.totalDownVotes?.toLocaleString() || 0}👎
 🎯 Visitas: ${gameData.visits?.toLocaleString() || "N/A"}
-🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}`)
+🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}
+
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
           .setColor("#00b2ff")
           .setThumbnail(cache.gameIcon)
           .setFooter({
@@ -1395,6 +1620,7 @@ async function handleRobloxNavigation(interaction, action) {
         return interaction.editReply({ content: "❌ Error al actualizar datos del servidor." })
       }
     } else if (action === "backRoblox") {
+      const apiInfo = apiManager.getCurrentAPIInfo("google")
       const embed = new EmbedBuilder()
         .setTitle(`🎮 ${cache.gameData.name}`)
         .setDescription(`**📊 Estadísticas del Juego:**
@@ -1407,7 +1633,9 @@ async function handleRobloxNavigation(interaction, action) {
 
 **📈 Información General:**
 ⭐ Rating: ${cache.gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${cache.gameData.totalDownVotes?.toLocaleString() || 0}👎
-🎯 Visitas: ${cache.gameData.visits?.toLocaleString() || "N/A"}`)
+🎯 Visitas: ${cache.gameData.visits?.toLocaleString() || "N/A"}
+
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
         .setColor("#00b2ff")
         .setThumbnail(cache.gameIcon)
         .setFooter({
@@ -1445,47 +1673,8 @@ async function handleRobloxNavigation(interaction, action) {
 
       return interaction.update({ embeds: [embed], components: [row1, row2] })
     } else if (action === "publicRoblox") {
-      if (cache.publicServers.length === 0) {
-        return interaction.reply({ content: "❌ No hay servidores públicos disponibles.", ephemeral: true })
-      }
-
-      cache.index = 0
-      robloxSearchCache.set(userId, cache)
-
-      const server = cache.publicServers[0]
-      const embed = new EmbedBuilder()
-        .setTitle(`🌐 ${cache.gameData.name} - Servidores Públicos`)
-        .setDescription(`**📊 Servidor Público ${cache.index + 1} de ${cache.totalServers}**
-
-**👥 Jugadores:** ${server.playing}/${server.maxPlayers}
-**🆔 ID del Servidor:** ${server.id}
-**📡 Ping:** ${server.ping || "N/A"}ms
-**🌍 Región:** ${server.location || "Global"}
-
-**📈 Estadísticas Públicas:**
-🟢 Total de servidores públicos: ${cache.totalServers}
-👥 Total de jugadores públicos: ${cache.totalPlayers.toLocaleString()}`)
-        .setColor("#4CAF50")
-        .setThumbnail(cache.gameIcon)
-        .setFooter({ text: `Servidor público ${cache.index + 1}/${cache.totalServers}` })
-        .setTimestamp()
-
-      const buttons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`prevRoblox-${userId}`)
-          .setLabel("⬅️ Anterior")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(true),
-        new ButtonBuilder()
-          .setCustomId(`nextRoblox-${userId}`)
-          .setLabel("➡️ Siguiente")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(cache.publicServers.length <= 1),
-        new ButtonBuilder().setCustomId(`joinRoblox-${userId}`).setLabel("🚀 Unirse").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`backRoblox-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Secondary),
-      )
-
-      return interaction.update({ embeds: [embed], components: [buttons] })
+      // Mostrar lista de servidores en grupos de 20
+      await handleServerListView(interaction, cache, 0)
     } else if (action === "joinRoblox") {
       const server = cache.publicServers[cache.index]
       const joinUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id}`
@@ -1500,6 +1689,7 @@ async function handleRobloxNavigation(interaction, action) {
       })
     }
 
+    // Navegación individual de servidores (mantenida para compatibilidad)
     const currentServers = cache.publicServers
     const maxServers = cache.totalServers
     let newIndex = cache.index
@@ -1515,6 +1705,7 @@ async function handleRobloxNavigation(interaction, action) {
 
     const server = currentServers[newIndex]
 
+    const apiInfo = apiManager.getCurrentAPIInfo("google")
     const embed = new EmbedBuilder()
       .setTitle(`🌐 ${cache.gameData.name} - Servidores Públicos`)
       .setDescription(`**📊 Servidor Público ${newIndex + 1} de ${maxServers}**
@@ -1526,7 +1717,9 @@ async function handleRobloxNavigation(interaction, action) {
 
 **📈 Estadísticas Públicas:**
 🟢 Total de servidores públicos: ${maxServers}
-👥 Total de jugadores públicos: ${cache.totalPlayers.toLocaleString()}`)
+👥 Total de jugadores públicos: ${cache.totalPlayers.toLocaleString()}
+
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
       .setColor("#4CAF50")
       .setThumbnail(cache.gameIcon)
       .setFooter({ text: `Servidor público ${newIndex + 1}/${maxServers}` })
@@ -1834,9 +2027,12 @@ async function handleCommandsList(message) {
     embeds.push(embed)
   })
 
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
   const mainEmbed = new EmbedBuilder()
     .setTitle("📋 Lista de Comandos del Bot")
-    .setDescription("Aquí tienes todos los comandos disponibles organizados por categorías:")
+    .setDescription(`Aquí tienes todos los comandos disponibles organizados por categorías:
+    
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
     .setColor("#00c7ff")
     .setThumbnail(client.user.displayAvatarURL())
     .setFooter({ text: `Total de comandos: ${COMMANDS_LIST.length}` })
@@ -1870,12 +2066,13 @@ async function handleGeneralSearch(message, args) {
     generalSearchCache.set(message.author.id, { items, index: 0, query })
 
     const item = items[0]
+    const currentApiInfo = apiManager.getCurrentAPIInfo("google")
     const embed = new EmbedBuilder()
       .setTitle(`🔍 ${item.title}`)
       .setDescription(`${item.snippet}\n\n[🔗 Ver página completa](${item.link})`)
       .setColor("#4285f4")
       .setFooter({
-        text: `Resultado 1 de ${items.length} | API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
+        text: `Resultado 1 de ${items.length} | API: ${currentApiInfo.id} | Quedan: ${currentApiInfo.remaining}/${currentApiInfo.max}`,
       })
       .setTimestamp()
 
@@ -2254,7 +2451,7 @@ async function handleComicSiteSelection(interaction) {
 
     const item = items[0]
     const embed = createComicSearchEmbed(item, 0, items.length)
-    
+
     // Agregar botón de búsqueda profunda para Chochox
     let buttons
     if (selectedSite === "chochox.com") {
@@ -2325,8 +2522,8 @@ async function handleAdultSiteSelection(interaction) {
     })
 
     const item = items[0]
-    const embed = createAdultSearchEmbed(item, 0, items.length)
-    const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "xxx")
+    const embed = await createAdultSearchEmbed(item, 0, items.length, selectedSite)
+    const buttons = createAdultNavigationButtons(interaction.user.id, 0, items.length)
 
     await interaction.update({
       content: "",
@@ -2459,7 +2656,7 @@ async function handleGeneralSearchNavigation(interaction, action) {
 
 async function handleComicSearchNavigation(interaction, action) {
   const userId = interaction.user.id
-  
+
   if (action === "comicdeep") {
     // Manejar búsqueda profunda de comic
     const cache = comicSearchCache.get(userId)
@@ -2476,11 +2673,11 @@ async function handleComicSearchNavigation(interaction, action) {
 
     try {
       const comicPages = await getChochoxComicPages(currentItem.link)
-      
+
       if (comicPages.length === 0) {
-        return interaction.editReply({ 
+        return interaction.editReply({
           content: "❌ No se pudieron obtener las páginas del comic.",
-          components: []
+          components: [],
         })
       }
 
@@ -2488,13 +2685,16 @@ async function handleComicSearchNavigation(interaction, action) {
         pages: comicPages,
         currentPage: 0,
         comicTitle: currentItem.title,
-        comicUrl: currentItem.link
+        comicUrl: currentItem.link,
       })
 
+      const apiInfo = apiManager.getCurrentAPIInfo("google")
       const embed = new EmbedBuilder()
         .setTitle(`📖 ${currentItem.title} - Página 1/${comicPages.length}`)
         .setImage(comicPages[0])
-        .setDescription(`[🔗 Ver comic original](${currentItem.link})`)
+        .setDescription(`[🔗 Ver comic original](${currentItem.link})
+        
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
         .setColor("#9b59b6")
         .setFooter({ text: `Página 1 de ${comicPages.length}` })
         .setTimestamp()
@@ -2517,12 +2717,11 @@ async function handleComicSearchNavigation(interaction, action) {
       )
 
       await interaction.editReply({ embeds: [embed], components: [buttons] })
-
     } catch (error) {
       await logError(interaction.channel, error, "Error en búsqueda profunda de comic")
-      await interaction.editReply({ 
+      await interaction.editReply({
         content: "❌ Error al obtener las páginas del comic.",
-        components: []
+        components: [],
       })
     }
     return
@@ -2547,7 +2746,7 @@ async function handleComicSearchNavigation(interaction, action) {
       if (cache) {
         const item = cache.items[cache.currentIndex]
         const embed = createComicSearchEmbed(item, cache.currentIndex, cache.items.length)
-        
+
         const buttons = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`comicback-${userId}`)
@@ -2573,10 +2772,13 @@ async function handleComicSearchNavigation(interaction, action) {
     deepCache.currentPage = newPage
     comicDeepSearchCache.set(userId, deepCache)
 
+    const apiInfo = apiManager.getCurrentAPIInfo("google")
     const embed = new EmbedBuilder()
       .setTitle(`📖 ${deepCache.comicTitle} - Página ${newPage + 1}/${deepCache.pages.length}`)
       .setImage(deepCache.pages[newPage])
-      .setDescription(`[🔗 Ver comic original](${deepCache.comicUrl})`)
+      .setDescription(`[🔗 Ver comic original](${deepCache.comicUrl})
+      
+**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`)
       .setColor("#9b59b6")
       .setFooter({ text: `Página ${newPage + 1} de ${deepCache.pages.length}` })
       .setTimestamp()
@@ -2622,7 +2824,7 @@ async function handleComicSearchNavigation(interaction, action) {
 
   const item = items[newIndex]
   const embed = createComicSearchEmbed(item, newIndex, items.length)
-  
+
   let buttons
   if (site === "chochox.com") {
     buttons = new ActionRowBuilder().addComponents(
@@ -2650,12 +2852,60 @@ async function handleComicSearchNavigation(interaction, action) {
 
 async function handleAdultSearchNavigation(interaction, action) {
   const userId = interaction.user.id
+
+  if (action === "xxxwatch") {
+    // Manejar visualización de video
+    const cache = xxxSearchCache.get(userId)
+    if (!cache) {
+      return interaction.reply({ content: "❌ No hay búsqueda activa.", ephemeral: true })
+    }
+
+    const currentItem = cache.items[cache.currentIndex]
+
+    try {
+      const directVideoUrl = await extractDirectVideoUrl(currentItem.link, cache.site)
+
+      if (directVideoUrl) {
+        return interaction.reply({
+          content: `🎬 **Video Directo:**\n${directVideoUrl}\n\n📺 **Página Original:**\n${currentItem.link}`,
+          ephemeral: true,
+        })
+      } else {
+        return interaction.reply({
+          content: `📺 **Ver Video:**\n${currentItem.link}\n\n⚠️ No se pudo extraer el enlace directo del video.`,
+          ephemeral: true,
+        })
+      }
+    } catch (error) {
+      await logError(interaction.channel, error, "Error extrayendo video directo")
+      return interaction.reply({
+        content: `📺 **Ver Video:**\n${currentItem.link}`,
+        ephemeral: true,
+      })
+    }
+  }
+
+  if (action === "xxxdownload") {
+    // Manejar descarga de video
+    const cache = xxxSearchCache.get(userId)
+    if (!cache) {
+      return interaction.reply({ content: "❌ No hay búsqueda activa.", ephemeral: true })
+    }
+
+    const currentItem = cache.items[cache.currentIndex]
+
+    return interaction.reply({
+      content: `📥 **Descargar Video:**\n\nPuedes usar herramientas como:\n• **yt-dlp**: \`yt-dlp "${currentItem.link}"\`\n• **4K Video Downloader**\n• **JDownloader**\n\n🔗 **Enlace:** ${currentItem.link}`,
+      ephemeral: true,
+    })
+  }
+
   if (!xxxSearchCache.has(userId)) {
     return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true })
   }
 
   const data = xxxSearchCache.get(userId)
-  const { items, currentIndex } = data
+  const { items, currentIndex, site } = data
 
   let newIndex = currentIndex
   if (action === "xxxnext" && currentIndex < items.length - 1) {
@@ -2668,8 +2918,8 @@ async function handleAdultSearchNavigation(interaction, action) {
   xxxSearchCache.set(userId, data)
 
   const item = items[newIndex]
-  const embed = createAdultSearchEmbed(item, newIndex, items.length)
-  const buttons = createNavigationButtons(userId, newIndex, items.length, "xxx")
+  const embed = await createAdultSearchEmbed(item, newIndex, items.length, site)
+  const buttons = createAdultNavigationButtons(userId, newIndex, items.length)
 
   await interaction.update({ embeds: [embed], components: [buttons] })
 }
@@ -2747,20 +2997,45 @@ function createComicSearchEmbed(item, index, total) {
     })
 }
 
-function createAdultSearchEmbed(item, index, total) {
+async function createAdultSearchEmbed(item, index, total, site) {
   const title = item.title
   const link = item.link
   const context = item.displayLink
-  const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || "https://i.imgur.com/defaultThumbnail.png"
+
+  // Mejorar la obtención de thumbnails
+  let thumb = item.pagemap?.cse_thumbnail?.[0]?.src || item.pagemap?.cse_image?.[0]?.src
+
+  // Si no hay thumbnail, intentar extraer una imagen de la página
+  if (!thumb) {
+    try {
+      const response = await axios.get(link, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+        timeout: 5000,
+      })
+
+      const html = response.data
+      const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/)
+      const twitterImageMatch = html.match(/<meta name="twitter:image" content="([^"]+)"/)
+
+      thumb = ogImageMatch?.[1] || twitterImageMatch?.[1] || "https://i.imgur.com/defaultThumbnail.png"
+    } catch (error) {
+      thumb = "https://i.imgur.com/defaultThumbnail.png"
+    }
+  }
+
   const apiInfo = apiManager.getCurrentAPIInfo("google")
 
   return new EmbedBuilder()
     .setTitle(`🔞 ${title.slice(0, 80)}...`)
-    .setDescription(`**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}`)
+    .setDescription(
+      `**🔥 Haz clic para ver el video 🔥**\n[📺 Ir al video](${link})\n\n🌐 **Sitio**: ${context}\n\n**🔧 API Status:** ${apiInfo ? `${apiInfo.remaining}/${apiInfo.max} usos restantes` : "No disponible"}`,
+    )
     .setColor("#ff3366")
     .setImage(thumb)
     .setFooter({
-      text: `Resultado ${index + 1} de ${total} | API: ${apiInfo.id} | Quedan: ${apiInfo.remaining}/${apiInfo.max}`,
+      text: `Resultado ${index + 1} de ${total} | API: ${apiInfo.id}`,
       iconURL: "https://i.imgur.com/botIcon.png",
     })
     .setTimestamp()
@@ -2784,6 +3059,23 @@ function createNavigationButtons(userId, currentIndex, total, prefix) {
     .setDisabled(currentIndex === total - 1)
 
   return new ActionRowBuilder().addComponents(backBtn, nextBtn)
+}
+
+function createAdultNavigationButtons(userId, currentIndex, total) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`xxxback-${userId}`)
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(currentIndex === 0),
+    new ButtonBuilder()
+      .setCustomId(`xxxnext-${userId}`)
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(currentIndex === total - 1),
+    new ButtonBuilder().setCustomId(`xxxwatch-${userId}`).setLabel("📺 Ver Video").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`xxxdownload-${userId}`).setLabel("📥 Descargar").setStyle(ButtonStyle.Secondary),
+  )
 }
 
 client.login(process.env.DISCORD_TOKEN)
