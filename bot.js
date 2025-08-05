@@ -393,6 +393,7 @@ const comicSearchCache = new Map()
 const generalSearchCache = new Map()
 const robloxSearchCache = new Map()
 const autoTranslateUsers = new Map()
+const comicDeepSearchCache = new Map()
 
 let prefs = {}
 let errorLoggingEnabled = false
@@ -506,18 +507,122 @@ async function isImageUrlValid(url) {
   }
 }
 
+// Función mejorada de traducción con mejor manejo de errores y textos largos
 async function translateText(text, targetLang) {
-  try {
-    const response = await axios.get(`https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`)
-    if (response.data?.translation) {
-      return {
-        text: response.data.translation,
-        from: response.data.from,
+  if (!text || text.trim().length === 0) return null
+  
+  // Dividir textos muy largos en chunks más pequeños
+  const maxChunkSize = 4000
+  const chunks = []
+  
+  if (text.length > maxChunkSize) {
+    // Dividir por párrafos primero
+    const paragraphs = text.split('\n\n')
+    let currentChunk = ''
+    
+    for (const paragraph of paragraphs) {
+      if ((currentChunk + paragraph).length > maxChunkSize && currentChunk.length > 0) {
+        chunks.push(currentChunk.trim())
+        currentChunk = paragraph
+      } else {
+        currentChunk += (currentChunk ? '\n\n' : '') + paragraph
       }
     }
-  } catch (error) {
-    console.error("Translation error:", error.message)
+    
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim())
+    }
+  } else {
+    chunks.push(text)
   }
+
+  const translationServices = [
+    'https://lingva.ml/api/v1/auto',
+    'https://translate.argosopentech.com/translate',
+    'https://api.mymemory.translated.net/get'
+  ]
+
+  let translatedChunks = []
+  
+  for (const chunk of chunks) {
+    let translated = null
+    
+    // Intentar con múltiples servicios
+    for (const serviceBase of translationServices) {
+      try {
+        if (serviceBase.includes('lingva.ml')) {
+          const response = await axios.get(`${serviceBase}/${targetLang}/${encodeURIComponent(chunk)}`, {
+            timeout: 10000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          })
+          
+          if (response.data?.translation) {
+            translated = {
+              text: response.data.translation,
+              from: response.data.from || 'auto'
+            }
+            break
+          }
+        } else if (serviceBase.includes('mymemory')) {
+          const response = await axios.get(`${serviceBase}?q=${encodeURIComponent(chunk)}&langpair=auto|${targetLang}`, {
+            timeout: 10000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          })
+          
+          if (response.data?.responseData?.translatedText) {
+            translated = {
+              text: response.data.responseData.translatedText,
+              from: 'auto'
+            }
+            break
+          }
+        } else if (serviceBase.includes('argosopentech')) {
+          const response = await axios.post(serviceBase, {
+            q: chunk,
+            source: 'auto',
+            target: targetLang,
+            format: 'text'
+          }, {
+            timeout: 10000,
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          })
+          
+          if (response.data?.translatedText) {
+            translated = {
+              text: response.data.translatedText,
+              from: 'auto'
+            }
+            break
+          }
+        }
+      } catch (error) {
+        console.log(`Error con servicio ${serviceBase}:`, error.message)
+        continue
+      }
+    }
+    
+    if (translated) {
+      translatedChunks.push(translated.text)
+    } else {
+      // Si falla todo, devolver el texto original
+      translatedChunks.push(chunk)
+    }
+  }
+  
+  if (translatedChunks.length > 0) {
+    return {
+      text: translatedChunks.join('\n\n'),
+      from: 'auto'
+    }
+  }
+  
   return null
 }
 
@@ -632,6 +737,47 @@ async function getGameIcon(universeId) {
   } catch (error) {
     console.log("Error obteniendo icono del juego:", error.message)
     return `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
+  }
+}
+
+// Nueva función para búsqueda profunda de comics en Chochox
+async function getChochoxComicPages(comicUrl) {
+  try {
+    const response = await axios.get(comicUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    })
+    
+    const html = response.data
+    const pages = []
+    
+    // Buscar patrones de imágenes en Chochox
+    const imagePatterns = [
+      /https:\/\/[^"'\s]+\.(?:jpg|jpeg|png|gif|webp)/gi,
+      /"(https:\/\/[^"]+\.(?:jpg|jpeg|png|gif|webp))"/gi,
+      /'(https:\/\/[^']+\.(?:jpg|jpeg|png|gif|webp))'/gi
+    ]
+    
+    for (const pattern of imagePatterns) {
+      const matches = html.match(pattern)
+      if (matches) {
+        matches.forEach(match => {
+          const cleanUrl = match.replace(/['"]/g, '')
+          if (cleanUrl.includes('chochox') || cleanUrl.includes('cdn')) {
+            pages.push(cleanUrl)
+          }
+        })
+      }
+    }
+    
+    // Remover duplicados y ordenar
+    const uniquePages = [...new Set(pages)]
+    return uniquePages.slice(0, 50) // Limitar a 50 páginas máximo
+    
+  } catch (error) {
+    console.log("Error obteniendo páginas del comic:", error.message)
+    return []
   }
 }
 
@@ -860,31 +1006,36 @@ async function handleAllPlayersView(interaction, cache, page = 0) {
     }
   }
 
-  const playersPerPage = 20
+  const playersPerPage = 5 // Reducido para mostrar avatares
   const totalPages = Math.ceil(allPlayersData.length / playersPerPage)
   const startIndex = page * playersPerPage
   const endIndex = startIndex + playersPerPage
   const currentPlayers = allPlayersData.slice(startIndex, endIndex)
 
-  let playerList = `**👥 TODOS LOS JUGADORES (Página ${page + 1}/${totalPages}):**\n\n`
+  // Crear embeds individuales para cada jugador con su avatar
+  const embeds = []
   
-  currentPlayers.forEach((player, index) => {
-    const globalIndex = startIndex + index + 1
-    playerList += `**${globalIndex}.** ${player.name} (ID: \`${player.id}\`)\n`
-    playerList += `🖼️ [Avatar](${player.avatar}) | 🖥️ Servidor ${player.serverIndex}\n\n`
-  })
-
-  if (currentPlayers.length === 0) {
-    playerList = "❌ No se encontraron jugadores en esta página."
-  }
-
-  const embed = new EmbedBuilder()
+  // Embed principal
+  const mainEmbed = new EmbedBuilder()
     .setTitle(`👥 ${gameData.name} - Todos los Jugadores`)
-    .setDescription(playerList)
+    .setDescription(`**Página ${page + 1}/${totalPages} | Total: ${allPlayersData.length} jugadores**`)
     .setColor("#00FF00")
     .setThumbnail(gameIcon)
-    .setFooter({ text: `Página ${page + 1}/${totalPages} | Total: ${allPlayersData.length} jugadores` })
     .setTimestamp()
+  
+  embeds.push(mainEmbed)
+
+  // Embeds para cada jugador con su avatar
+  currentPlayers.forEach((player, index) => {
+    const globalIndex = startIndex + index + 1
+    const playerEmbed = new EmbedBuilder()
+      .setTitle(`${globalIndex}. ${player.name}`)
+      .setDescription(`**ID:** \`${player.id}\`\n**Servidor:** ${player.serverIndex}`)
+      .setImage(player.avatar)
+      .setColor("#4CAF50")
+    
+    embeds.push(playerEmbed)
+  })
 
   const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -906,7 +1057,7 @@ async function handleAllPlayersView(interaction, cache, page = 0) {
   cache.playerPage = page
   robloxSearchCache.set(interaction.user.id, cache)
 
-  await interaction.editReply({ embeds: [embed], components: [buttons] })
+  await interaction.editReply({ embeds: embeds, components: [buttons] })
 }
 
 async function handlePlayerCountView(interaction, cache, page = 0, filterType = "all") {
@@ -1026,34 +1177,39 @@ async function handleGamePassesView(interaction, cache, page = 0) {
       return interaction.editReply({ embeds: [embed], components: [backButton] })
     }
 
-    const passesPerPage = 10
+    const passesPerPage = 3 // Reducido para mostrar imágenes
     const totalPages = Math.ceil(gamePasses.length / passesPerPage)
     const startIndex = page * passesPerPage
     const endIndex = startIndex + passesPerPage
     const currentPasses = gamePasses.slice(startIndex, endIndex)
 
-    let passesList = `**🎫 PASES DEL JUEGO (Página ${page + 1}/${totalPages}):**\n\n`
+    const embeds = []
+    
+    // Embed principal
+    const mainEmbed = new EmbedBuilder()
+      .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
+      .setDescription(`**Página ${page + 1}/${totalPages} | Total: ${gamePasses.length} pases**`)
+      .setColor("#FFD700")
+      .setThumbnail(gameIcon)
+      .setTimestamp()
+    
+    embeds.push(mainEmbed)
 
+    // Embeds individuales para cada pase con su imagen
     for (let i = 0; i < currentPasses.length; i++) {
       const pass = currentPasses[i]
       const globalIndex = startIndex + i + 1
       const price = pass.price ? `${pass.price} Robux` : "Gratis"
-      const passIcon = `https://thumbnails.roblox.com/v1/game-passes?gamePassIds=${pass.id}&size=150x150&format=Png`
+      const passIcon = `https://thumbnails.roblox.com/v1/game-passes?gamePassIds=${pass.id}&size=420x420&format=Png`
       
-      passesList += `**${globalIndex}.** ${pass.name}\n`
-      passesList += `💰 **Precio:** ${price}\n`
-      passesList += `🎫 **ID:** ${pass.id}\n`
-      passesList += `🖼️ [Icono](${passIcon})\n`
-      passesList += `🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})\n\n`
+      const passEmbed = new EmbedBuilder()
+        .setTitle(`${globalIndex}. ${pass.name}`)
+        .setDescription(`💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})`)
+        .setImage(passIcon)
+        .setColor("#FFD700")
+      
+      embeds.push(passEmbed)
     }
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
-      .setDescription(passesList)
-      .setColor("#FFD700")
-      .setThumbnail(gameIcon)
-      .setFooter({ text: `Página ${page + 1}/${totalPages} | Total: ${gamePasses.length} pases` })
-      .setTimestamp()
 
     const buttons = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -1076,7 +1232,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     cache.gamePasses = gamePasses
     robloxSearchCache.set(interaction.user.id, cache)
 
-    await interaction.editReply({ embeds: [embed], components: [buttons] })
+    await interaction.editReply({ embeds: embeds, components: [buttons] })
 
   } catch (error) {
     await logError(interaction.channel, error, "Error obteniendo pases del juego")
@@ -2098,7 +2254,29 @@ async function handleComicSiteSelection(interaction) {
 
     const item = items[0]
     const embed = createComicSearchEmbed(item, 0, items.length)
-    const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic")
+    
+    // Agregar botón de búsqueda profunda para Chochox
+    let buttons
+    if (selectedSite === "chochox.com") {
+      buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`comicback-${interaction.user.id}`)
+          .setLabel("⬅️")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`comicnext-${interaction.user.id}`)
+          .setLabel("➡️")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(items.length <= 1),
+        new ButtonBuilder()
+          .setCustomId(`comicdeep-${interaction.user.id}`)
+          .setLabel("🔍 Ver Comic Completo")
+          .setStyle(ButtonStyle.Success),
+      )
+    } else {
+      buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic")
+    }
 
     await interaction.update({
       content: "",
@@ -2281,12 +2459,156 @@ async function handleGeneralSearchNavigation(interaction, action) {
 
 async function handleComicSearchNavigation(interaction, action) {
   const userId = interaction.user.id
+  
+  if (action === "comicdeep") {
+    // Manejar búsqueda profunda de comic
+    const cache = comicSearchCache.get(userId)
+    if (!cache) {
+      return interaction.reply({ content: "❌ No hay búsqueda activa.", ephemeral: true })
+    }
+
+    const currentItem = cache.items[cache.currentIndex]
+    if (!currentItem.link.includes("chochox.com")) {
+      return interaction.reply({ content: "❌ Esta función solo está disponible para Chochox.", ephemeral: true })
+    }
+
+    await interaction.deferUpdate()
+
+    try {
+      const comicPages = await getChochoxComicPages(currentItem.link)
+      
+      if (comicPages.length === 0) {
+        return interaction.editReply({ 
+          content: "❌ No se pudieron obtener las páginas del comic.",
+          components: []
+        })
+      }
+
+      comicDeepSearchCache.set(userId, {
+        pages: comicPages,
+        currentPage: 0,
+        comicTitle: currentItem.title,
+        comicUrl: currentItem.link
+      })
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📖 ${currentItem.title} - Página 1/${comicPages.length}`)
+        .setImage(comicPages[0])
+        .setDescription(`[🔗 Ver comic original](${currentItem.link})`)
+        .setColor("#9b59b6")
+        .setFooter({ text: `Página 1 de ${comicPages.length}` })
+        .setTimestamp()
+
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`comicpageprev-${userId}`)
+          .setLabel("⬅️ Anterior")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`comicpagenext-${userId}`)
+          .setLabel("➡️ Siguiente")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(comicPages.length <= 1),
+        new ButtonBuilder()
+          .setCustomId(`comicpageback-${userId}`)
+          .setLabel("🔙 Volver a Búsqueda")
+          .setStyle(ButtonStyle.Secondary),
+      )
+
+      await interaction.editReply({ embeds: [embed], components: [buttons] })
+
+    } catch (error) {
+      await logError(interaction.channel, error, "Error en búsqueda profunda de comic")
+      await interaction.editReply({ 
+        content: "❌ Error al obtener las páginas del comic.",
+        components: []
+      })
+    }
+    return
+  }
+
+  if (action.startsWith("comicpage")) {
+    // Manejar navegación de páginas del comic
+    const deepCache = comicDeepSearchCache.get(userId)
+    if (!deepCache) {
+      return interaction.reply({ content: "❌ No hay comic cargado.", ephemeral: true })
+    }
+
+    let newPage = deepCache.currentPage
+
+    if (action === "comicpagenext" && deepCache.currentPage < deepCache.pages.length - 1) {
+      newPage++
+    } else if (action === "comicpageprev" && deepCache.currentPage > 0) {
+      newPage--
+    } else if (action === "comicpageback") {
+      // Volver a la búsqueda de comics
+      const cache = comicSearchCache.get(userId)
+      if (cache) {
+        const item = cache.items[cache.currentIndex]
+        const embed = createComicSearchEmbed(item, cache.currentIndex, cache.items.length)
+        
+        const buttons = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`comicback-${userId}`)
+            .setLabel("⬅️")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(cache.currentIndex === 0),
+          new ButtonBuilder()
+            .setCustomId(`comicnext-${userId}`)
+            .setLabel("➡️")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(cache.currentIndex === cache.items.length - 1),
+          new ButtonBuilder()
+            .setCustomId(`comicdeep-${userId}`)
+            .setLabel("🔍 Ver Comic Completo")
+            .setStyle(ButtonStyle.Success),
+        )
+
+        return interaction.update({ embeds: [embed], components: [buttons] })
+      }
+      return
+    }
+
+    deepCache.currentPage = newPage
+    comicDeepSearchCache.set(userId, deepCache)
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📖 ${deepCache.comicTitle} - Página ${newPage + 1}/${deepCache.pages.length}`)
+      .setImage(deepCache.pages[newPage])
+      .setDescription(`[🔗 Ver comic original](${deepCache.comicUrl})`)
+      .setColor("#9b59b6")
+      .setFooter({ text: `Página ${newPage + 1} de ${deepCache.pages.length}` })
+      .setTimestamp()
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`comicpageprev-${userId}`)
+        .setLabel("⬅️ Anterior")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newPage === 0),
+      new ButtonBuilder()
+        .setCustomId(`comicpagenext-${userId}`)
+        .setLabel("➡️ Siguiente")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newPage === deepCache.pages.length - 1),
+      new ButtonBuilder()
+        .setCustomId(`comicpageback-${userId}`)
+        .setLabel("🔙 Volver a Búsqueda")
+        .setStyle(ButtonStyle.Secondary),
+    )
+
+    await interaction.update({ embeds: [embed], components: [buttons] })
+    return
+  }
+
+  // Navegación normal de comics
   if (!comicSearchCache.has(userId)) {
     return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true })
   }
 
   const data = comicSearchCache.get(userId)
-  const { items, currentIndex } = data
+  const { items, currentIndex, site } = data
 
   let newIndex = currentIndex
   if (action === "comicnext" && currentIndex < items.length - 1) {
@@ -2300,7 +2622,28 @@ async function handleComicSearchNavigation(interaction, action) {
 
   const item = items[newIndex]
   const embed = createComicSearchEmbed(item, newIndex, items.length)
-  const buttons = createNavigationButtons(userId, newIndex, items.length, "comic")
+  
+  let buttons
+  if (site === "chochox.com") {
+    buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`comicback-${userId}`)
+        .setLabel("⬅️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newIndex === 0),
+      new ButtonBuilder()
+        .setCustomId(`comicnext-${userId}`)
+        .setLabel("➡️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(newIndex === items.length - 1),
+      new ButtonBuilder()
+        .setCustomId(`comicdeep-${userId}`)
+        .setLabel("🔍 Ver Comic Completo")
+        .setStyle(ButtonStyle.Success),
+    )
+  } else {
+    buttons = createNavigationButtons(userId, newIndex, items.length, "comic")
+  }
 
   await interaction.update({ embeds: [embed], components: [buttons] })
 }
