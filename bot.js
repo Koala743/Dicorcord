@@ -9,9 +9,11 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  AttachmentBuilder,
 } = require("discord.js")
 const axios = require("axios")
 const fs = require("fs")
+const path = require("path")
 const cheerio = require("cheerio")
 const puppeteer = require("puppeteer")
 
@@ -352,6 +354,145 @@ class ComicScraper {
     this.comicCache = new Map()
   }
 
+  async scrapeChochoxAPI(query) {
+    try {
+      const searchUrl = `https://chochox.com/api/search?q=${encodeURIComponent(query)}&limit=20`
+      const response = await axios.get(searchUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "application/json",
+          Referer: "https://chochox.com/",
+        },
+      })
+
+      if (response.data && response.data.results) {
+        return response.data.results.map((comic) => ({
+          title: comic.title,
+          url: `https://chochox.com/comic/${comic.slug}`,
+          thumbnail: comic.thumbnail || comic.cover,
+          pages: comic.pages || 0,
+          id: comic.id,
+          slug: comic.slug,
+        }))
+      }
+    } catch (error) {
+      console.log("API de Chochox no disponible, usando scraping...")
+    }
+    return null
+  }
+
+  async scrapeReyComixAPI(query) {
+    try {
+      const searchUrl = `https://reycomix.com/wp-json/wp/v2/posts?search=${encodeURIComponent(query)}&per_page=20`
+      const response = await axios.get(searchUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "application/json",
+        },
+      })
+
+      if (response.data && Array.isArray(response.data)) {
+        return response.data.map((comic) => ({
+          title: comic.title.rendered,
+          url: comic.link,
+          thumbnail: comic.featured_media_url,
+          excerpt: comic.excerpt.rendered.replace(/<[^>]*>/g, ""),
+          id: comic.id,
+        }))
+      }
+    } catch (error) {
+      console.log("API de ReyComix no disponible, usando scraping...")
+    }
+    return null
+  }
+
+  async getComicPages(comicUrl, site) {
+    try {
+      if (site === "chochox.com") {
+        return await this.getChochoxPages(comicUrl)
+      } else if (site === "reycomix.com") {
+        return await this.getReyComixPages(comicUrl)
+      }
+    } catch (error) {
+      console.error("Error obteniendo páginas del comic:", error)
+    }
+    return null
+  }
+
+  async getChochoxPages(comicUrl) {
+    try {
+      const comicId = comicUrl.split("/").pop()
+      const apiUrl = `https://chochox.com/api/comic/${comicId}/pages`
+
+      const response = await axios.get(apiUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "application/json",
+          Referer: comicUrl,
+        },
+      })
+
+      if (response.data && response.data.pages) {
+        return {
+          title: response.data.title,
+          pages: response.data.pages.map((page, index) => ({
+            url: page.image_url,
+            index: index + 1,
+            filename: `page_${index + 1}.jpg`,
+          })),
+          totalPages: response.data.pages.length,
+          sourceUrl: comicUrl,
+        }
+      }
+    } catch (error) {
+      console.log("API no disponible, usando scraping tradicional...")
+      return await this.scrapeChochoxComic(comicUrl)
+    }
+    return null
+  }
+
+  async getReyComixPages(comicUrl) {
+    try {
+      const browser = await puppeteer.launch({ headless: true })
+      const page = await browser.newPage()
+
+      await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+      await page.goto(comicUrl, { waitUntil: "networkidle2" })
+
+      const comicData = await page.evaluate(() => {
+        const title = document.querySelector("h1")?.textContent || "Comic"
+        const images = []
+
+        document.querySelectorAll("img").forEach((img, index) => {
+          const src = img.src || img.getAttribute("data-src")
+          if (src && (src.includes(".jpg") || src.includes(".png") || src.includes(".webp"))) {
+            if (!src.includes("logo") && !src.includes("banner")) {
+              images.push({
+                url: src,
+                index: index + 1,
+                filename: `page_${index + 1}.jpg`,
+              })
+            }
+          }
+        })
+
+        return { title, images }
+      })
+
+      await browser.close()
+
+      return {
+        title: comicData.title,
+        pages: comicData.images,
+        totalPages: comicData.images.length,
+        sourceUrl: comicUrl,
+      }
+    } catch (error) {
+      console.error("Error scraping ReyComix:", error)
+      return null
+    }
+  }
+
   async scrapeChochoxComic(comicUrl) {
     try {
       const browser = await puppeteer.launch({
@@ -402,7 +543,7 @@ class ComicScraper {
 
       return {
         title: comicTitle,
-        images: images,
+        pages: images,
         totalPages: images.length,
         sourceUrl: comicUrl,
       }
@@ -506,26 +647,49 @@ class EnhancedXXXSearch {
       const page = await browser.newPage()
 
       await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 10000 })
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 15000 })
 
       const videoInfo = await page.evaluate(() => {
         const title =
-          document.querySelector("h1")?.textContent || document.querySelector(".title")?.textContent || document.title
+          document.querySelector("h1")?.textContent ||
+          document.querySelector(".title")?.textContent ||
+          document.querySelector('[class*="title"]')?.textContent ||
+          document.title
 
         const duration =
-          document.querySelector(".duration")?.textContent || document.querySelector('[class*="duration"]')?.textContent
+          document.querySelector(".duration")?.textContent ||
+          document.querySelector('[class*="duration"]')?.textContent ||
+          document.querySelector("[data-duration]")?.getAttribute("data-duration")
 
         const views =
-          document.querySelector(".views")?.textContent || document.querySelector('[class*="views"]')?.textContent
+          document.querySelector(".views")?.textContent ||
+          document.querySelector('[class*="views"]')?.textContent ||
+          document.querySelector('[class*="view-count"]')?.textContent
 
-        const videoElement = document.querySelector("video source") || document.querySelector("video")
-        const videoSrc = videoElement?.src || videoElement?.getAttribute("src")
+        const videoElement = document.querySelector("video")
+        let videoSrc = null
+
+        if (videoElement) {
+          videoSrc = videoElement.src || videoElement.getAttribute("src")
+          if (!videoSrc) {
+            const source = videoElement.querySelector("source")
+            if (source) {
+              videoSrc = source.src || source.getAttribute("src")
+            }
+          }
+        }
+
+        const thumbnail =
+          document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
+          document.querySelector('meta[name="twitter:image"]')?.getAttribute("content") ||
+          document.querySelector("video")?.getAttribute("poster")
 
         return {
           title: title?.trim(),
           duration: duration?.trim(),
           views: views?.trim(),
           directVideoSrc: videoSrc,
+          thumbnail: thumbnail,
         }
       })
 
@@ -551,7 +715,7 @@ class EnhancedXXXSearch {
       }
     }
 
-    return "https://i.imgur.com/defaultThumbnail.png"
+    return "https://via.placeholder.com/640x360/FF6B6B/FFFFFF?text=Video+Adulto"
   }
 
   async getDirectVideoUrl(pageUrl, site) {
@@ -568,14 +732,31 @@ class EnhancedXXXSearch {
   }
 
   async extractXvideosDirectUrl(url) {
-    return null
+    try {
+      const browser = await puppeteer.launch({ headless: true })
+      const page = await browser.newPage()
+
+      await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+      await page.goto(url, { waitUntil: "networkidle2" })
+
+      const videoUrl = await page.evaluate(() => {
+        const video = document.querySelector("video source")
+        return video ? video.src : null
+      })
+
+      await browser.close()
+      return videoUrl
+    } catch (error) {
+      console.error("Error extrayendo URL de Xvideos:", error)
+      return null
+    }
   }
 
   async createEnhancedAdultEmbed(item, index, total) {
     const title = item.videoInfo?.title || item.title
     const link = item.link
     const context = item.displayLink
-    const thumbnail = item.enhancedThumbnail
+    const thumbnail = item.videoInfo?.thumbnail || item.enhancedThumbnail
     const apiInfo = apiManager.getCurrentAPIInfo("google")
 
     const embed = new EmbedBuilder()
@@ -638,12 +819,15 @@ class EnhancedXXXSearch {
   async handleVideoWatch(interaction, cache) {
     const currentItem = cache.items[cache.currentIndex]
 
-    if (currentItem.directVideoUrl) {
+    if (currentItem.directVideoUrl || currentItem.videoInfo?.directVideoSrc) {
+      const videoUrl = currentItem.directVideoUrl || currentItem.videoInfo.directVideoSrc
+
       const embed = new EmbedBuilder()
         .setTitle("🎬 Reproduciendo Video")
-        .setDescription(`**${currentItem.title}**\n\n[🎥 Reproducir Video](${currentItem.directVideoUrl})`)
+        .setDescription(`**${currentItem.title}**\n\n[🎥 Ver Video Directo](${videoUrl})`)
         .setColor("#00ff00")
-        .setFooter({ text: "Haz clic en el enlace para reproducir" })
+        .setVideo(videoUrl)
+        .setFooter({ text: "Video cargado directamente en Discord" })
 
       return interaction.reply({ embeds: [embed], ephemeral: true })
     } else {
@@ -657,15 +841,81 @@ class EnhancedXXXSearch {
   async handleVideoDownload(interaction, cache) {
     const currentItem = cache.items[cache.currentIndex]
 
-    const embed = new EmbedBuilder()
-      .setTitle("📥 Descargar Video")
-      .setDescription(
-        `**${currentItem.title}**\n\n**Opciones de descarga:**\n\n🔗 **Método 1**: [Usar yt-dlp](https://github.com/yt-dlp/yt-dlp)\n\`\`\`\nyt-dlp "${currentItem.link}"\n\`\`\`\n\n🌐 **Método 2**: [Usar savefrom.net](https://savefrom.net/)\n\n📱 **Método 3**: Usar apps móviles de descarga`,
-      )
-      .setColor("#ffa500")
-      .setFooter({ text: "Usa estas herramientas bajo tu propia responsabilidad" })
+    try {
+      if (currentItem.directVideoUrl || currentItem.videoInfo?.directVideoSrc) {
+        const videoUrl = currentItem.directVideoUrl || currentItem.videoInfo.directVideoSrc
 
-    return interaction.reply({ embeds: [embed], ephemeral: true })
+        await interaction.deferReply({ ephemeral: true })
+
+        const response = await axios({
+          method: "GET",
+          url: videoUrl,
+          responseType: "stream",
+          timeout: 30000,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        })
+
+        const fileName = `video_${Date.now()}.mp4`
+        const filePath = path.join(__dirname, "temp", fileName)
+
+        if (!fs.existsSync(path.join(__dirname, "temp"))) {
+          fs.mkdirSync(path.join(__dirname, "temp"), { recursive: true })
+        }
+
+        const writer = fs.createWriteStream(filePath)
+        response.data.pipe(writer)
+
+        writer.on("finish", async () => {
+          const stats = fs.statSync(filePath)
+          const fileSizeInMB = stats.size / (1024 * 1024)
+
+          if (fileSizeInMB > 25) {
+            fs.unlinkSync(filePath)
+            return interaction.editReply({
+              content: "❌ El video es demasiado grande para Discord (>25MB). Usa el link directo para descargarlo.",
+            })
+          }
+
+          const attachment = new AttachmentBuilder(filePath, { name: fileName })
+
+          await interaction.editReply({
+            content: `📥 **Video descargado:** ${currentItem.title}`,
+            files: [attachment],
+          })
+
+          setTimeout(() => {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath)
+            }
+          }, 60000)
+        })
+
+        writer.on("error", (error) => {
+          console.error("Error descargando video:", error)
+          interaction.editReply({
+            content: "❌ Error al descargar el video. Intenta con el link directo.",
+          })
+        })
+      } else {
+        const embed = new EmbedBuilder()
+          .setTitle("📥 Descargar Video")
+          .setDescription(
+            `**${currentItem.title}**\n\n**Opciones de descarga:**\n\n🔗 **Método 1**: [Usar yt-dlp](https://github.com/yt-dlp/yt-dlp)\n\`\`\`\nyt-dlp "${currentItem.link}"\n\`\`\`\n\n🌐 **Método 2**: [Usar savefrom.net](https://savefrom.net/)\n\n📱 **Método 3**: Usar apps móviles de descarga`,
+          )
+          .setColor("#ffa500")
+          .setFooter({ text: "Usa estas herramientas bajo tu propia responsabilidad" })
+
+        return interaction.reply({ embeds: [embed], ephemeral: true })
+      }
+    } catch (error) {
+      console.error("Error en descarga de video:", error)
+      return interaction.reply({
+        content: "❌ Error al descargar el video. Intenta de nuevo más tarde.",
+        ephemeral: true,
+      })
+    }
   }
 }
 
@@ -829,6 +1079,36 @@ async function isImageUrlValid(url) {
   }
 }
 
+async function downloadImage(url, filename) {
+  try {
+    const response = await axios({
+      method: "GET",
+      url: url,
+      responseType: "stream",
+      timeout: 30000,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    })
+
+    const filePath = path.join(__dirname, "temp", filename)
+
+    if (!fs.existsSync(path.join(__dirname, "temp"))) {
+      fs.mkdirSync(path.join(__dirname, "temp"), { recursive: true })
+    }
+
+    const writer = fs.createWriteStream(filePath)
+    response.data.pipe(writer)
+
+    return new Promise((resolve, reject) => {
+      writer.on("finish", () => resolve(filePath))
+      writer.on("error", reject)
+    })
+  } catch (error) {
+    throw error
+  }
+}
+
 async function translateText(text, targetLang) {
   try {
     const response = await axios.get(`https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`)
@@ -979,11 +1259,13 @@ function createPlayerBar(current, max) {
 async function handleRobloxServersView(interaction, cache, page = 0) {
   const { publicServers, gameData, gameIcon, totalServers } = cache
 
-  if (publicServers.length === 0) {
+  if (!publicServers || publicServers.length === 0) {
     return interaction.reply({ content: "❌ No hay servidores públicos disponibles.", ephemeral: true })
   }
 
-  await interaction.deferUpdate()
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate()
+  }
 
   const serversPerPage = 20
   const totalPages = Math.ceil(publicServers.length / serversPerPage)
@@ -1013,7 +1295,7 @@ async function handleRobloxServersView(interaction, cache, page = 0) {
     .setColor("#4CAF50")
     .setThumbnail(gameIcon)
     .setFooter({
-      text: `Página ${page + 1}/${totalPages} | Total: ${totalServers} servidores | API: ${apiInfo.remaining}/${apiInfo.max}`,
+      text: `Página ${page + 1}/${totalPages} | Total: ${totalServers} servidores | API: ${apiInfo?.remaining || 0}/${apiInfo?.max || 0}`,
     })
     .setTimestamp()
 
@@ -1041,13 +1323,17 @@ async function handleRobloxServersView(interaction, cache, page = 0) {
   cache.serversPage = page
   robloxSearchCache.set(interaction.user.id, cache)
 
-  await interaction.editReply({ embeds: [embed], components: [buttons] })
+  if (interaction.deferred) {
+    await interaction.editReply({ embeds: [embed], components: [buttons] })
+  } else {
+    await interaction.update({ embeds: [embed], components: [buttons] })
+  }
 }
 
 async function handleAllPlayersViewImproved(interaction, cache, page = 0) {
   const { allServers, gameData, gameIcon } = cache
 
-  if (allServers.length === 0) {
+  if (!allServers || allServers.length === 0) {
     return interaction.reply({ content: "❌ No hay servidores con jugadores disponibles.", ephemeral: true })
   }
 
@@ -1117,7 +1403,7 @@ async function handleAllPlayersViewImproved(interaction, cache, page = 0) {
     .setColor("#00FF00")
     .setThumbnail(gameIcon)
     .setFooter({
-      text: `Página ${page + 1}/${totalPages} | Total: ${allPlayersData.length} jugadores | API: ${apiInfo.remaining}/${apiInfo.max}`,
+      text: `Página ${page + 1}/${totalPages} | Total: ${allPlayersData.length} jugadores | API: ${apiInfo?.remaining || 0}/${apiInfo?.max || 0}`,
     })
     .setTimestamp()
 
@@ -1154,10 +1440,10 @@ async function handleAllPlayersViewImproved(interaction, cache, page = 0) {
 }
 
 async function handleComicCompleteView(interaction, comicData) {
-  const { title, images, sourceUrl } = comicData
+  const { title, pages, sourceUrl } = comicData
   const userId = interaction.user.id
 
-  if (!images || images.length === 0) {
+  if (!pages || pages.length === 0) {
     return interaction.reply({ content: "❌ No se encontraron imágenes del comic.", ephemeral: true })
   }
 
@@ -1169,7 +1455,7 @@ async function handleComicCompleteView(interaction, comicData) {
   })
 
   const embed = await createComicViewerEmbed(comicData, 0)
-  const buttons = createComicViewerButtons(userId, 0, images.length)
+  const buttons = createComicViewerButtons(userId, 0, pages.length)
 
   await interaction.update({
     embeds: [embed],
@@ -1178,19 +1464,19 @@ async function handleComicCompleteView(interaction, comicData) {
 }
 
 async function createComicViewerEmbed(comicData, imageIndex) {
-  const { title, images, sourceUrl } = comicData
-  const currentImage = images[imageIndex]
+  const { title, pages, sourceUrl } = comicData
+  const currentImage = pages[imageIndex]
   const apiInfo = apiManager.getCurrentAPIInfo("google")
 
   const embed = new EmbedBuilder()
     .setTitle(`📚 ${title}`)
     .setDescription(
-      `**Página ${imageIndex + 1} de ${images.length}**\n\n📖 **Archivo**: ${currentImage.filename}\n🔗 [Ver comic original](${sourceUrl})`,
+      `**Página ${imageIndex + 1} de ${pages.length}**\n\n📖 **Archivo**: ${currentImage.filename}\n🔗 [Ver comic original](${sourceUrl})`,
     )
     .setImage(currentImage.url)
     .setColor("#9b59b6")
     .setFooter({
-      text: `Página ${imageIndex + 1}/${images.length} | API: ${apiInfo.remaining}/${apiInfo.max}`,
+      text: `Página ${imageIndex + 1}/${pages.length} | API: ${apiInfo?.remaining || 0}/${apiInfo?.max || 0}`,
     })
     .setTimestamp()
 
@@ -1246,7 +1532,7 @@ async function handleComicViewerNavigation(interaction, action) {
 
   switch (action) {
     case "comicNext":
-      newIndex = Math.min(newIndex + 1, comicData.images.length - 1)
+      newIndex = Math.min(newIndex + 1, comicData.pages.length - 1)
       break
     case "comicPrev":
       newIndex = Math.max(newIndex - 1, 0)
@@ -1255,19 +1541,61 @@ async function handleComicViewerNavigation(interaction, action) {
       newIndex = 0
       break
     case "comicLast":
-      newIndex = comicData.images.length - 1
+      newIndex = comicData.pages.length - 1
       break
     case "comicJump":
       return handleComicJumpModal(interaction, cache)
+    case "comicDownload":
+      return handleComicDownload(interaction, cache)
   }
 
   cache.currentImageIndex = newIndex
   comicSearchCache.set(userId, cache)
 
   const embed = await createComicViewerEmbed(comicData, newIndex)
-  const buttons = createComicViewerButtons(userId, newIndex, comicData.images.length)
+  const buttons = createComicViewerButtons(userId, newIndex, comicData.pages.length)
 
   await interaction.update({ embeds: [embed], components: buttons })
+}
+
+async function handleComicDownload(interaction, cache) {
+  const { comicData } = cache
+  const currentImage = comicData.pages[cache.currentImageIndex || 0]
+
+  try {
+    await interaction.deferReply({ ephemeral: true })
+
+    const fileName = `comic_page_${cache.currentImageIndex + 1}.jpg`
+    const filePath = await downloadImage(currentImage.url, fileName)
+
+    const stats = fs.statSync(filePath)
+    const fileSizeInMB = stats.size / (1024 * 1024)
+
+    if (fileSizeInMB > 25) {
+      fs.unlinkSync(filePath)
+      return interaction.editReply({
+        content: "❌ La imagen es demasiado grande para Discord (>25MB). Usa el link directo para descargarla.",
+      })
+    }
+
+    const attachment = new AttachmentBuilder(filePath, { name: fileName })
+
+    await interaction.editReply({
+      content: `📥 **Página descargada:** ${comicData.title} - Página ${cache.currentImageIndex + 1}`,
+      files: [attachment],
+    })
+
+    setTimeout(() => {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+      }
+    }, 60000)
+  } catch (error) {
+    console.error("Error descargando imagen del comic:", error)
+    return interaction.editReply({
+      content: "❌ Error al descargar la imagen. Intenta de nuevo más tarde.",
+    })
+  }
 }
 
 async function handleComicJumpModal(interaction, cache) {
@@ -1280,6 +1608,7 @@ async function handleComicJumpModal(interaction, cache) {
     .setStyle(TextInputStyle.Short)
     .setMinLength(1)
     .setMaxLength(3)
+    .setPlaceholder(`1-${comicData.pages.length}`)
 
   const firstActionRow = new ActionRowBuilder().addComponents(pageInput)
 
@@ -1962,13 +2291,13 @@ async function handleModalSubmit(interaction) {
     }
 
     const page = Number.parseInt(interaction.fields.getTextInputValue("comicPageInput"))
-    const newIndex = Math.min(Math.max(page - 1, 0), cache.comicData.images.length - 1)
+    const newIndex = Math.min(Math.max(page - 1, 0), cache.comicData.pages.length - 1)
 
     cache.currentImageIndex = newIndex
     comicSearchCache.set(userId, cache)
 
     const embed = await createComicViewerEmbed(cache.comicData, newIndex)
-    const buttons = createComicViewerButtons(userId, newIndex, cache.comicData.images.length)
+    const buttons = createComicViewerButtons(userId, newIndex, cache.comicData.pages.length)
 
     await interaction.update({ embeds: [embed], components: buttons })
   }
@@ -2339,6 +2668,10 @@ async function handleWebSearch(message, args) {
         .setLabel("➡️")
         .setStyle(ButtonStyle.Primary)
         .setDisabled(validIndex === items.length - 1),
+      new ButtonBuilder()
+        .setCustomId(`downloadImage-${message.author.id}`)
+        .setLabel("📥 Descargar")
+        .setStyle(ButtonStyle.Success),
     )
 
     await message.channel.send({ embeds: [embed], components: [row] })
@@ -2596,30 +2929,58 @@ async function handleComicSiteSelection(interaction) {
   const selectedSite = interaction.values[0]
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&q=${encodeURIComponent(query + " site:" + selectedSite)}&num=10`
-    const response = await makeGoogleAPIRequest(url, "google")
-    const items = response.data.items
+    let comicsFound = null
 
-    if (!items || items.length === 0) {
-      return interaction.reply({ content: "❌ No se encontraron comics.", ephemeral: true })
+    if (selectedSite === "chochox.com") {
+      comicsFound = await comicScraper.scrapeChochoxAPI(query)
+    } else if (selectedSite === "reycomix.com") {
+      comicsFound = await comicScraper.scrapeReyComixAPI(query)
     }
 
-    comicSearchCache.set(interaction.user.id, {
-      items,
-      currentIndex: 0,
-      query,
-      site: selectedSite,
-    })
+    if (!comicsFound) {
+      const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&q=${encodeURIComponent(query + " site:" + selectedSite)}&num=10`
+      const response = await makeGoogleAPIRequest(url, "google")
+      const items = response.data.items
 
-    const item = items[0]
-    const embed = createComicSearchEmbed(item, 0, items.length)
-    const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic")
+      if (!items || items.length === 0) {
+        return interaction.reply({ content: "❌ No se encontraron comics.", ephemeral: true })
+      }
 
-    await interaction.update({
-      content: "",
-      embeds: [embed],
-      components: [buttons],
-    })
+      comicSearchCache.set(interaction.user.id, {
+        items,
+        currentIndex: 0,
+        query,
+        site: selectedSite,
+      })
+
+      const item = items[0]
+      const embed = createComicSearchEmbed(item, 0, items.length)
+      const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic")
+
+      await interaction.update({
+        content: "",
+        embeds: [embed],
+        components: [buttons],
+      })
+    } else {
+      comicSearchCache.set(interaction.user.id, {
+        items: comicsFound,
+        currentIndex: 0,
+        query,
+        site: selectedSite,
+        isAPI: true,
+      })
+
+      const item = comicsFound[0]
+      const embed = createAPIComicEmbed(item, 0, comicsFound.length)
+      const buttons = createNavigationButtons(interaction.user.id, 0, comicsFound.length, "comic")
+
+      await interaction.update({
+        content: "",
+        embeds: [embed],
+        components: [buttons],
+      })
+    }
 
     pendingComicSearch.delete(interaction.user.id)
   } catch (error) {
@@ -2630,6 +2991,30 @@ async function handleComicSiteSelection(interaction) {
       ephemeral: true,
     })
   }
+}
+
+function createAPIComicEmbed(comic, index, total) {
+  const embed = new EmbedBuilder()
+    .setTitle(`📚 ${comic.title}`)
+    .setDescription(
+      `**📖 Comic encontrado via API 📖**\n[📚 Ver comic completo](${comic.url})\n\n📄 **Páginas**: ${comic.pages || "N/A"}`,
+    )
+    .setColor("#9b59b6")
+    .setImage(comic.thumbnail)
+    .setTimestamp()
+    .addFields({
+      name: "📚 Nota",
+      value: "Este comic fue encontrado usando la API oficial del sitio.",
+    })
+
+  const apiInfo = apiManager.getCurrentAPIInfo("google")
+  if (apiInfo) {
+    embed.setFooter({
+      text: `Resultado ${index + 1} de ${total} | API: ${apiInfo.remaining}/${apiInfo.max}`,
+    })
+  }
+
+  return embed
 }
 
 async function handleAdultSiteSelection(interaction) {
@@ -2713,7 +3098,11 @@ async function handleButtonInteraction(interaction) {
       await handleGeneralSearchNavigation(interaction, customId.split("-")[0])
     } else if (customId.includes("Roblox")) {
       await handleRobloxNavigation(interaction, customId.split("-")[0])
-    } else if (customId.startsWith("prevImage") || customId.startsWith("nextImage")) {
+    } else if (
+      customId.startsWith("prevImage") ||
+      customId.startsWith("nextImage") ||
+      customId.startsWith("downloadImage")
+    ) {
       await handleImageNavigation(interaction)
     }
   } catch (error) {
@@ -2776,7 +3165,7 @@ async function handleComicSearchNavigation(interaction, action) {
   }
 
   const data = comicSearchCache.get(userId)
-  const { items, currentIndex } = data
+  const { items, currentIndex, isAPI } = data
 
   let newIndex = currentIndex
   if (action === "comicnext" && currentIndex < items.length - 1) {
@@ -2785,17 +3174,32 @@ async function handleComicSearchNavigation(interaction, action) {
     newIndex--
   } else if (action === "comicview") {
     const currentItem = items[currentIndex]
-    if (data.site === "chochox.com") {
+
+    if (isAPI) {
       try {
-        const comicData = await comicScraper.scrapeChochoxComic(currentItem.link)
-        if (comicData && comicData.images.length > 0) {
+        const comicData = await comicScraper.getComicPages(currentItem.url, data.site)
+        if (comicData && comicData.pages && comicData.pages.length > 0) {
           return await handleComicCompleteView(interaction, comicData)
         } else {
-          return interaction.reply({ content: "❌ No se pudieron extraer las imágenes del comic.", ephemeral: true })
+          return interaction.reply({ content: "❌ No se pudieron extraer las páginas del comic.", ephemeral: true })
         }
       } catch (error) {
-        await logError(interaction.channel, error, "Error scraping comic")
+        await logError(interaction.channel, error, "Error obteniendo páginas del comic")
         return interaction.reply({ content: "❌ Error al procesar el comic.", ephemeral: true })
+      }
+    } else {
+      if (data.site === "chochox.com") {
+        try {
+          const comicData = await comicScraper.scrapeChochoxComic(currentItem.link)
+          if (comicData && comicData.pages.length > 0) {
+            return await handleComicCompleteView(interaction, comicData)
+          } else {
+            return interaction.reply({ content: "❌ No se pudieron extraer las imágenes del comic.", ephemeral: true })
+          }
+        } catch (error) {
+          await logError(interaction.channel, error, "Error scraping comic")
+          return interaction.reply({ content: "❌ Error al procesar el comic.", ephemeral: true })
+        }
       }
     }
   }
@@ -2804,7 +3208,9 @@ async function handleComicSearchNavigation(interaction, action) {
   comicSearchCache.set(userId, data)
 
   const item = items[newIndex]
-  const embed = createComicSearchEmbed(item, newIndex, items.length)
+  const embed = isAPI
+    ? createAPIComicEmbed(item, newIndex, items.length)
+    : createComicSearchEmbed(item, newIndex, items.length)
   const buttons = createNavigationButtons(userId, newIndex, items.length, "comic")
 
   await interaction.update({ embeds: [embed], components: buttons })
@@ -2854,6 +3260,46 @@ async function handleImageNavigation(interaction) {
 
   if (!cache) return interaction.deferUpdate()
 
+  if (interaction.customId.startsWith("downloadImage")) {
+    const currentImage = cache.items[cache.index]
+
+    try {
+      await interaction.deferReply({ ephemeral: true })
+
+      const fileName = `image_${Date.now()}.jpg`
+      const filePath = await downloadImage(currentImage.link, fileName)
+
+      const stats = fs.statSync(filePath)
+      const fileSizeInMB = stats.size / (1024 * 1024)
+
+      if (fileSizeInMB > 25) {
+        fs.unlinkSync(filePath)
+        return interaction.editReply({
+          content: "❌ La imagen es demasiado grande para Discord (>25MB). Usa el link directo para descargarla.",
+        })
+      }
+
+      const attachment = new AttachmentBuilder(filePath, { name: fileName })
+
+      await interaction.editReply({
+        content: `📥 **Imagen descargada:** ${cache.query}`,
+        files: [attachment],
+      })
+
+      setTimeout(() => {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath)
+        }
+      }, 60000)
+    } catch (error) {
+      console.error("Error descargando imagen:", error)
+      return interaction.editReply({
+        content: "❌ Error al descargar la imagen. Intenta de nuevo más tarde.",
+      })
+    }
+    return
+  }
+
   let newIndex = cache.index
   if (interaction.customId.startsWith("prevImage") && newIndex > 0) newIndex--
   if (interaction.customId.startsWith("nextImage") && newIndex < cache.items.length - 1) newIndex++
@@ -2883,6 +3329,7 @@ async function handleImageNavigation(interaction) {
       .setLabel("➡️")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(validIndex === cache.items.length - 1),
+    new ButtonBuilder().setCustomId(`downloadImage-${userId}`).setLabel("📥 Descargar").setStyle(ButtonStyle.Success),
   )
 
   await interaction.update({ embeds: [embed], components: [buttons] })
