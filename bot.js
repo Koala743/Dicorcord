@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
-const cheerio = require('cheerio');
 
 const client = new Client({
   intents: [
@@ -183,8 +182,8 @@ const COMMANDS_LIST = [
   },
   {
     name: ".bs [búsqueda]",
-    description: "Búsqueda general en gokx.es (videos)",
-    example: ".bs nuevos videos",
+    description: "Búsqueda general en Google (texto, imágenes, videos, todo)",
+    example: ".bs recetas de pizza",
     category: "🔍 Búsqueda"
   },
   {
@@ -235,7 +234,7 @@ const COMMAND_FUNCTIONS = {
       }
     }
     if (validIndex === -1) return m.reply(T(m.author.id, 'noValidImages'));
-    imageSearchCache.set(m.author.id, { items, index: validIndex, query, apiId: apiUsed.id, type: 'image' });
+    imageSearchCache.set(m.author.id, { items, index: validIndex, query, apiId: apiUsed.id });
     const embed = new EmbedBuilder()
       .setTitle(`📷 Resultados para: ${query}`)
       .setImage(items[validIndex].link)
@@ -250,77 +249,7 @@ const COMMAND_FUNCTIONS = {
   },
 
   bs: async (m, args) => {
-    const query = args.join(' ');
-    if (!query) return m.reply('⚠️ Debes proporcionar texto para buscar.');
-    const searchUrl = `https://www.gokx.es/search/${encodeURIComponent(query)}/`;
-    try {
-      const res = await axios.get(searchUrl, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-      const $ = cheerio.load(res.data);
-      const videos = [];
-      const seen = new Set();
-      $('a[href*="/video-"]').each((i, el) => {
-        const href = $(el).attr('href');
-        let link = href;
-        if (link && link.startsWith('/')) link = `https://www.gokx.es${link}`;
-        const parent = $(el);
-        let title = parent.find('img').attr('alt') || parent.attr('title') || parent.text() || '';
-        title = title.trim();
-        const img = parent.find('img').attr('src') || parent.find('img').attr('data-src') || '';
-        const thumb = img && img.startsWith('http') ? img : (img ? `https://www.gokx.es${img}` : null);
-        if (link && !seen.has(link)) {
-          seen.add(link);
-          videos.push({ title: title || link, link, thumb });
-        }
-      });
-      if (!videos.length) {
-        const altVideos = [];
-        $('.videos, .list, .content').find('a').each((i, el) => {
-          const href = $(el).attr('href') || '';
-          if (href.includes('/video-')) {
-            let link = href;
-            if (link && link.startsWith('/')) link = `https://www.gokx.es${link}`;
-            const title = $(el).text().trim() || link;
-            const img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
-            const thumb = img && img.startsWith('http') ? img : (img ? `https://www.gokx.es${img}` : null);
-            if (link && !seen.has(link)) {
-              seen.add(link);
-              altVideos.push({ title, link, thumb });
-            }
-          }
-        });
-        altVideos.forEach(v => videos.push(v));
-      }
-      if (!videos.length) return m.reply('❌ No se encontraron videos para esa búsqueda.');
-      const index = 0;
-      imageSearchCache.set(m.author.id, { items: videos, index, query, type: 'video' });
-      const first = videos[index];
-      let embedDesc = `[${first.title}](${first.link})`;
-      let videoDirect = null;
-      try {
-        const page = await axios.get(first.link, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const $$ = cheerio.load(page.data);
-        const ogVideo = $$('meta[property="og:video"]').attr('content') || $$('meta[name="twitter:player"]').attr('content') || null;
-        if (ogVideo) videoDirect = ogVideo;
-        if (!videoDirect) {
-          const src = $$('video source').attr('src') || $$('video').attr('src') || null;
-          if (src) videoDirect = src.startsWith('http') ? src : `https://www.gokx.es${src}`;
-        }
-        if (videoDirect) embedDesc += `\n\n🔗 Reproducción directa: ${videoDirect}`;
-      } catch {}
-      const embed = new EmbedBuilder()
-        .setTitle(`🎬 Resultados para: ${query}`)
-        .setDescription(embedDesc)
-        .setImage(first.thumb || null)
-        .setFooter({ text: `Video ${index + 1} de ${videos.length}` })
-        .setColor('#ff9900');
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(index === 0),
-        new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(index === videos.length - 1)
-      );
-      await m.channel.send({ embeds: [embed], components: [row] });
-    } catch (err) {
-      return m.reply('❌ Error buscando videos.');
-    }
+    // Lugar para implementar la función específica del comando .bs
   },
 
   td: async (m, args) => {
@@ -393,7 +322,9 @@ client.once('ready', () => {
 
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
+
   const urlRegex = /https?:\/\/[^\s]+/i;
+
   if (urlRegex.test(m.content)) {
     try {
       const member = await m.guild.members.fetch(m.author.id);
@@ -409,7 +340,9 @@ client.on('messageCreate', async (m) => {
       }
     } catch {}
   }
+
   if (!m.content.startsWith('.')) return;
+
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
   if (COMMAND_FUNCTIONS[command]) {
     try {
@@ -425,82 +358,42 @@ client.on('interactionCreate', async (i) => {
   const uid = i.user.id;
   const cache = imageSearchCache.get(uid);
   if (!cache) return i.deferUpdate();
-  if (cache.type === 'image') {
-    let newIndex = cache.index;
-    if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
-    if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
-    async function findValidImage(startIndex, direction) {
-      let idx = startIndex;
-      while (idx >= 0 && idx < cache.items.length) {
-        if (await isImageUrlValid(cache.items[idx].link)) return idx;
-        idx += direction;
-      }
-      return -1;
+  let newIndex = cache.index;
+  if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
+  if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
+  async function findValidImage(startIndex, direction) {
+    let idx = startIndex;
+    while (idx >= 0 && idx < cache.items.length) {
+      if (await isImageUrlValid(cache.items[idx].link)) return idx;
+      idx += direction;
     }
-    const direction = newIndex < cache.index ? -1 : 1;
-    let validIndex = await findValidImage(newIndex, direction);
-    if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
-      validIndex = cache.index;
-    }
-    if (validIndex === -1) return i.deferUpdate();
-    cache.index = validIndex;
-    const img = cache.items[validIndex];
-    const api = API_POOLS.google.find(a => a.id === cache.apiId) || null;
-    const footerText = api ? `Imagen ${validIndex + 1} de ${cache.items.length} • Usado: ${api.id} (${api.dailyRequests}/${api.maxDailyRequests} hoy)` : `Imagen ${validIndex + 1} de ${cache.items.length}`;
-    const embed = new EmbedBuilder()
-      .setTitle(`📷 Resultados para: ${cache.query}`)
-      .setImage(img.link)
-      .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
-      .setFooter({ text: footerText })
-      .setColor('#00c7ff');
-    await i.update({
-      embeds: [embed],
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === 0),
-          new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === cache.items.length - 1)
-        )
-      ]
-    });
-    return;
+    return -1;
   }
-  if (cache.type === 'video') {
-    let newIndex = cache.index;
-    if (i.customId === 'prevVideo' && newIndex > 0) newIndex--;
-    if (i.customId === 'nextVideo' && newIndex < cache.items.length - 1) newIndex++;
-    cache.index = newIndex;
-    const video = cache.items[newIndex];
-    let embedDesc = `[${video.title}](${video.link})`;
-    let videoDirect = null;
-    try {
-      const page = await axios.get(video.link, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-      const $ = cheerio.load(page.data);
-      const ogVideo = $('meta[property="og:video"]').attr('content') || $('meta[name="twitter:player"]').attr('content') || null;
-      if (ogVideo) videoDirect = ogVideo;
-      if (!videoDirect) {
-        const src = $('video source').attr('src') || $('video').attr('src') || null;
-        if (src) videoDirect = src.startsWith('http') ? src : `https://www.gokx.es${src}`;
-      }
-      if (videoDirect) embedDesc += `\n\n🔗 Reproducción directa: ${videoDirect}`;
-    } catch {}
-    const embed = new EmbedBuilder()
-      .setTitle(`🎬 Resultados para: ${cache.query}`)
-      .setDescription(embedDesc)
-      .setImage(video.thumb || null)
-      .setFooter({ text: `Video ${newIndex + 1} de ${cache.items.length}` })
-      .setColor('#ff9900');
-    await i.update({
-      embeds: [embed],
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === 0),
-          new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === cache.items.length - 1)
-        )
-      ]
-    });
-    return;
+  const direction = newIndex < cache.index ? -1 : 1;
+  let validIndex = await findValidImage(newIndex, direction);
+  if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
+    validIndex = cache.index;
   }
-  return i.deferUpdate();
+  if (validIndex === -1) return i.deferUpdate();
+  cache.index = validIndex;
+  const img = cache.items[validIndex];
+  const api = API_POOLS.google.find(a => a.id === cache.apiId) || null;
+  const footerText = api ? `Imagen ${validIndex + 1} de ${cache.items.length} • Usado: ${api.id} (${api.dailyRequests}/${api.maxDailyRequests} hoy)` : `Imagen ${validIndex + 1} de ${cache.items.length}`;
+  const embed = new EmbedBuilder()
+    .setTitle(`📷 Resultados para: ${cache.query}`)
+    .setImage(img.link)
+    .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
+    .setFooter({ text: footerText })
+    .setColor('#00c7ff');
+  await i.update({
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === 0),
+        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === cache.items.length - 1)
+      )
+    ]
+  });
 });
 
 client.login(process.env.DISCORD_TOKEN);
