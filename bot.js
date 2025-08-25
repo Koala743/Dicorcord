@@ -456,4 +456,4 @@ client.on('messageCreate', async (m) => {
   }
 });
 
-client.login("TU_TOKEN_AQUI");
+client.login(process.env.DISCORD_TOKEN);
