@@ -173,34 +173,6 @@ async function googleImageSearchTry(query) {
   return null;
 }
 
-async function googleSearchTry(query) {
-  for (let api of API_POOLS.google) resetDailyIfNeeded(api);
-  for (let i = 0; i < API_POOLS.google.length; i++) {
-    const api = API_POOLS.google[i];
-    resetDailyIfNeeded(api);
-    if (!api.active || api.quotaExhausted || api.dailyRequests >= api.maxDailyRequests) continue;
-    api.dailyRequests++;
-    savePools();
-    const url = `https://www.googleapis.com/customsearch/v1?key=${api.apiKey}&cx=${api.cx}&q=${encodeURIComponent(query)}&num=10`;
-    try {
-      const res = await axios.get(url, { timeout: 8000 });
-      const items = res.data.items || [];
-      return { items, apiUsed: api };
-    } catch (err) {
-      const status = err.response?.status;
-      const reason = err.response?.data?.error?.errors?.[0]?.reason || err.response?.data?.error?.message || err.message;
-      if (status === 403 || /quota|limited|dailyLimitExceeded|quotaExceeded/i.test(String(reason))) {
-        api.quotaExhausted = true;
-        savePools();
-        continue;
-      } else {
-        continue;
-      }
-    }
-  }
-  return null;
-}
-
 const COMMANDS_LIST = [
   {
     name: ".web [búsqueda]",
@@ -210,7 +182,7 @@ const COMMANDS_LIST = [
   },
   {
     name: ".bs [búsqueda]",
-    description: "Búsqueda global en Google (muestra resultados con miniaturas)",
+    description: "Búsqueda general en Google (texto, imágenes, videos, todo)",
     example: ".bs recetas de pizza",
     category: "🔍 Búsqueda"
   },
@@ -277,58 +249,7 @@ const COMMAND_FUNCTIONS = {
   },
 
   bs: async (m, args) => {
-    const query = args.join(' ');
-    if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
-    const result = await googleSearchTry(query);
-    if (result === null) return m.reply('❌ Todas las APIs de Google están agotadas o fallan.');
-    const { items, apiUsed } = result;
-    if (!items || !items.length) return m.reply(T(m.author.id, 'noValidImages'));
-    const candidates = [];
-    for (let it of items) {
-      let mediaLink = null;
-      let isVideo = false;
-      let contextLink = it.link || it.displayLink || (it.image && it.image.contextLink) || '';
-      if (it.link && /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(it.link)) {
-        mediaLink = it.link;
-      } else if (it.image && it.image.thumbnailLink) {
-        mediaLink = it.image.thumbnailLink;
-      } else if (it.pagemap && it.pagemap.cse_thumbnail && it.pagemap.cse_thumbnail[0] && it.pagemap.cse_thumbnail[0].src) {
-        mediaLink = it.pagemap.cse_thumbnail[0].src;
-      } else if (it.pagemap && it.pagemap.videoobject && it.pagemap.videoobject[0]) {
-        const v = it.pagemap.videoobject[0];
-        mediaLink = v.thumbnailurl || v.thumbnail || v.image || null;
-        isVideo = true;
-      } else if (it.pagemap && it.pagemap.metatags && it.pagemap.metatags[0]) {
-        const mt = it.pagemap.metatags[0];
-        mediaLink = mt['og:image'] || mt['twitter:image'] || null;
-        if (mt['og:video'] || mt['twitter:player']) isVideo = true;
-      }
-      if (mediaLink) {
-        candidates.push({ mediaLink, contextLink: contextLink || it.link || '', title: it.title || '', isVideo });
-      }
-    }
-    if (!candidates.length) return m.reply(T(m.author.id, 'noValidImages'));
-    let validIndex = -1;
-    for (let i = 0; i < candidates.length; i++) {
-      if (await isImageUrlValid(candidates[i].mediaLink)) {
-        validIndex = i;
-        break;
-      }
-    }
-    if (validIndex === -1) return m.reply(T(m.author.id, 'noValidImages'));
-    imageSearchCache.set(m.author.id, { items: candidates, index: validIndex, query, apiId: apiUsed.id });
-    const c = candidates[validIndex];
-    const embed = new EmbedBuilder()
-      .setTitle(`🔎 Resultados para: ${query}`)
-      .setImage(c.mediaLink)
-      .setDescription(`${c.isVideo ? '🎬 Video' : '🖼️ Imagen'} • [Ir a la página](${c.contextLink || items[validIndex].link || ''})\n\n${c.title || ''}`)
-      .setFooter({ text: `Resultado ${validIndex + 1} de ${candidates.length} • Usado: ${apiUsed.id} (${apiUsed.dailyRequests}/${apiUsed.maxDailyRequests} hoy)` })
-      .setColor('#00c7ff');
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === 0),
-      new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === candidates.length - 1)
-    );
-    await m.channel.send({ embeds: [embed], components: [row] });
+    // Lugar para implementar la función específica del comando .bs
   },
 
   td: async (m, args) => {
@@ -399,61 +320,80 @@ client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
 });
 
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
-  const userId = interaction.user.id;
-  const data = imageSearchCache.get(userId);
-  if (!data) return interaction.reply({ content: '⚠️ No tienes búsqueda activa.', ephemeral: true });
-  const { items, query, apiId } = data;
-  let index = data.index;
+client.on('messageCreate', async (m) => {
+  if (m.author.bot || !m.content) return;
 
-  if (interaction.customId === 'prevImage' && index > 0) index--;
-  else if (interaction.customId === 'nextImage' && index < items.length - 1) index++;
+  const urlRegex = /https?:\/\/[^\s]+/i;
 
-  data.index = index;
-  imageSearchCache.set(userId, data);
+  if (urlRegex.test(m.content)) {
+    try {
+      const member = await m.guild.members.fetch(m.author.id);
+      const allowedRoles = new Set([
+        '1305327128341905459',
+        '1244056080825454642',
+        '1244039798696710212'
+      ]);
+      const hasAllowedRole = member.roles.cache.some(r => allowedRoles.has(r.id));
+      if (!hasAllowedRole) {
+        await m.delete().catch(() => {});
+        return;
+      }
+    } catch {}
+  }
 
-  const item = items[index];
-  const embed = new EmbedBuilder()
-    .setTitle(`🔎 Resultados para: ${query}`)
-    .setImage(item.mediaLink || item.link)
-    .setDescription(`${item.isVideo ? '🎬 Video' : '🖼️ Imagen'} • [Ir a la página](${item.contextLink || item.link || ''})\n\n${item.title || ''}`)
-    .setFooter({ text: `Resultado ${index + 1} de ${items.length} • Usado: ${apiId}` })
-    .setColor('#00c7ff');
+  if (!m.content.startsWith('.')) return;
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(index === 0),
-    new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(index === items.length - 1)
-  );
-
-  await interaction.update({ embeds: [embed], components: [row] });
+  const [command, ...args] = m.content.slice(1).trim().split(/ +/);
+  if (COMMAND_FUNCTIONS[command]) {
+    try {
+      await COMMAND_FUNCTIONS[command](m, args);
+    } catch (e) {
+      m.reply('❌ Error ejecutando el comando.');
+    }
+  }
 });
 
-client.on('messageCreate', async (m) => {
-  if (m.author.bot) return;
-  const args = m.content.split(' ');
-  const cmd = args.shift().slice(1).toLowerCase();
-
-  if (m.content.startsWith('.')) {
-    if (COMMAND_FUNCTIONS[cmd]) {
-      try {
-        await COMMAND_FUNCTIONS[cmd](m, args);
-      } catch (e) {
-        console.error(e);
-        m.reply('❌ Error ejecutando el comando.');
-      }
+client.on('interactionCreate', async (i) => {
+  if (!i.isButton()) return;
+  const uid = i.user.id;
+  const cache = imageSearchCache.get(uid);
+  if (!cache) return i.deferUpdate();
+  let newIndex = cache.index;
+  if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
+  if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
+  async function findValidImage(startIndex, direction) {
+    let idx = startIndex;
+    while (idx >= 0 && idx < cache.items.length) {
+      if (await isImageUrlValid(cache.items[idx].link)) return idx;
+      idx += direction;
     }
-  } else if (CHANNELS.has(m.channel.id) && activeChats.has(m.channel.id)) {
-    const chat = activeChats.get(m.channel.id);
-    if (!chat.users.includes(m.author.id)) return;
-    const otherId = chat.users.find(u => u !== m.author.id);
-    const res = await translate(m.content, getLang(otherId));
-    if (!res) return;
-    const embed = new EmbedBuilder()
-      .setColor('#00c7ff')
-      .setDescription(`${LANGUAGES.find(l => l.value === getLang(otherId)).emoji} : ${res.text}`);
-    await m.channel.send({ content: `<@${otherId}>`, embeds: [embed] });
+    return -1;
   }
+  const direction = newIndex < cache.index ? -1 : 1;
+  let validIndex = await findValidImage(newIndex, direction);
+  if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
+    validIndex = cache.index;
+  }
+  if (validIndex === -1) return i.deferUpdate();
+  cache.index = validIndex;
+  const img = cache.items[validIndex];
+  const api = API_POOLS.google.find(a => a.id === cache.apiId) || null;
+  const footerText = api ? `Imagen ${validIndex + 1} de ${cache.items.length} • Usado: ${api.id} (${api.dailyRequests}/${api.maxDailyRequests} hoy)` : `Imagen ${validIndex + 1} de ${cache.items.length}`;
+  const embed = new EmbedBuilder()
+    .setTitle(`📷 Resultados para: ${cache.query}`)
+    .setImage(img.link)
+    .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
+    .setFooter({ text: footerText })
+    .setColor('#00c7ff');
+  await i.update({
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === 0),
+        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === cache.items.length - 1)
+      )
+    ]
+  });
 });
 
 client.login(process.env.DISCORD_TOKEN);
