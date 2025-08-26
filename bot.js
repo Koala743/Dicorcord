@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
-const cheerio = require('cheerio');
 
 const client = new Client({
   intents: [
@@ -83,19 +82,19 @@ function getAvailableGoogleAPI() {
   for (let api of API_POOLS.google) {
     resetDailyIfNeeded(api);
   }
-
+  
   for (let api of API_POOLS.google) {
     if (api.active && !api.quotaExhausted && api.dailyRequests < api.maxDailyRequests) {
       return api;
     }
   }
-
+  
   return null;
 }
 
 async function isImageUrlValid(url) {
   try {
-    const res = await axios.head(url, { timeout: 5000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible)' } });
+    const res = await axios.head(url, { timeout: 5000 });
     const contentType = res.headers['content-type'];
     return res.status === 200 && contentType && contentType.startsWith('image/');
   } catch {
@@ -111,7 +110,7 @@ async function googleImageSearch(query) {
   savePools();
 
   const url = `https://www.googleapis.com/customsearch/v1?key=${api.apiKey}&cx=${api.cx}&searchType=image&q=${encodeURIComponent(query)}&num=10`;
-
+  
   try {
     const res = await axios.get(url, { timeout: 8000 });
     const items = (res.data.items || []).filter(img => img.link && img.link.startsWith('http'));
@@ -119,12 +118,12 @@ async function googleImageSearch(query) {
   } catch (err) {
     const status = err.response?.status;
     const reason = err.response?.data?.error?.errors?.[0]?.reason || err.response?.data?.error?.message || err.message;
-
+    
     if (status === 403 || /quota|limited|dailyLimitExceeded|quotaExceeded/i.test(String(reason))) {
       api.quotaExhausted = true;
       savePools();
     }
-
+    
     return null;
   }
 }
@@ -138,19 +137,19 @@ async function googleGeneralSearch(query, site = null) {
 
   const searchQuery = site ? `${query} site:${site}` : query;
   const url = `https://www.googleapis.com/customsearch/v1?key=${api.apiKey}&cx=${api.cx}&q=${encodeURIComponent(searchQuery)}&num=10`;
-
+  
   try {
     const res = await axios.get(url, { timeout: 8000 });
     return { items: res.data.items || [], apiUsed: api };
   } catch (err) {
     const status = err.response?.status;
     const reason = err.response?.data?.error?.errors?.[0]?.reason || err.response?.data?.error?.message || err.message;
-
+    
     if (status === 403 || /quota|limited|dailyLimitExceeded|quotaExceeded/i.test(String(reason))) {
       api.quotaExhausted = true;
       savePools();
     }
-
+    
     return null;
   }
 }
@@ -176,181 +175,15 @@ async function youtubeSearch(query) {
   } catch (err) {
     const status = err.response?.status;
     const reason = err.response?.data?.error?.message || err.message;
-
+    
     if (status === 403 || /quota|limited|dailyLimitExceeded|quotaExceeded/i.test(String(reason))) {
       api.quotaExhausted = true;
       savePools();
     }
-
+    
     return null;
   }
 }
-
-/**
- * ----------------------
- *  Scraping helpers
- * ----------------------
- */
-
-function isUrl(text) {
-  try {
-    new URL(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function fetchHtml(url) {
-  try {
-    const res = await axios.get(url, {
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/115.0 Safari/537.36'
-      }
-    });
-    return res.data;
-  } catch (err) {
-    throw new Error('fetchHtml failed: ' + (err.message || err));
-  }
-}
-
-function tryParseJsonLD($) {
-  const scripts = $('script[type="application/ld+json"]');
-  for (let i = 0; i < scripts.length; i++) {
-    try {
-      const txt = $(scripts[i]).html();
-      const parsed = JSON.parse(txt);
-      // Could be an array or object
-      if (parsed && typeof parsed === 'object') {
-        // title/path for video
-        if (parsed.name || parsed.headline || parsed['@type']) return parsed;
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-  return null;
-}
-
-async function scrapeVideoData(url) {
-  try {
-    const html = await fetchHtml(url);
-    const $ = cheerio.load(html);
-
-    // Try OpenGraph first
-    let title = $('meta[property="og:title"]').attr('content') || $('meta[name="twitter:title"]').attr('content') || $('title').text();
-    let image = $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content');
-    let video = $('meta[property="og:video"]').attr('content') || $('meta[name="twitter:player"]').attr('content');
-
-    // JSON-LD fallback
-    const jsonld = tryParseJsonLD($);
-    if ((!title || title.length < 3) && jsonld) {
-      title = title || jsonld.name || jsonld.headline || title;
-    }
-    if (!image && jsonld) {
-      image = image || (jsonld.thumbnailUrl || (Array.isArray(jsonld.image) ? jsonld.image[0] : jsonld.image));
-    }
-
-    // Domain-specific heuristics
-    const host = (new URL(url)).hostname.replace('www.', '');
-
-    // Xvideos / XNXX often put thumbs in cdn77-pic.* or in <img> tags
-    if (!image && /xvideos|xnxx/.test(host)) {
-      // look for any image tags with 'thumb' or cdn77 in src
-      const possible = $("img[src*='cdn77'], img[src*='thumb'], img[src*='thumbs']").map((i, el) => $(el).attr('src')).get();
-      if (possible && possible.length) image = possible[0];
-      // regex search for cdn77 in html
-      if (!image) {
-        const m = html.match(/https?:\/\/cdn77-pic\.[^\s'"]+?(?:jpg|jpeg|png)/i);
-        if (m) image = m[0];
-      }
-    }
-
-    // Pornhub image heuristic
-    if (!image && /pornhub/.test(host)) {
-      const m = html.match(/https?:\/\/(?:ei\.)?phncdn\.com[^\s'"]+?(?:jpg|jpeg|png)/i);
-      if (m) image = m[0];
-      // sometimes OG missing, look for meta itemprop
-      image = image || $('meta[itemprop="thumbnailUrl"]').attr('content');
-    }
-
-    // Hentaila: thumbnails might be in <img class="thumb"> or inside listing
-    if (!image && /hentaila\./.test(host)) {
-      const possible = $("img").map((i, el) => $(el).attr('src')).get().filter(Boolean);
-      // pick first that looks like a thumbnail
-      const thumb = possible.find(u => /thumb|poster|thumbnail|\/media\//i.test(u));
-      if (thumb) image = thumb;
-    }
-
-    // Generic fallback: first <img> that looks like a valid URL
-    if (!image) {
-      const firstImg = $('img').first().attr('src') || $('img').first().attr('data-src');
-      if (firstImg && firstImg.startsWith('http')) image = firstImg;
-    }
-
-    // Final sanitization: make image absolute if needed
-    if (image && image.startsWith('//')) image = 'https:' + image;
-    if (image && image.startsWith('/')) image = `${new URL(url).origin}${image}`;
-
-    // If still no image, try to find thumbnails in page via regex
-    if (!image) {
-      const m = html.match(/https?:\/\/[^\s'"]+?(?:thumbs169|thumbnail|poster)[^\s'"]+?(?:jpg|jpeg|png)/i);
-      if (m) image = m[0];
-    }
-
-    // Return the scraped data
-    return {
-      title: title ? String(title).trim() : null,
-      image: image || null,
-      video: video || null,
-      link: url,
-      site: host
-    };
-  } catch (err) {
-    console.error('scrapeVideoData error:', err.message || err);
-    return null;
-  }
-}
-
-/**
- * Hentaila search helper (uses site catalog search)
- * tries /catalogo?search= and scrapes results list
- */
-async function searchHentaila(query) {
-  try {
-    const searchUrl = `https://hentaila.tv/catalogo?search=${encodeURIComponent(query)}`;
-    const html = await fetchHtml(searchUrl);
-    const $ = cheerio.load(html);
-
-    // selectors depend on the site markup; try common patterns
-    const results = [];
-    $('a.card, .card a, .catalogo-item a').each((i, el) => {
-      const href = $(el).attr('href');
-      const title = $(el).find('.card-title, .title, h3').text() || $(el).attr('title') || $(el).text();
-      const thumb = $(el).find('img').attr('data-src') || $(el).find('img').attr('src');
-      if (href && href.startsWith('/')) {
-        results.push({
-          link: `https://hentaila.tv${href}`,
-          title: title ? title.trim() : null,
-          thumb: thumb
-        });
-      } else if (href && href.startsWith('http')) {
-        results.push({ link: href, title: title ? title.trim() : null, thumb });
-      }
-    });
-
-    return results;
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * ----------------------
- *  Commands & handlers
- * ----------------------
- */
 
 const COMMANDS_LIST = [
   {
@@ -366,9 +199,9 @@ const COMMANDS_LIST = [
     category: "🔍 Búsqueda"
   },
   {
-    name: ".video [búsqueda|url]",
-    description: "Busca videos con selector de plataformas (YouTube + sitios propios)",
-    example: ".video música relajante OR .video https://www.xvideos.com/...",
+    name: ".mp [búsqueda]",
+    description: "Busca videos con selector de plataformas (YouTube + adultos)",
+    example: ".video música relajante",
     category: "🎬 Video"
   },
   {
@@ -392,7 +225,7 @@ const COMMAND_FUNCTIONS = {
 
     const result = await googleImageSearch(query);
     if (!result) return m.reply('❌ Todas las APIs de Google están agotadas o fallan.');
-
+    
     const { items, apiUsed } = result;
     if (!items.length) return m.reply('❌ No se encontraron imágenes.');
 
@@ -429,7 +262,7 @@ const COMMAND_FUNCTIONS = {
 
     const result = await googleGeneralSearch(query);
     if (!result) return m.reply('❌ Todas las APIs de Google están agotadas o fallan.');
-
+    
     const { items, apiUsed } = result;
     if (!items.length) return m.reply('❌ No se encontraron resultados.');
 
@@ -456,21 +289,18 @@ const COMMAND_FUNCTIONS = {
     const uid = m.author.id;
     pendingVideoSearch.set(uid, query);
 
-    // Añadimos las plataformas nuevas
     const siteSelector = new StringSelectMenuBuilder()
-      .setCustomId(`videosite-${uid}`)
-      .setPlaceholder('🎬 Selecciona la plataforma donde buscar')
-      .addOptions([
-        { label: 'YouTube', value: 'youtube', emoji: '🔴' },
-        { label: 'Xvideos', value: 'xvideos.com', emoji: '🟠' },
-        { label: 'Xvideos (ES)', value: 'xvideos.es', emoji: '🟠' },
-        { label: 'Pornhub', value: 'es.pornhub.com', emoji: '🟡' },
-        { label: 'XNXX', value: 'xnxx.es', emoji: '🟢' },
-        { label: 'Hentaila (tv)', value: 'hentaila.tv', emoji: '🟣' },
-        { label: 'Hentaila (com)', value: 'hentaila.com', emoji: '🟣' },
-        { label: 'VideosDeMadurasX', value: 'videosdemadurasx.com', emoji: '🟤' },
-        { label: 'Serviporno', value: 'serviporno.com', emoji: '⚪' }
-      ]);
+  .setCustomId(`videosite-${uid}`)
+  .setPlaceholder('🎬 Selecciona la plataforma donde buscar')
+  .addOptions([
+    { label: 'YouTube', value: 'youtube', emoji: '🔴' },
+    { label: 'Xvideos', value: 'xvideos', emoji: '🟠' },
+    { label: 'Pornhub', value: 'pornhub', emoji: '🟡' },
+    { label: 'XNXX', value: 'xnxx', emoji: '🟢' },
+    { label: 'Hentaila', value: 'hentaila', emoji: '🟣' },
+    { label: 'VideosDeMadurasX', value: 'madurasx', emoji: '🟤' },
+    { label: 'Serviporno', value: 'serviporno', emoji: '⚪' },
+  ]);
 
     return m.reply({
       content: 'Selecciona la plataforma donde deseas buscar:',
@@ -522,7 +352,7 @@ client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content || !m.content.startsWith('.')) return;
 
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
-
+  
   if (COMMAND_FUNCTIONS[command]) {
     try {
       await COMMAND_FUNCTIONS[command](m, args);
@@ -548,7 +378,7 @@ client.on('interactionCreate', async (i) => {
 
     const direction = newIndex < cache.index ? -1 : 1;
     let validIndex = newIndex;
-
+    
     while (validIndex >= 0 && validIndex < cache.items.length) {
       if (await isImageUrlValid(cache.items[validIndex].link)) break;
       validIndex += direction;
@@ -614,18 +444,18 @@ client.on('interactionCreate', async (i) => {
         ]
       });
     } else {
-      // For non-youtube we cached final scraped items (link/title/thumb)
       const video = cache.items[newIndex];
-      const title = video.title || 'Video';
-      const link = video.link || video.url;
-      const thumb = video.thumb || video.image || null;
+      const title = video.title;
+      const link = video.link;
+      const context = video.displayLink;
+      const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
 
       const embed = new EmbedBuilder()
-        .setTitle(`🎬 ${title.length > 80 ? title.slice(0, 77) + '...' : title}`)
-        .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${cache.site || 'sitio'}`)
+        .setTitle(`🎬 ${title.slice(0, 80)}...`)
+        .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${context}`)
         .setColor('#ff1493')
         .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
-        .setFooter({ text: `Video ${newIndex + 1} de ${cache.items.length} | ${cache.site || 'sitio'}` })
+        .setFooter({ text: `Video ${newIndex + 1} de ${cache.items.length} | ${cache.site}` })
         .setTimestamp();
 
       await i.update({
@@ -651,31 +481,6 @@ client.on('interactionCreate', async (i) => {
     pendingVideoSearch.delete(extractedUid);
 
     try {
-      // If user provided a direct URL as query -> scrape it
-      if (isUrl(query)) {
-        const scraped = await scrapeVideoData(query);
-        if (!scraped) return i.update({ content: '❌ No se pudo raspar la URL proporcionada.', components: [] });
-
-        videoSearchCache.set(extractedUid, { items: [{ title: scraped.title, link: scraped.link, thumb: scraped.image }], index: 0, query, platform: 'other', site: scraped.site });
-        const item = videoSearchCache.get(extractedUid).items[0];
-
-        const embed = new EmbedBuilder()
-          .setTitle(`🎬 ${item.title || 'Video'}`)
-          .setDescription(`[📺 Ir al enlace](${item.link})`)
-          .setThumbnail(item.thumb || scraped.image || 'https://i.imgur.com/defaultThumbnail.png')
-          .setColor('#ff1493')
-          .setFooter({ text: `Video 1 de 1 | ${scraped.site}` });
-
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-          new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(true)
-        );
-
-        return i.update({ content: null, embeds: [embed], components: [row] });
-      }
-
-      // Not a URL: search inside the site (if supported) using Google CSE when available,
-      // otherwise use site-specific search (hentaila).
       if (selectedSite === 'youtube') {
         const result = await youtubeSearch(query);
         if (!result) return i.update({ content: '❌ Error al buscar en YouTube.', components: [] });
@@ -704,90 +509,45 @@ client.on('interactionCreate', async (i) => {
           new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(items.length === 1)
         );
 
-        return i.update({ content: null, embeds: [embed], components: [row] });
+        await i.update({
+          content: null,
+          embeds: [embed],
+          components: [row]
+        });
+      } else {
+        const result = await googleGeneralSearch(query, selectedSite);
+        if (!result) return i.update({ content: '❌ Error al realizar la búsqueda.', components: [] });
+
+        const { items, apiUsed } = result;
+        if (!items.length) return i.update({ content: '❌ No se encontraron resultados.', components: [] });
+
+        videoSearchCache.set(extractedUid, { items, index: 0, query, site: selectedSite, platform: 'other', apiUsed });
+
+        const video = items[0];
+        const title = video.title;
+        const link = video.link;
+        const context = video.displayLink;
+        const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
+
+        const embed = new EmbedBuilder()
+          .setTitle(`🎬 ${title.slice(0, 80)}...`)
+          .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${context}`)
+          .setColor('#ff1493')
+          .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
+          .setFooter({ text: `Video 1 de ${items.length} | ${selectedSite} | API: ${apiUsed.id}` })
+          .setTimestamp();
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
+          new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(items.length === 1)
+        );
+
+        await i.update({
+          content: null,
+          embeds: [embed],
+          components: [row]
+        });
       }
-
-      // For hentaila use internal search if possible
-      if (selectedSite === 'hentaila.tv' || selectedSite === 'hentaila.com') {
-        // try site search first (only for hentaila.tv implemented)
-        const results = await searchHentaila(query);
-        if (results && results.length) {
-          // scrape first N results to normalize
-          const items = [];
-          for (let r of results.slice(0, 10)) {
-            // try to scrape the result page for more accurate thumbnail/title
-            const scraped = await scrapeVideoData(r.link);
-            items.push({
-              title: scraped?.title || r.title || 'Video',
-              link: scraped?.link || r.link,
-              thumb: scraped?.image || r.thumb || r.thumb
-            });
-          }
-          videoSearchCache.set(extractedUid, { items, index: 0, query, platform: 'other', site: selectedSite });
-          const first = items[0];
-
-          const embed = new EmbedBuilder()
-            .setTitle(`🎬 ${first.title}`)
-            .setDescription(`[📺 Ir al enlace](${first.link})`)
-            .setThumbnail(first.thumb || 'https://i.imgur.com/defaultThumbnail.png')
-            .setColor('#ff1493')
-            .setFooter({ text: `Video 1 de ${items.length} | ${selectedSite}` });
-
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-            new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(items.length === 1)
-          );
-
-          return i.update({ content: null, embeds: [embed], components: [row] });
-        }
-
-        // fallback to google CSE search on the domain
-        // fallthrough to generic site-search block
-      }
-
-      // Generic: try Google custom search restricted to the site domain (ex: xvideos.com, pornub.com, etc)
-      const result = await googleGeneralSearch(query, selectedSite);
-      if (!result) return i.update({ content: '❌ Error al realizar la búsqueda (Google API o sin resultados).', components: [] });
-
-      const { items, apiUsed } = result;
-      if (!items.length) return i.update({ content: '❌ No se encontraron resultados en el sitio indicado.', components: [] });
-
-      // Scrape the top N results to extract thumbnails and titles reliably
-      const scrapedItems = [];
-      for (let item of items.slice(0, 10)) {
-        try {
-          const link = item.link;
-          const scraped = await scrapeVideoData(link);
-          scrapedItems.push({
-            title: scraped?.title || item.title || item.snippet || 'Video',
-            link: scraped?.link || link,
-            thumb: scraped?.image || item.pagemap?.cse_thumbnail?.[0]?.src || null
-          });
-        } catch (err) {
-          // ignore single failures
-        }
-      }
-
-      if (!scrapedItems.length) return i.update({ content: '❌ No se pudieron extraer miniaturas de los resultados encontrados.', components: [] });
-
-      videoSearchCache.set(extractedUid, { items: scrapedItems, index: 0, query, platform: 'other', site: selectedSite, apiUsed });
-
-      const first = scrapedItems[0];
-      const embed = new EmbedBuilder()
-        .setTitle(`🎬 ${first.title}`)
-        .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${first.link})\n\n🌐 **Fuente**: ${selectedSite}`)
-        .setColor('#ff1493')
-        .setThumbnail(first.thumb || 'https://i.imgur.com/defaultThumbnail.png')
-        .setFooter({ text: `Video 1 de ${scrapedItems.length} | ${selectedSite} | API: ${apiUsed?.id || 'scraper'}` })
-        .setTimestamp();
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-        new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(scrapedItems.length === 1)
-      );
-
-      await i.update({ content: null, embeds: [embed], components: [row] });
-
     } catch (error) {
       console.error('Error en búsqueda de video:', error);
       return i.update({
