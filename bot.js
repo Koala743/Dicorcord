@@ -452,19 +452,41 @@ client.on('interactionCreate', async (i) => {
 
       // Procesamiento especial para Hentaila
       if (cache.site === 'hentaila.com') {
-        // Extraer el ID del video de la URL del resultado
-        const urlMatch = link.match(/hentaila\.com\/media\/([^\/]+)(?:\/(\d+))?/);
+        // Extraer información del video encontrado
+        const urlMatch = link.match(/hentaila\.com\/(?:media|catalogo)\/([^\/\?]+)(?:\/(\d+))?/);
         if (urlMatch) {
-          const videoName = urlMatch[1];
-          const chapter = urlMatch[2] || '1'; // Por defecto capítulo 1
+          const videoName = urlMatch[1].replace(/\?.*$/, ''); // Remover parámetros de consulta
           
-          // Construir URL correcta del video
+          // Construir URL correcta del video (siempre capítulo 1)
           link = `https://hentaila.com/media/${videoName}/1`;
           
-          // Intentar extraer ID numérico para la imagen
-          const idMatch = video.snippet?.match(/(\d+)/);
-          if (idMatch) {
-            thumb = `https://cdn.hentaila.com/screenshots/${idMatch[1]}/1.jpg`;
+          // Buscar ID numérico en diferentes lugares del resultado
+          let videoId = null;
+          
+          // Intentar extraer de la URL original
+          const urlIdMatch = video.link.match(/\/(\d+)(?:\/|$|\?)/);
+          if (urlIdMatch) {
+            videoId = urlIdMatch[1];
+          } else {
+            // Intentar extraer del snippet o title
+            const textIdMatch = (video.snippet + ' ' + video.title).match(/(\d{2,})/);
+            if (textIdMatch) {
+              videoId = textIdMatch[1];
+            } else {
+              // Como último recurso, usar hash del nombre del video
+              let hash = 0;
+              for (let i = 0; i < videoName.length; i++) {
+                const char = videoName.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+              }
+              videoId = Math.abs(hash).toString().slice(0, 3);
+            }
+          }
+          
+          // Construir URL de la imagen con el ID encontrado
+          if (videoId) {
+            thumb = `https://cdn.hentaila.com/screenshots/${videoId}/1.jpg`;
           }
         }
       }
@@ -550,19 +572,41 @@ client.on('interactionCreate', async (i) => {
 
         // Procesamiento especial para Hentaila
         if (selectedSite === 'hentaila.com') {
-          // Extraer el ID del video de la URL del resultado
-          const urlMatch = link.match(/hentaila\.com\/media\/([^\/]+)(?:\/(\d+))?/);
+          // Extraer información del video encontrado
+          const urlMatch = link.match(/hentaila\.com\/(?:media|catalogo)\/([^\/\?]+)(?:\/(\d+))?/);
           if (urlMatch) {
-            const videoName = urlMatch[1];
-            const chapter = urlMatch[2] || '1'; // Por defecto capítulo 1
+            const videoName = urlMatch[1].replace(/\?.*$/, ''); // Remover parámetros de consulta
             
-            // Construir URL correcta del video
+            // Construir URL correcta del video (siempre capítulo 1)
             link = `https://hentaila.com/media/${videoName}/1`;
             
-            // Intentar extraer ID numérico para la imagen
-            const idMatch = video.snippet?.match(/(\d+)/);
-            if (idMatch) {
-              thumb = `https://cdn.hentaila.com/screenshots/${idMatch[1]}/1.jpg`;
+            // Buscar ID numérico en diferentes lugares del resultado
+            let videoId = null;
+            
+            // Intentar extraer de la URL original
+            const urlIdMatch = video.link.match(/\/(\d+)(?:\/|$|\?)/);
+            if (urlIdMatch) {
+              videoId = urlIdMatch[1];
+            } else {
+              // Intentar extraer del snippet o title
+              const textIdMatch = (video.snippet + ' ' + video.title).match(/(\d{2,})/);
+              if (textIdMatch) {
+                videoId = textIdMatch[1];
+              } else {
+                // Como último recurso, usar hash del nombre del video
+                let hash = 0;
+                for (let i = 0; i < videoName.length; i++) {
+                  const char = videoName.charCodeAt(i);
+                  hash = ((hash << 5) - hash) + char;
+                  hash = hash & hash; // Convert to 32bit integer
+                }
+                videoId = Math.abs(hash).toString().slice(0, 3);
+              }
+            }
+            
+            // Construir URL de la imagen con el ID encontrado
+            if (videoId) {
+              thumb = `https://cdn.hentaila.com/screenshots/${videoId}/1.jpg`;
             }
           }
         }
