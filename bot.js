@@ -445,10 +445,29 @@ client.on('interactionCreate', async (i) => {
       });
     } else {
       const video = cache.items[newIndex];
-      const title = video.title;
-      const link = video.link;
+      let title = video.title;
+      let link = video.link;
+      let thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
       const context = video.displayLink;
-      const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
+
+      // Procesamiento especial para Hentaila
+      if (cache.site === 'hentaila.com') {
+        // Extraer el ID del video de la URL del resultado
+        const urlMatch = link.match(/hentaila\.com\/media\/([^\/]+)(?:\/(\d+))?/);
+        if (urlMatch) {
+          const videoName = urlMatch[1];
+          const chapter = urlMatch[2] || '1'; // Por defecto capítulo 1
+          
+          // Construir URL correcta del video
+          link = `https://hentaila.com/media/${videoName}/1`;
+          
+          // Intentar extraer ID numérico para la imagen
+          const idMatch = video.snippet?.match(/(\d+)/);
+          if (idMatch) {
+            thumb = `https://cdn.hentaila.com/screenshots/${idMatch[1]}/1.jpg`;
+          }
+        }
+      }
 
       const embed = new EmbedBuilder()
         .setTitle(`🎬 ${title.slice(0, 80)}...`)
@@ -524,10 +543,29 @@ client.on('interactionCreate', async (i) => {
         videoSearchCache.set(extractedUid, { items, index: 0, query, site: selectedSite, platform: 'other', apiUsed });
 
         const video = items[0];
-        const title = video.title;
-        const link = video.link;
+        let title = video.title;
+        let link = video.link;
+        let thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
         const context = video.displayLink;
-        const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
+
+        // Procesamiento especial para Hentaila
+        if (selectedSite === 'hentaila.com') {
+          // Extraer el ID del video de la URL del resultado
+          const urlMatch = link.match(/hentaila\.com\/media\/([^\/]+)(?:\/(\d+))?/);
+          if (urlMatch) {
+            const videoName = urlMatch[1];
+            const chapter = urlMatch[2] || '1'; // Por defecto capítulo 1
+            
+            // Construir URL correcta del video
+            link = `https://hentaila.com/media/${videoName}/1`;
+            
+            // Intentar extraer ID numérico para la imagen
+            const idMatch = video.snippet?.match(/(\d+)/);
+            if (idMatch) {
+              thumb = `https://cdn.hentaila.com/screenshots/${idMatch[1]}/1.jpg`;
+            }
+          }
+        }
 
         const embed = new EmbedBuilder()
           .setTitle(`🎬 ${title.slice(0, 80)}...`)
