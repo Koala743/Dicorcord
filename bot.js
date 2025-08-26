@@ -1,9 +1,7 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 const cheerio = require('cheerio');
-const archiver = require('archiver');
-const path = require('path');
 
 const client = new Client({
   intents: [
@@ -217,159 +215,17 @@ async function getChochoxComicImages(comicUrl) {
     const $ = cheerio.load(response.data);
     
     const images = [];
-    
-    // Buscar imágenes en diferentes selectores
     $('img').each((i, elem) => {
       const src = $(elem).attr('src');
-      if (src && (src.includes('wp-content/uploads') || src.includes('chochox.com'))) {
+      if (src && src.includes('wp-content/uploads')) {
         images.push(src);
       }
     });
-
-    // También buscar en enlaces directos
-    $('a').each((i, elem) => {
-      const href = $(elem).attr('href');
-      if (href && (href.includes('.jpg') || href.includes('.png') || href.includes('.webp'))) {
-        images.push(href);
-      }
-    });
-    
-    return [...new Set(images)]; // Eliminar duplicados
-  } catch (error) {
-    console.error('Error obteniendo imágenes de chochox:', error);
-    return [];
-  }
-}
-
-// Función para obtener imágenes de comics18
-async function getComics18Images(comicUrl) {
-  try {
-    const response = await axios.get(comicUrl, { timeout: 10000 });
-    const $ = cheerio.load(response.data);
-    
-    const images = [];
-    
-    // Buscar patrón de imágenes de comics18
-    const comicSlug = comicUrl.split('/').pop().replace('/', '');
-    
-    // Intentar diferentes números de página
-    for (let i = 1; i <= 50; i++) {
-      const imageUrl = `https://fullcomics18.org/img23/${comicSlug}-${i}.jpg`;
-      images.push(imageUrl);
-    }
     
     return images;
   } catch (error) {
-    console.error('Error obteniendo imágenes de comics18:', error);
+    console.error('Error obteniendo imágenes de chochox:', error);
     return [];
-  }
-}
-
-// Función para obtener imágenes de vercomicsporno
-async function getVerComicspornoImages(comicUrl) {
-  try {
-    const response = await axios.get(comicUrl, { timeout: 10000 });
-    const $ = cheerio.load(response.data);
-    
-    const images = [];
-    
-    // Buscar imágenes en el contenido
-    $('.entry-content img').each((i, elem) => {
-      const src = $(elem).attr('src');
-      if (src && (src.includes('himg.nl') || src.includes('vercomicsporno'))) {
-        images.push(src);
-      }
-    });
-
-    // También buscar enlaces a imágenes
-    $('.entry-content a').each((i, elem) => {
-      const href = $(elem).attr('href');
-      if (href && (href.includes('.jpg') || href.includes('.png') || href.includes('.webp'))) {
-        images.push(href);
-      }
-    });
-    
-    return [...new Set(images)]; // Eliminar duplicados
-  } catch (error) {
-    console.error('Error obteniendo imágenes de vercomicsporno:', error);
-    return [];
-  }
-}
-async function downloadComicImages(images, title, uid) {
-  try {
-    const tempDir = `./temp_${uid}`;
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir);
-    }
-
-    const downloadedImages = [];
-    
-    for (let i = 0; i < Math.min(images.length, 50); i++) { // Límite de 50 imágenes por Railway
-      try {
-        const response = await axios({
-          method: 'GET',
-          url: images[i],
-          responseType: 'stream',
-          timeout: 15000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-          }
-        });
-
-        const extension = path.extname(images[i]) || '.jpg';
-        const filename = `${i + 1}.${extension.substring(1)}`;
-        const filepath = path.join(tempDir, filename);
-        
-        const writer = fs.createWriteStream(filepath);
-        response.data.pipe(writer);
-
-        await new Promise((resolve, reject) => {
-          writer.on('finish', resolve);
-          writer.on('error', reject);
-        });
-
-        downloadedImages.push({ filename, filepath });
-      } catch (error) {
-        console.error(`Error descargando imagen ${i + 1}:`, error.message);
-        continue;
-      }
-    }
-
-    if (downloadedImages.length === 0) {
-      // Limpiar directorio temporal
-      if (fs.existsSync(tempDir)) {
-        fs.rmSync(tempDir, { recursive: true });
-      }
-      return null;
-    }
-
-    // Crear ZIP
-    const zipPath = `./comic_${uid}_${Date.now()}.zip`;
-    const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
-
-    archive.pipe(output);
-
-    for (const img of downloadedImages) {
-      archive.file(img.filepath, { name: img.filename });
-    }
-
-    await archive.finalize();
-
-    // Esperar a que termine el ZIP
-    await new Promise((resolve) => {
-      output.on('close', resolve);
-    });
-
-    // Limpiar directorio temporal
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true });
-    }
-
-    return zipPath;
-  } catch (error) {
-    console.error('Error en descarga:', error);
-    return null;
   }
 }
 
@@ -971,11 +827,8 @@ client.on('interactionCreate', async (i) => {
       
       if (cache.site === 'chochox') {
         images = await getChochoxComicImages(comic.link);
-      } else if (cache.site === 'comics18') {
-        images = await getComics18Images(comic.link);
-      } else if (cache.site === 'vercomicsporno') {
-        images = await getVerComicspornoImages(comic.link);
       }
+      // Aquí puedes agregar más lógica para otros sitios
       
       if (!images.length) {
         return i.reply({ 
@@ -1084,70 +937,10 @@ client.on('interactionCreate', async (i) => {
 
     const comic = cache.items[cache.index];
     
-    await i.deferReply({ ephemeral: true });
-    
-    try {
-      let images = [];
-      
-      if (cache.site === 'chochox') {
-        images = await getChochoxComicImages(comic.link);
-      } else if (cache.site === 'comics18') {
-        images = await getComics18Images(comic.link);
-      } else if (cache.site === 'vercomicsporno') {
-        images = await getVerComicspornoImages(comic.link);
-      }
-
-      if (!images.length) {
-        return i.editReply({
-          content: '❌ No se pudieron encontrar imágenes para descargar.',
-        });
-      }
-
-      await i.editReply({
-        content: `📥 Descargando cómic: **${comic.title}**\n⏳ Encontradas ${images.length} imágenes, iniciando descarga...`
-      });
-
-      const zipPath = await downloadComicImages(images, comic.title, uid);
-      
-      if (!zipPath || !fs.existsSync(zipPath)) {
-        return i.editReply({
-          content: '❌ Error al crear el archivo ZIP. Intenta nuevamente.'
-        });
-      }
-
-      const stats = fs.statSync(zipPath);
-      const fileSizeInMB = stats.size / (1024 * 1024);
-
-      // Discord tiene límite de 8MB para bots normales
-      if (fileSizeInMB > 8) {
-        fs.unlinkSync(zipPath);
-        return i.editReply({
-          content: `❌ El archivo es muy grande (${fileSizeInMB.toFixed(2)}MB). Discord permite máximo 8MB.\n\n📋 **Imágenes encontradas:** ${images.length}\n🔗 **Enlace del cómic:** ${comic.link}\n\n*Sugerencia: Visita el enlace directamente para ver todas las imágenes.*`
-        });
-      }
-
-      const attachment = new AttachmentBuilder(zipPath, {
-        name: `${comic.title.replace(/[^a-zA-Z0-9]/g, '_')}.zip`
-      });
-
-      await i.editReply({
-        content: `✅ **Descarga completada!**\n📚 **Cómic:** ${comic.title}\n📦 **Imágenes:** ${images.length}\n📏 **Tamaño:** ${fileSizeInMB.toFixed(2)}MB`,
-        files: [attachment]
-      });
-
-      // Limpiar archivo después de 30 segundos
-      setTimeout(() => {
-        if (fs.existsSync(zipPath)) {
-          fs.unlinkSync(zipPath);
-        }
-      }, 30000);
-
-    } catch (error) {
-      console.error('Error en descarga:', error);
-      await i.editReply({
-        content: `❌ Error durante la descarga.\n\n🔗 **Enlace directo:** ${comic.link}\n\n*Puedes visitar el enlace para ver el cómic manualmente.*`
-      });
-    }
+    await i.reply({
+      content: `📥 **Descarga disponible**\n\n**Título:** ${comic.title}\n**Enlace directo:** ${comic.link}\n\n*Nota: Para descargar todas las imágenes, visita el enlace y utiliza herramientas de descarga de tu preferencia.*`,
+      ephemeral: true
+    });
   }
 });
 
