@@ -199,9 +199,9 @@ const COMMANDS_LIST = [
     category: "🔍 Búsqueda"
   },
   {
-    name: ".mp [búsqueda]",
-    description: "Busca videos con selector de plataformas (YouTube + adultos)",
-    example: ".video música relajante",
+    name: ".mp4 [búsqueda]",
+    description: "Busca videos con selector de plataformas",
+    example: ".mp4 música relajante",
     category: "🎬 Video"
   },
   {
@@ -282,7 +282,7 @@ const COMMAND_FUNCTIONS = {
     await m.channel.send({ embeds: [embed] });
   },
 
-  video: async (m, args) => {
+  mp4: async (m, args) => {
     const query = args.join(' ');
     if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
@@ -290,17 +290,17 @@ const COMMAND_FUNCTIONS = {
     pendingVideoSearch.set(uid, query);
 
     const siteSelector = new StringSelectMenuBuilder()
-  .setCustomId(`videosite-${uid}`)
-  .setPlaceholder('🎬 Selecciona la plataforma donde buscar')
-  .addOptions([
-    { label: 'YouTube', value: 'youtube', emoji: '🔴' },
-    { label: 'Xvideos', value: 'xvideos', emoji: '🟠' },
-    { label: 'Pornhub', value: 'pornhub', emoji: '🟡' },
-    { label: 'XNXX', value: 'xnxx', emoji: '🟢' },
-    { label: 'Hentaila', value: 'hentaila', emoji: '🟣' },
-    { label: 'VideosDeMadurasX', value: 'madurasx', emoji: '🟤' },
-    { label: 'Serviporno', value: 'serviporno', emoji: '⚪' },
-  ]);
+      .setCustomId(`videosite-${uid}`)
+      .setPlaceholder('🎬 Selecciona la plataforma donde buscar')
+      .addOptions([
+        { label: 'YouTube', value: 'youtube', emoji: '🔴' },
+        { label: 'Xvideos', value: 'xvideos.es', emoji: '🟠' },
+        { label: 'Pornhub', value: 'es.pornhub.com', emoji: '🟡' },
+        { label: 'XNXX', value: 'www.xnxx.es', emoji: '🟢' },
+        { label: 'Hentaila', value: 'hentaila.com', emoji: '🟣' },
+        { label: 'Maduras X', value: 'www.videosdemadurasx.com', emoji: '🔥' },
+        { label: 'ServiPorno', value: 'www.serviporno.com', emoji: '💋' },
+      ]);
 
     return m.reply({
       content: 'Selecciona la plataforma donde deseas buscar:',
