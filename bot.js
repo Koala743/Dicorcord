@@ -958,7 +958,7 @@ async function handleComicSiteSelection(interaction) {
 
       const item = items[0]
       const embed = createComicSearchEmbed(item, 0, items.length)
-      const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic")
+      const buttons = createComicNavigationButtons(interaction.user.id, 0, items.length)
 
       await interaction.update({
         content: "",
@@ -976,7 +976,7 @@ async function handleComicSiteSelection(interaction) {
 
       const item = comicsFound[0]
       const embed = createAPIComicEmbed(item, 0, comicsFound.length)
-      const buttons = createNavigationButtons(interaction.user.id, 0, comicsFound.length, "comic")
+      const buttons = createComicNavigationButtons(interaction.user.id, 0, comicsFound.length)
 
       await interaction.update({
         content: "",
@@ -1130,9 +1130,30 @@ async function handleComicSearchNavigation(interaction, action) {
   const embed = isAPI
     ? createAPIComicEmbed(item, newIndex, items.length)
     : createComicSearchEmbed(item, newIndex, items.length)
-  const buttons = createNavigationButtons(userId, newIndex, items.length, "comic")
+  const buttons = createComicNavigationButtons(userId, newIndex, items.length)
 
-  await interaction.update({ embeds: [embed], components: buttons })
+  await interaction.update({ embeds: [embed], components: [buttons] })
+}
+
+function createComicNavigationButtons(userId, currentIndex, total) {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`comicback-${userId}`)
+      .setLabel("⬅️ Anterior")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(currentIndex === 0),
+    new ButtonBuilder()
+      .setCustomId(`comicnext-${userId}`)
+      .setLabel("➡️ Siguiente")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(currentIndex === total - 1),
+    new ButtonBuilder()
+      .setCustomId(`comicview-${userId}`)
+      .setLabel("📖 Ver Comic Completo")
+      .setStyle(ButtonStyle.Success),
+  )
+
+  return row
 }
 
 async function handleAdultSearchNavigation(interaction, action) {
@@ -1232,7 +1253,7 @@ function createComicSearchEmbed(item, index, total) {
     .setTimestamp()
     .addFields({
       name: "📚 Nota",
-      value: "Usa las flechas para navegar entre resultados.",
+      value: "Usa las flechas para navegar entre resultados. Presiona 'Ver Comic Completo' para ver las páginas internas.",
     })
 
   const apiInfo = apiManager.getCurrentAPIInfo("google")
@@ -1243,22 +1264,6 @@ function createComicSearchEmbed(item, index, total) {
   }
 
   return embed
-}
-
-function createNavigationButtons(userId, currentIndex, total, prefix) {
-  const backBtn = new ButtonBuilder()
-    .setCustomId(`${prefix}back-${userId}`)
-    .setLabel("⬅️")
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(currentIndex === 0)
-
-  const nextBtn = new ButtonBuilder()
-    .setCustomId(`${prefix}next-${userId}`)
-    .setLabel("➡️")
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(currentIndex === total - 1)
-
-  return new ActionRowBuilder().addComponents(backBtn, nextBtn)
 }
 
 async function handleWebSearch(message, args) {
