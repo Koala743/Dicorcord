@@ -1,7 +1,9 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder, AttachmentBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
-const cheerio = require('cheerio'); // Necesitas instalar: npm install cheerio
+const cheerio = require('cheerio');
+const archiver = require('archiver');
+const path = require('path');
 
 const client = new Client({
   intents: [
@@ -106,6 +108,271 @@ async function isImageUrlValid(url) {
   }
 }
 
+// Función para extraer thumbnail de páginas de video
+async function extractVideoThumbnail(url) {
+  try {
+    const response = await axios.get(url, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+    
+    let thumbnail = null;
+    let title = $('title').text() || 'Video';
+    
+    // Buscar meta tags de imagen
+    const ogImage = $('meta[property="og:image"]').attr('content');
+    const twitterImage = $('meta[name="twitter:image"]').attr('content');
+    
+    if (ogImage) thumbnail = ogImage;
+    else if (twitterImage) thumbnail = twitterImage;
+    
+    // Buscar el título específico
+    const ogTitle = $('meta[property="og:title"]').attr('content');
+    if (ogTitle) title = ogTitle;
+    
+    return { thumbnail, title };
+  } catch (error) {
+    console.error('Error extrayendo thumbnail:', error);
+    return { thumbnail: null, title: 'Video' };
+  }
+}
+
+// Función para buscar cómics en chochox.com
+async function searchChochoxComics(query) {
+  try {
+    const searchUrl = `https://chochox.com/?s=${encodeURIComponent(query)}`;
+    const response = await axios.get(searchUrl, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+    
+    const comics = [];
+    $('.wp-block-group').each((i, elem) => {
+      const title = $(elem).find('h2 a').text().trim();
+      const link = $(elem).find('h2 a').attr('href');
+      const thumbnail = $(elem).find('img').attr('src');
+      
+      if (title && link) {
+        comics.push({ title, link, thumbnail });
+      }
+    });
+    
+    return comics;
+  } catch (error) {
+    console.error('Error buscando en chochox:', error);
+    return [];
+  }
+}
+
+// Función para buscar cómics en comics18.org
+async function searchComics18(query) {
+  try {
+    const searchUrl = `https://comics18.org/?s=${encodeURIComponent(query)}`;
+    const response = await axios.get(searchUrl, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+    
+    const comics = [];
+    $('.post-item').each((i, elem) => {
+      const title = $(elem).find('.post-title a').text().trim();
+      const link = $(elem).find('.post-title a').attr('href');
+      const thumbnail = $(elem).find('.post-thumb img').attr('src');
+      
+      if (title && link) {
+        comics.push({ title, link, thumbnail });
+      }
+    });
+    
+    return comics;
+  } catch (error) {
+    console.error('Error buscando en comics18:', error);
+    return [];
+  }
+}
+
+// Función para buscar cómics en vercomicsporno.xxx
+async function searchVerComicsPorno(query) {
+  try {
+    const searchUrl = `https://vercomicsporno.xxx/?s=${encodeURIComponent(query)}`;
+    const response = await axios.get(searchUrl, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+    
+    const comics = [];
+    $('.post-item').each((i, elem) => {
+      const title = $(elem).find('.post-title a').text().trim();
+      const link = $(elem).find('.post-title a').attr('href');
+      const thumbnail = $(elem).find('.post-thumb img').attr('src');
+      
+      if (title && link) {
+        comics.push({ title, link, thumbnail });
+      }
+    });
+    
+    return comics;
+  } catch (error) {
+    console.error('Error buscando en vercomicsporno:', error);
+    return [];
+  }
+}
+
+// Función para obtener imágenes del cómic de chochox
+async function getChochoxComicImages(comicUrl) {
+  try {
+    const response = await axios.get(comicUrl, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+    
+    const images = [];
+    
+    // Buscar imágenes en diferentes selectores
+    $('img').each((i, elem) => {
+      const src = $(elem).attr('src');
+      if (src && (src.includes('wp-content/uploads') || src.includes('chochox.com'))) {
+        images.push(src);
+      }
+    });
+
+    // También buscar en enlaces directos
+    $('a').each((i, elem) => {
+      const href = $(elem).attr('href');
+      if (href && (href.includes('.jpg') || href.includes('.png') || href.includes('.webp'))) {
+        images.push(href);
+      }
+    });
+    
+    return [...new Set(images)]; // Eliminar duplicados
+  } catch (error) {
+    console.error('Error obteniendo imágenes de chochox:', error);
+    return [];
+  }
+}
+
+// Función para obtener imágenes de comics18
+async function getComics18Images(comicUrl) {
+  try {
+    const response = await axios.get(comicUrl, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+    
+    const images = [];
+    
+    // Buscar patrón de imágenes de comics18
+    const comicSlug = comicUrl.split('/').pop().replace('/', '');
+    
+    // Intentar diferentes números de página
+    for (let i = 1; i <= 50; i++) {
+      const imageUrl = `https://fullcomics18.org/img23/${comicSlug}-${i}.jpg`;
+      images.push(imageUrl);
+    }
+    
+    return images;
+  } catch (error) {
+    console.error('Error obteniendo imágenes de comics18:', error);
+    return [];
+  }
+}
+
+// Función para obtener imágenes de vercomicsporno
+async function getVerComicspornoImages(comicUrl) {
+  try {
+    const response = await axios.get(comicUrl, { timeout: 10000 });
+    const $ = cheerio.load(response.data);
+    
+    const images = [];
+    
+    // Buscar imágenes en el contenido
+    $('.entry-content img').each((i, elem) => {
+      const src = $(elem).attr('src');
+      if (src && (src.includes('himg.nl') || src.includes('vercomicsporno'))) {
+        images.push(src);
+      }
+    });
+
+    // También buscar enlaces a imágenes
+    $('.entry-content a').each((i, elem) => {
+      const href = $(elem).attr('href');
+      if (href && (href.includes('.jpg') || href.includes('.png') || href.includes('.webp'))) {
+        images.push(href);
+      }
+    });
+    
+    return [...new Set(images)]; // Eliminar duplicados
+  } catch (error) {
+    console.error('Error obteniendo imágenes de vercomicsporno:', error);
+    return [];
+  }
+}
+async function downloadComicImages(images, title, uid) {
+  try {
+    const tempDir = `./temp_${uid}`;
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir);
+    }
+
+    const downloadedImages = [];
+    
+    for (let i = 0; i < Math.min(images.length, 50); i++) { // Límite de 50 imágenes por Railway
+      try {
+        const response = await axios({
+          method: 'GET',
+          url: images[i],
+          responseType: 'stream',
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+
+        const extension = path.extname(images[i]) || '.jpg';
+        const filename = `${i + 1}.${extension.substring(1)}`;
+        const filepath = path.join(tempDir, filename);
+        
+        const writer = fs.createWriteStream(filepath);
+        response.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+        });
+
+        downloadedImages.push({ filename, filepath });
+      } catch (error) {
+        console.error(`Error descargando imagen ${i + 1}:`, error.message);
+        continue;
+      }
+    }
+
+    if (downloadedImages.length === 0) {
+      // Limpiar directorio temporal
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true });
+      }
+      return null;
+    }
+
+    // Crear ZIP
+    const zipPath = `./comic_${uid}_${Date.now()}.zip`;
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    archive.pipe(output);
+
+    for (const img of downloadedImages) {
+      archive.file(img.filepath, { name: img.filename });
+    }
+
+    await archive.finalize();
+
+    // Esperar a que termine el ZIP
+    await new Promise((resolve) => {
+      output.on('close', resolve);
+    });
+
+    // Limpiar directorio temporal
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+
+    return zipPath;
+  } catch (error) {
+    console.error('Error en descarga:', error);
+    return null;
+  }
+}
+
 async function googleImageSearch(query) {
   const api = getAvailableGoogleAPI();
   if (!api) return null;
@@ -189,176 +456,6 @@ async function youtubeSearch(query) {
   }
 }
 
-// Función para scraping de sitios específicos
-async function scrapeVideoSite(url, site) {
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    const $ = cheerio.load(response.data);
-    let title = '';
-    let thumbnail = '';
-
-    switch (site) {
-      case 'xvideos.es':
-      case 'xvideos.com':
-        title = $('meta[property="og:title"]').attr('content') || $('.page-title h2').text() || 'Video';
-        thumbnail = $('meta[property="og:image"]').attr('content') || $('.thumb img').attr('src');
-        break;
-      
-      case 'es.pornhub.com':
-        title = $('meta[property="og:title"]').attr('content') || $('h1.title').text() || 'Video';
-        thumbnail = $('meta[property="og:image"]').attr('content');
-        break;
-      
-      case 'www.xnxx.es':
-        title = $('meta[property="og:title"]').attr('content') || $('.page-title').text() || 'Video';
-        thumbnail = $('meta[property="og:image"]').attr('content');
-        break;
-      
-      case 'hentaila.tv':
-        title = $('.entry-title').text() || $('h1').text() || 'Anime';
-        thumbnail = $('.wp-post-image').attr('src') || $('meta[property="og:image"]').attr('content');
-        break;
-      
-      case 'www.videosdemadurasx.com':
-        title = $('meta[property="og:title"]').attr('content') || $('h1').text() || 'Video';
-        thumbnail = $('meta[property="og:image"]').attr('content');
-        break;
-      
-      case 'www.serviporno.com':
-        title = $('meta[property="og:title"]').attr('content') || $('h1').text() || 'Video';
-        thumbnail = $('meta[property="og:image"]').attr('content');
-        break;
-    }
-
-    return { title, thumbnail, url };
-  } catch (error) {
-    console.error(`Error scraping ${url}:`, error);
-    return { title: 'Error al cargar', thumbnail: null, url };
-  }
-}
-
-// Función para buscar comics en chochox.com
-async function searchChochoxComics(query) {
-  try {
-    const searchUrl = `https://chochox.com/?s=${encodeURIComponent(query)}`;
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    const $ = cheerio.load(response.data);
-    const comics = [];
-    
-    $('.post').each((i, element) => {
-      const title = $(element).find('h2 a').text().trim();
-      const link = $(element).find('h2 a').attr('href');
-      const thumbnail = $(element).find('img').attr('src');
-      
-      if (title && link) {
-        comics.push({ title, link, thumbnail });
-      }
-    });
-    
-    return comics;
-  } catch (error) {
-    console.error('Error searching chochox:', error);
-    return [];
-  }
-}
-
-// Función para buscar comics en comics18.org
-async function searchComics18(query) {
-  try {
-    const searchUrl = `https://comics18.org/?s=${encodeURIComponent(query)}`;
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    const $ = cheerio.load(response.data);
-    const comics = [];
-    
-    $('.post').each((i, element) => {
-      const title = $(element).find('h2 a').text().trim();
-      const link = $(element).find('h2 a').attr('href');
-      const thumbnail = $(element).find('img').attr('src');
-      
-      if (title && link) {
-        comics.push({ title, link, thumbnail });
-      }
-    });
-    
-    return comics;
-  } catch (error) {
-    console.error('Error searching comics18:', error);
-    return [];
-  }
-}
-
-// Función para buscar comics en vercomicsporno.xxx
-async function searchVerComicsPorno(query) {
-  try {
-    const searchUrl = `https://vercomicsporno.xxx/?s=${encodeURIComponent(query)}`;
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    const $ = cheerio.load(response.data);
-    const comics = [];
-    
-    $('.post').each((i, element) => {
-      const title = $(element).find('h2 a').text().trim();
-      const link = $(element).find('h2 a').attr('href');
-      const thumbnail = $(element).find('img').attr('src');
-      
-      if (title && link) {
-        comics.push({ title, link, thumbnail });
-      }
-    });
-    
-    return comics;
-  } catch (error) {
-    console.error('Error searching vercomicsporno:', error);
-    return [];
-  }
-}
-
-// Función para obtener imágenes de comic de chochox
-async function getChochoxComicImages(comicUrl) {
-  try {
-    const response = await axios.get(comicUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    const $ = cheerio.load(response.data);
-    const images = [];
-    
-    // Buscar imágenes del comic
-    $('.entry-content img').each((i, element) => {
-      const src = $(element).attr('src');
-      if (src && src.includes('wp-content/uploads')) {
-        images.push(src);
-      }
-    });
-    
-    return images;
-  } catch (error) {
-    console.error('Error getting chochox images:', error);
-    return [];
-  }
-}
-
 const COMMANDS_LIST = [
   {
     name: ".web [búsqueda]",
@@ -380,9 +477,9 @@ const COMMANDS_LIST = [
   },
   {
     name: ".cmx [búsqueda]",
-    description: "Busca comics en diferentes sitios",
-    example: ".cmx bulma",
-    category: "📚 Comics"
+    description: "Busca cómics con navegación y descarga",
+    example: ".cmx Bulma",
+    category: "📚 Cómics"
   },
   {
     name: ".help",
@@ -478,8 +575,8 @@ const COMMAND_FUNCTIONS = {
         { label: 'Pornhub', value: 'es.pornhub.com', emoji: '🟡' },
         { label: 'XNXX', value: 'www.xnxx.es', emoji: '🟢' },
         { label: 'Hentaila', value: 'hentaila.tv', emoji: '🟣' },
-        { label: 'Videos de Maduras', value: 'www.videosdemadurasx.com', emoji: '🔵' },
-        { label: 'ServiPorno', value: 'www.serviporno.com', emoji: '🟤' },
+        { label: 'Videos de Maduras', value: 'videosdemadurasx.com', emoji: '🔥' },
+        { label: 'Serviporno', value: 'serviporno.com', emoji: '🎭' },
       ]);
 
     return m.reply({
@@ -497,15 +594,15 @@ const COMMAND_FUNCTIONS = {
 
     const siteSelector = new StringSelectMenuBuilder()
       .setCustomId(`comicsite-${uid}`)
-      .setPlaceholder('📚 Selecciona el sitio de comics')
+      .setPlaceholder('📚 Selecciona la plataforma de cómics')
       .addOptions([
-        { label: 'ChochoX', value: 'chochox', emoji: '💜' },
-        { label: 'Comics18', value: 'comics18', emoji: '🔞' },
-        { label: 'VerComicsPorno', value: 'vercomicsporno', emoji: '📖' },
+        { label: 'Chochox', value: 'chochox', emoji: '🔥' },
+        { label: 'Comics18', value: 'comics18', emoji: '🎨' },
+        { label: 'Ver Comics Porno', value: 'vercomicsporno', emoji: '📖' },
       ]);
 
     return m.reply({
-      content: 'Selecciona el sitio donde deseas buscar comics:',
+      content: 'Selecciona la plataforma de cómics donde deseas buscar:',
       components: [new ActionRowBuilder().addComponents(siteSelector)]
     });
   },
@@ -570,7 +667,7 @@ client.on('interactionCreate', async (i) => {
 
   const uid = i.user.id;
 
-  // Manejo de botones de imágenes
+  // Navegación de imágenes normales
   if (i.isButton() && (i.customId === 'prevImage' || i.customId === 'nextImage')) {
     const cache = imageSearchCache.get(uid);
     if (!cache) return i.deferUpdate();
@@ -611,7 +708,7 @@ client.on('interactionCreate', async (i) => {
     });
   }
 
-  // Manejo de botones de videos
+  // Navegación de videos
   if (i.isButton() && (i.customId === 'prevVideo' || i.customId === 'nextVideo')) {
     const cache = videoSearchCache.get(uid);
     if (!cache) return i.deferUpdate();
@@ -647,38 +744,17 @@ client.on('interactionCreate', async (i) => {
           )
         ]
       });
-    } else if (cache.platform === 'scraping') {
-      const video = cache.items[newIndex];
-
-      const embed = new EmbedBuilder()
-        .setTitle(`🎬 ${video.title}`)
-        .setDescription(`[📺 Ver video](${video.url})`)
-        .setThumbnail(video.thumbnail)
-        .setColor('#ff1493')
-        .setFooter({ text: `Video ${newIndex + 1} de ${cache.items.length} | ${cache.site}` })
-        .setTimestamp();
-
-      await i.update({
-        embeds: [embed],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === 0),
-            new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === cache.items.length - 1)
-          )
-        ]
-      });
     } else {
       const video = cache.items[newIndex];
-      const title = video.title;
-      const link = video.link;
-      const context = video.displayLink;
-      const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
-
+      
+      // Extraer thumbnail real del video
+      const { thumbnail, title } = await extractVideoThumbnail(video.link);
+      
       const embed = new EmbedBuilder()
         .setTitle(`🎬 ${title.slice(0, 80)}...`)
-        .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${context}`)
+        .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${video.link})\n\n🌐 **Fuente**: ${video.displayLink}`)
         .setColor('#ff1493')
-        .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
+        .setThumbnail(thumbnail || 'https://i.imgur.com/defaultThumbnail.png')
         .setFooter({ text: `Video ${newIndex + 1} de ${cache.items.length} | ${cache.site}` })
         .setTimestamp();
 
@@ -694,7 +770,7 @@ client.on('interactionCreate', async (i) => {
     }
   }
 
-  // Manejo de botones de comics
+  // Navegación de cómics
   if (i.isButton() && (i.customId === 'prevComic' || i.customId === 'nextComic')) {
     const cache = comicSearchCache.get(uid);
     if (!cache) return i.deferUpdate();
@@ -709,16 +785,17 @@ client.on('interactionCreate', async (i) => {
 
     const embed = new EmbedBuilder()
       .setTitle(`📚 ${comic.title}`)
-      .setDescription(`[📖 Leer comic](${comic.link})`)
-      .setThumbnail(comic.thumbnail)
-      .setColor('#9b59b6')
-      .setFooter({ text: `Comic ${newIndex + 1} de ${cache.items.length} | ${cache.site}` })
+      .setDescription(`[📖 Ver cómic completo](${comic.link})`)
+      .setThumbnail(comic.thumbnail || 'https://i.imgur.com/defaultThumbnail.png')
+      .setColor('#ff69b4')
+      .setFooter({ text: `Cómic ${newIndex + 1} de ${cache.items.length} | ${cache.site}` })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('prevComic').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === 0),
       new ButtonBuilder().setCustomId('nextComic').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === cache.items.length - 1),
-      new ButtonBuilder().setCustomId(`readComic-${uid}-${newIndex}`).setLabel('📖 Ver Páginas').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('readComic').setLabel('📖 Leer').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('downloadComic').setLabel('💾 Descargar').setStyle(ButtonStyle.Secondary)
     );
 
     await i.update({
@@ -727,107 +804,7 @@ client.on('interactionCreate', async (i) => {
     });
   }
 
-  // Manejo de botones para ver páginas del comic
-  if (i.isButton() && i.customId.startsWith('readComic-')) {
-    const parts = i.customId.split('-');
-    const comicUid = parts[1];
-    const comicIndex = parseInt(parts[2]);
-    
-    if (i.user.id !== comicUid) return i.deferUpdate();
-    
-    const cache = comicSearchCache.get(comicUid);
-    if (!cache) return i.deferUpdate();
-    
-    const comic = cache.items[comicIndex];
-    let images = [];
-    
-    // Obtener imágenes según el sitio
-    if (cache.site === 'chochox') {
-      images = await getChochoxComicImages(comic.link);
-    }
-    // Aquí puedes agregar más sitios cuando implementes las funciones
-    
-    if (images.length === 0) {
-      return i.update({ content: '❌ No se pudieron obtener las imágenes del comic.', components: [] });
-    }
-    
-    // Guardar en cache de imágenes del comic
-    comicImageCache.set(comicUid, { images, index: 0, title: comic.title });
-    
-    const embed = new EmbedBuilder()
-      .setTitle(`📖 ${comic.title}`)
-      .setImage(images[0])
-      .setColor('#9b59b6')
-      .setFooter({ text: `Página 1 de ${images.length}` });
-    
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('prevComicPage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-      new ButtonBuilder().setCustomId('nextComicPage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(images.length === 1),
-      new ButtonBuilder().setCustomId('downloadComic').setLabel('💾 Descargar Todo').setStyle(ButtonStyle.Success)
-    );
-    
-    await i.update({
-      embeds: [embed],
-      components: [row]
-    });
-  }
-
-  // Manejo de navegación de páginas del comic
-  if (i.isButton() && (i.customId === 'prevComicPage' || i.customId === 'nextComicPage')) {
-    const cache = comicImageCache.get(uid);
-    if (!cache) return i.deferUpdate();
-
-    let newIndex = cache.index;
-    if (i.customId === 'prevComicPage' && newIndex > 0) newIndex--;
-    if (i.customId === 'nextComicPage' && newIndex < cache.images.length - 1) newIndex++;
-    if (newIndex === cache.index) return i.deferUpdate();
-
-    cache.index = newIndex;
-
-    const embed = new EmbedBuilder()
-      .setTitle(`📖 ${cache.title}`)
-      .setImage(cache.images[newIndex])
-      .setColor('#9b59b6')
-      .setFooter({ text: `Página ${newIndex + 1} de ${cache.images.length}` });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('prevComicPage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === 0),
-      new ButtonBuilder().setCustomId('nextComicPage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === cache.images.length - 1),
-      new ButtonBuilder().setCustomId('downloadComic').setLabel('💾 Descargar Todo').setStyle(ButtonStyle.Success)
-    );
-
-    await i.update({
-      embeds: [embed],
-      components: [row]
-    });
-  }
-
-  // Manejo de descarga de comic completo
-  if (i.isButton() && i.customId === 'downloadComic') {
-    const cache = comicImageCache.get(uid);
-    if (!cache) return i.deferUpdate();
-
-    await i.deferReply({ ephemeral: true });
-
-    try {
-      let downloadLinks = '';
-      cache.images.forEach((img, index) => {
-        downloadLinks += `Página ${index + 1}: ${img}\n`;
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle('💾 Enlaces de Descarga')
-        .setDescription(`**${cache.title}**\n\`\`\`\n${downloadLinks}\`\`\``)
-        .setColor('#2ecc71')
-        .setFooter({ text: 'Copia los enlaces para descargar las imágenes' });
-
-      await i.editReply({ embeds: [embed] });
-    } catch (error) {
-      await i.editReply({ content: '❌ Error al generar los enlaces de descarga.' });
-    }
-  }
-
-  // Selector de sitio de videos
+  // Selector de sitios de video
   if (i.isStringSelectMenu() && i.customId.startsWith('videosite-')) {
     const extractedUid = i.customId.split('-')[1];
     if (i.user.id !== extractedUid) return i.deferUpdate();
@@ -873,85 +850,37 @@ client.on('interactionCreate', async (i) => {
           components: [row]
         });
       } else {
-        // Para sitios específicos que necesitan scraping
-        if (['xvideos.es', 'es.pornhub.com', 'www.xnxx.es', 'hentaila.tv', 'www.videosdemadurasx.com', 'www.serviporno.com'].includes(selectedSite)) {
-          const result = await googleGeneralSearch(query, selectedSite);
-          if (!result) return i.update({ content: '❌ Error al realizar la búsqueda.', components: [] });
+        const result = await googleGeneralSearch(query, selectedSite);
+        if (!result) return i.update({ content: '❌ Error al realizar la búsqueda.', components: [] });
 
-          const { items, apiUsed } = result;
-          if (!items.length) return i.update({ content: '❌ No se encontraron resultados.', components: [] });
+        const { items, apiUsed } = result;
+        if (!items.length) return i.update({ content: '❌ No se encontraron resultados.', components: [] });
 
-          // Hacer scraping de los primeros 5 resultados
-          const scrapedVideos = [];
-          for (let j = 0; j < Math.min(5, items.length); j++) {
-            const videoData = await scrapeVideoSite(items[j].link, selectedSite);
-            scrapedVideos.push(videoData);
-          }
+        videoSearchCache.set(extractedUid, { items, index: 0, query, site: selectedSite, platform: 'other', apiUsed });
 
-          videoSearchCache.set(extractedUid, { 
-            items: scrapedVideos, 
-            index: 0, 
-            query, 
-            site: selectedSite, 
-            platform: 'scraping', 
-            apiUsed 
-          });
+        const video = items[0];
+        
+        // Extraer thumbnail real del video
+        const { thumbnail, title } = await extractVideoThumbnail(video.link);
 
-          const video = scrapedVideos[0];
+        const embed = new EmbedBuilder()
+          .setTitle(`🎬 ${title.slice(0, 80)}...`)
+          .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${video.link})\n\n🌐 **Fuente**: ${video.displayLink}`)
+          .setColor('#ff1493')
+          .setThumbnail(thumbnail || 'https://i.imgur.com/defaultThumbnail.png')
+          .setFooter({ text: `Video 1 de ${items.length} | ${selectedSite} | API: ${apiUsed.id}` })
+          .setTimestamp();
 
-          const embed = new EmbedBuilder()
-            .setTitle(`🎬 ${video.title}`)
-            .setDescription(`[📺 Ver video](${video.url})`)
-            .setThumbnail(video.thumbnail)
-            .setColor('#ff1493')
-            .setFooter({ text: `Video 1 de ${scrapedVideos.length} | ${selectedSite} | API: ${apiUsed.id}` })
-            .setTimestamp();
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
+          new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(items.length === 1)
+        );
 
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-            new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(scrapedVideos.length === 1)
-          );
-
-          await i.update({
-            content: null,
-            embeds: [embed],
-            components: [row]
-          });
-        } else {
-          // Búsqueda normal con Google
-          const result = await googleGeneralSearch(query, selectedSite);
-          if (!result) return i.update({ content: '❌ Error al realizar la búsqueda.', components: [] });
-
-          const { items, apiUsed } = result;
-          if (!items.length) return i.update({ content: '❌ No se encontraron resultados.', components: [] });
-
-          videoSearchCache.set(extractedUid, { items, index: 0, query, site: selectedSite, platform: 'google', apiUsed });
-
-          const video = items[0];
-          const title = video.title;
-          const link = video.link;
-          const context = video.displayLink;
-          const thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
-
-          const embed = new EmbedBuilder()
-            .setTitle(`🎬 ${title.slice(0, 80)}...`)
-            .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${context}`)
-            .setColor('#ff1493')
-            .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
-            .setFooter({ text: `Video 1 de ${items.length} | ${selectedSite} | API: ${apiUsed.id}` })
-            .setTimestamp();
-
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
-            new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(items.length === 1)
-          );
-
-          await i.update({
-            content: null,
-            embeds: [embed],
-            components: [row]
-          });
-        }
+        await i.update({
+          content: null,
+          embeds: [embed],
+          components: [row]
+        });
       }
     } catch (error) {
       console.error('Error en búsqueda de video:', error);
@@ -962,7 +891,7 @@ client.on('interactionCreate', async (i) => {
     }
   }
 
-  // Selector de sitio de comics
+  // Selector de sitios de cómics
   if (i.isStringSelectMenu() && i.customId.startsWith('comicsite-')) {
     const extractedUid = i.customId.split('-')[1];
     if (i.user.id !== extractedUid) return i.deferUpdate();
@@ -976,38 +905,43 @@ client.on('interactionCreate', async (i) => {
     try {
       let comics = [];
       
-      switch (selectedSite) {
-        case 'chochox':
-          comics = await searchChochoxComics(query);
-          break;
-        case 'comics18':
-          comics = await searchComics18(query);
-          break;
-        case 'vercomicsporno':
-          comics = await searchVerComicsPorno(query);
-          break;
+      if (selectedSite === 'chochox') {
+        comics = await searchChochoxComics(query);
+      } else if (selectedSite === 'comics18') {
+        comics = await searchComics18(query);
+      } else if (selectedSite === 'vercomicsporno') {
+        comics = await searchVerComicsPorno(query);
       }
 
       if (!comics.length) {
-        return i.update({ content: '❌ No se encontraron comics.', components: [] });
+        return i.update({ 
+          content: '❌ No se encontraron cómics con esa búsqueda.', 
+          components: [] 
+        });
       }
 
-      comicSearchCache.set(extractedUid, { items: comics, index: 0, query, site: selectedSite });
+      comicSearchCache.set(extractedUid, { 
+        items: comics, 
+        index: 0, 
+        query, 
+        site: selectedSite 
+      });
 
       const comic = comics[0];
 
       const embed = new EmbedBuilder()
         .setTitle(`📚 ${comic.title}`)
-        .setDescription(`[📖 Leer comic](${comic.link})`)
-        .setThumbnail(comic.thumbnail)
-        .setColor('#9b59b6')
-        .setFooter({ text: `Comic 1 de ${comics.length} | ${selectedSite}` })
+        .setDescription(`[📖 Ver cómic completo](${comic.link})`)
+        .setThumbnail(comic.thumbnail || 'https://i.imgur.com/defaultThumbnail.png')
+        .setColor('#ff69b4')
+        .setFooter({ text: `Cómic 1 de ${comics.length} | ${selectedSite}` })
         .setTimestamp();
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('prevComic').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
         new ButtonBuilder().setCustomId('nextComic').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(comics.length === 1),
-        new ButtonBuilder().setCustomId(`readComic-${extractedUid}-0`).setLabel('📖 Ver Páginas').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('readComic').setLabel('📖 Leer').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('downloadComic').setLabel('💾 Descargar').setStyle(ButtonStyle.Secondary)
       );
 
       await i.update({
@@ -1015,11 +949,203 @@ client.on('interactionCreate', async (i) => {
         embeds: [embed],
         components: [row]
       });
+
     } catch (error) {
-      console.error('Error en búsqueda de comics:', error);
+      console.error('Error en búsqueda de cómics:', error);
       return i.update({
-        content: '❌ Error al buscar comics.',
+        content: '❌ Error al realizar la búsqueda de cómics.',
         components: []
+      });
+    }
+  }
+
+  // Botón para leer cómic
+  if (i.isButton() && i.customId === 'readComic') {
+    const cache = comicSearchCache.get(uid);
+    if (!cache) return i.deferUpdate();
+
+    const comic = cache.items[cache.index];
+    
+    try {
+      let images = [];
+      
+      if (cache.site === 'chochox') {
+        images = await getChochoxComicImages(comic.link);
+      } else if (cache.site === 'comics18') {
+        images = await getComics18Images(comic.link);
+      } else if (cache.site === 'vercomicsporno') {
+        images = await getVerComicspornoImages(comic.link);
+      }
+      
+      if (!images.length) {
+        return i.reply({ 
+          content: '❌ No se pudieron cargar las imágenes del cómic.', 
+          ephemeral: true 
+        });
+      }
+
+      comicImageCache.set(uid, {
+        images,
+        index: 0,
+        title: comic.title,
+        site: cache.site
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📖 ${comic.title}`)
+        .setImage(images[0])
+        .setColor('#ff69b4')
+        .setFooter({ text: `Página 1 de ${images.length}` })
+        .setTimestamp();
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('prevPage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
+        new ButtonBuilder().setCustomId('nextPage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(images.length === 1),
+        new ButtonBuilder().setCustomId('backToComics').setLabel('🔙 Volver').setStyle(ButtonStyle.Secondary)
+      );
+
+      await i.update({
+        embeds: [embed],
+        components: [row]
+      });
+
+    } catch (error) {
+      console.error('Error cargando cómic:', error);
+      return i.reply({ 
+        content: '❌ Error al cargar el cómic.', 
+        ephemeral: true 
+      });
+    }
+  }
+
+  // Navegación de páginas del cómic
+  if (i.isButton() && (i.customId === 'prevPage' || i.customId === 'nextPage')) {
+    const cache = comicImageCache.get(uid);
+    if (!cache) return i.deferUpdate();
+
+    let newIndex = cache.index;
+    if (i.customId === 'prevPage' && newIndex > 0) newIndex--;
+    if (i.customId === 'nextPage' && newIndex < cache.images.length - 1) newIndex++;
+    if (newIndex === cache.index) return i.deferUpdate();
+
+    cache.index = newIndex;
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📖 ${cache.title}`)
+      .setImage(cache.images[newIndex])
+      .setColor('#ff69b4')
+      .setFooter({ text: `Página ${newIndex + 1} de ${cache.images.length}` })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('prevPage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === 0),
+      new ButtonBuilder().setCustomId('nextPage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === cache.images.length - 1),
+      new ButtonBuilder().setCustomId('backToComics').setLabel('🔙 Volver').setStyle(ButtonStyle.Secondary)
+    );
+
+    await i.update({
+      embeds: [embed],
+      components: [row]
+    });
+  }
+
+  // Botón para volver a la lista de cómics
+  if (i.isButton() && i.customId === 'backToComics') {
+    const cache = comicSearchCache.get(uid);
+    if (!cache) return i.deferUpdate();
+
+    const comic = cache.items[cache.index];
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📚 ${comic.title}`)
+      .setDescription(`[📖 Ver cómic completo](${comic.link})`)
+      .setThumbnail(comic.thumbnail || 'https://i.imgur.com/defaultThumbnail.png')
+      .setColor('#ff69b4')
+      .setFooter({ text: `Cómic ${cache.index + 1} de ${cache.items.length} | ${cache.site}` })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('prevComic').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(cache.index === 0),
+      new ButtonBuilder().setCustomId('nextComic').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(cache.index === cache.items.length - 1),
+      new ButtonBuilder().setCustomId('readComic').setLabel('📖 Leer').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('downloadComic').setLabel('💾 Descargar').setStyle(ButtonStyle.Secondary)
+    );
+
+    await i.update({
+      embeds: [embed],
+      components: [row]
+    });
+  }
+
+  // Botón para descargar cómic
+  if (i.isButton() && i.customId === 'downloadComic') {
+    const cache = comicSearchCache.get(uid);
+    if (!cache) return i.deferUpdate();
+
+    const comic = cache.items[cache.index];
+    
+    await i.deferReply({ ephemeral: true });
+    
+    try {
+      let images = [];
+      
+      if (cache.site === 'chochox') {
+        images = await getChochoxComicImages(comic.link);
+      } else if (cache.site === 'comics18') {
+        images = await getComics18Images(comic.link);
+      } else if (cache.site === 'vercomicsporno') {
+        images = await getVerComicspornoImages(comic.link);
+      }
+
+      if (!images.length) {
+        return i.editReply({
+          content: '❌ No se pudieron encontrar imágenes para descargar.',
+        });
+      }
+
+      await i.editReply({
+        content: `📥 Descargando cómic: **${comic.title}**\n⏳ Encontradas ${images.length} imágenes, iniciando descarga...`
+      });
+
+      const zipPath = await downloadComicImages(images, comic.title, uid);
+      
+      if (!zipPath || !fs.existsSync(zipPath)) {
+        return i.editReply({
+          content: '❌ Error al crear el archivo ZIP. Intenta nuevamente.'
+        });
+      }
+
+      const stats = fs.statSync(zipPath);
+      const fileSizeInMB = stats.size / (1024 * 1024);
+
+      // Discord tiene límite de 8MB para bots normales
+      if (fileSizeInMB > 8) {
+        fs.unlinkSync(zipPath);
+        return i.editReply({
+          content: `❌ El archivo es muy grande (${fileSizeInMB.toFixed(2)}MB). Discord permite máximo 8MB.\n\n📋 **Imágenes encontradas:** ${images.length}\n🔗 **Enlace del cómic:** ${comic.link}\n\n*Sugerencia: Visita el enlace directamente para ver todas las imágenes.*`
+        });
+      }
+
+      const attachment = new AttachmentBuilder(zipPath, {
+        name: `${comic.title.replace(/[^a-zA-Z0-9]/g, '_')}.zip`
+      });
+
+      await i.editReply({
+        content: `✅ **Descarga completada!**\n📚 **Cómic:** ${comic.title}\n📦 **Imágenes:** ${images.length}\n📏 **Tamaño:** ${fileSizeInMB.toFixed(2)}MB`,
+        files: [attachment]
+      });
+
+      // Limpiar archivo después de 30 segundos
+      setTimeout(() => {
+        if (fs.existsSync(zipPath)) {
+          fs.unlinkSync(zipPath);
+        }
+      }, 30000);
+
+    } catch (error) {
+      console.error('Error en descarga:', error);
+      await i.editReply({
+        content: `❌ Error durante la descarga.\n\n🔗 **Enlace directo:** ${comic.link}\n\n*Puedes visitar el enlace para ver el cómic manualmente.*`
       });
     }
   }
