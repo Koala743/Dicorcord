@@ -43,6 +43,8 @@ let API_POOLS = {
 const imageSearchCache = new Map();
 const pendingVideoSearch = new Map();
 const videoSearchCache = new Map();
+const comicSearchCache = new Map();
+const pendingComicSearch = new Map();
 
 function loadPrefs() {
   try {
@@ -154,7 +156,74 @@ async function googleGeneralSearch(query, site = null) {
   }
 }
 
-async function youtubeSearch(query) {
+async function scrapePage(url) {
+  try {
+    const response = await axios.get(url, { 
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error scraping:', error.message);
+    return null;
+  }
+}
+
+async function extractVideoInfo(html, site) {
+  const cheerio = require('cheerio');
+  const $ = cheerio.load(html);
+  
+  let title = '';
+  let thumbnail = '';
+  let downloadUrl = '';
+
+  switch(site) {
+    case 'xvideos.es':
+    case 'xvideos.com':
+      title = $('meta[property="og:title"]').attr('content') || $('.video-metadata h2').text() || 'Sin título';
+      thumbnail = $('meta[property="og:image"]').attr('content') || $('.thumb img').attr('src') || '';
+      break;
+      
+    case 'es.pornhub.com':
+      title = $('meta[property="og:title"]').attr('content') || $('h1').text() || 'Sin título';
+      thumbnail = $('meta[property="og:image"]').attr('content') || $('.mgp_videoPreview img').attr('src') || '';
+      break;
+      
+    case 'www.xnxx.es':
+      title = $('meta[property="og:title"]').attr('content') || $('.video-metadata h2').text() || 'Sin título';
+      thumbnail = $('meta[property="og:image"]').attr('content') || $('.thumb img').attr('src') || '';
+      break;
+      
+    case 'hentaila.tv':
+      title = $('meta[property="og:title"]').attr('content') || $('.episode-title').text() || 'Sin título';
+      thumbnail = $('meta[property="og:image"]').attr('content') || $('.episode-thumbnail img').attr('src') || '';
+      break;
+      
+    case 'videosdemadurasx.com':
+      title = $('meta[property="og:title"]').attr('content') || $('h1').text() || 'Sin título';
+      thumbnail = $('meta[property="og:image"]').attr('content') || $('.video-thumb img').attr('src') || '';
+      break;
+      
+    case 'serviporno.com':
+      title = $('meta[property="og:title"]').attr('content') || $('h1').text() || 'Sin título';
+      thumbnail = $('meta[property="og:image"]').attr('content') || $('.player-thumb img').attr('src') || '';
+      break;
+      
+    case 'muyzorras.com':
+      title = $('meta[property="og:title"]').attr('content') || $('h1').text() || 'Sin título';
+      thumbnail = $('meta[property="og:image"]').attr('content') || $('.video-player img').attr('src') || '';
+      downloadUrl = $('.download-btn').attr('href') || '';
+      break;
+  }
+  
+  return {
+    title: title.trim(),
+    thumbnail: thumbnail.trim(),
+    downloadUrl: downloadUrl.trim()
+  };
+}
   const api = getAvailableGoogleAPI();
   if (!api) return null;
 
@@ -199,10 +268,16 @@ const COMMANDS_LIST = [
     category: "🔍 Búsqueda"
   },
   {
-    name: ".video [búsqueda]",
+    name: ".mp4 [búsqueda]",
     description: "Busca videos con selector de plataformas",
-    example: ".video música relajante",
+    example: ".mp4 música relajante",
     category: "🎬 Video"
+  },
+  {
+    name: ".cmx [búsqueda]",
+    description: "Busca comics en múltiples sitios",
+    example: ".cmx bulma",
+    category: "📚 Comics"
   },
   {
     name: ".help",
@@ -282,7 +357,7 @@ const COMMAND_FUNCTIONS = {
     await m.channel.send({ embeds: [embed] });
   },
 
-  video: async (m, args) => {
+  mp4: async (m, args) => {
     const query = args.join(' ');
     if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
@@ -298,6 +373,9 @@ const COMMAND_FUNCTIONS = {
         { label: 'Pornhub', value: 'es.pornhub.com', emoji: '🟡' },
         { label: 'XNXX', value: 'www.xnxx.es', emoji: '🟢' },
         { label: 'Hentaila', value: 'hentaila.tv', emoji: '🟣' },
+        { label: 'Maduras X', value: 'videosdemadurasx.com', emoji: '🔥' },
+        { label: 'Serviporno', value: 'serviporno.com', emoji: '💦' },
+        { label: 'MuyZorras', value: 'muyzorras.com', emoji: '🍑' },
       ]);
 
     return m.reply({
@@ -319,6 +397,28 @@ const COMMAND_FUNCTIONS = {
     }
 
     return m.channel.send({ embeds: [embed] });
+  },
+
+  cmx: async (m, args) => {
+    const query = args.join(' ');
+    if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
+
+    const uid = m.author.id;
+    pendingComicSearch.set(uid, query);
+
+    const siteSelector = new StringSelectMenuBuilder()
+      .setCustomId(`comicsite-${uid}`)
+      .setPlaceholder('📚 Selecciona el sitio de comics')
+      .addOptions([
+        { label: 'ChochoX', value: 'chochox.com', emoji: '🔥' },
+        { label: 'Comics18', value: 'comics18.org', emoji: '💦' },
+        { label: 'VerComicsPorno', value: 'vercomicsporno.xxx', emoji: '🍑' },
+      ]);
+
+    return m.reply({
+      content: 'Selecciona el sitio donde deseas buscar comics:',
+      components: [new ActionRowBuilder().addComponents(siteSelector)]
+    });
   },
 
   apis: async (m) => {
