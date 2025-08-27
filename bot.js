@@ -42,30 +42,49 @@ const trans = {
     noImagesFound: '❌ No se encontraron imágenes para esa búsqueda.',
     noValidImages: '❌ No se encontraron imágenes válidas.',
     chatDeactivated: '🛑 Chat automático desactivado.',
-    languageChanged: '✅ Tu idioma ha sido cambiado a',
+    languageChanged: '✅ Tu idioma ha sido cambiado exitosamente.',
     currentLanguage: '🌐 Tu idioma actual es',
     selectLanguage: '🌐 Selecciona tu idioma preferido:',
     translationError: '❌ No se pudo traducir el mensaje. Inténtalo más tarde.',
     originalMessage: 'Mensaje original',
     translation: 'Traducción',
-    detectedLanguage: 'Idioma detectado'
-  },
-  en: {
-    mustReply: '⚠️ Use the command by replying to a valid message.',
-    timeout: '⏳ Translation error. Try again.',
-    alreadyInLang: '⚠️ The message is already in your configured language.',
-    notAuthorized: '⚠️ You don\'t have permissions to use this command.',
-    noSearchQuery: '⚠️ You must provide text to search.',
-    noImagesFound: '❌ No images found for that search.',
-    noValidImages: '❌ No valid images found.',
-    chatDeactivated: '🛑 Automatic chat deactivated.',
-    languageChanged: '✅ Your language has been changed to',
-    currentLanguage: '🌐 Your current language is',
-    selectLanguage: '🌐 Select your preferred language:',
-    translationError: '❌ Could not translate the message. Try later.',
-    originalMessage: 'Original message',
-    translation: 'Translation',
-    detectedLanguage: 'Detected language'
+    detectedLanguage: 'Idioma detectado',
+    searching: '🔍 Buscando imágenes...',
+    translating: '🔄 Traduciendo...',
+    apiExhausted: '❌ Todas las APIs de Google están agotadas o fallan.',
+    noTextToTranslate: '❌ El mensaje no contiene texto para traducir.',
+    mentionOneUser: 'Debes mencionar exactamente a un usuario.',
+    cannotChatYourself: 'No puedes chatear contigo mismo.',
+    chatStarted: '💬 Chat Automático Iniciado',
+    noChatActive: '❌ No hay chat activo en este canal.',
+    commandError: '❌ Error ejecutando el comando. Inténtalo de nuevo.',
+    invalidLanguage: '❌ Idioma no válido. Idiomas disponibles:',
+    chatBetween: 'Chat entre',
+    results: 'Resultados para',
+    imageSource: 'Página donde está la imagen',
+    imageCount: 'Imagen',
+    of: 'de',
+    today: 'hoy',
+    commandsList: '📜 Lista de Comandos',
+    configuredLanguage: 'Idioma configurado:',
+    allChannelsWork: 'Todos los comandos funcionan en cualquier canal',
+    example: '📝 Ejemplo:',
+    apiStatus: '🔧 Estado de APIs',
+    status: 'Estado',
+    active: 'Activo',
+    inactive: 'Inactivo',
+    quota: 'Cuota',
+    available: 'Disponible',
+    exhausted: 'Agotada',
+    requests: 'Requests',
+    lastReset: 'Último reset',
+    languageConfig: '🌐 Configuración de Idioma',
+    canAlsoUse: 'También puedes usar: .id [código] (ej: .id en)',
+    selectLang1: '🌍 Seleccionar idioma (Parte 1)',
+    selectLang2: '🌎 Seleccionar idioma (Parte 2)',
+    languageChangedTitle: '✅ Idioma Cambiado',
+    generalSearch: '🔍 Búsqueda:',
+    viewResults: 'Ver resultados en Google'
   }
 };
 
@@ -135,9 +154,23 @@ function getLang(u) {
   return prefs[u] || 'es';
 }
 
-function T(u, k) {
-  const userLang = getLang(u);
-  return (trans[userLang] && trans[userLang][k]) || trans.es[k] || k;
+// Sistema de traducción automática de mensajes del bot
+async function T(userId, messageKey) {
+  const userLang = getLang(userId);
+  const baseMessage = trans.es[messageKey] || messageKey;
+  
+  // Si el usuario tiene español o el mensaje no existe, retornar directo
+  if (userLang === 'es' || !trans.es[messageKey]) {
+    return baseMessage;
+  }
+  
+  // Traducir el mensaje al idioma del usuario
+  try {
+    const translated = await translate(baseMessage, userLang, 'es');
+    return translated ? translated.text : baseMessage;
+  } catch {
+    return baseMessage;
+  }
 }
 
 function getLanguageInfo(code) {
@@ -311,18 +344,18 @@ const COMMANDS_LIST = [
 const COMMAND_FUNCTIONS = {
   web: async (m, args) => {
     const query = args.join(' ');
-    if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
+    if (!query) return m.reply(await T(m.author.id, 'noSearchQuery'));
     
-    const loadingMsg = await m.reply('🔍 Buscando imágenes...');
+    const loadingMsg = await m.reply(await T(m.author.id, 'searching'));
     
     const result = await googleImageSearchTry(query);
     if (result === null) {
-      return loadingMsg.edit('❌ Todas las APIs de Google están agotadas o fallan.');
+      return loadingMsg.edit(await T(m.author.id, 'apiExhausted'));
     }
     
     const { items, apiUsed } = result;
     if (!items || !items.length) {
-      return loadingMsg.edit(T(m.author.id, 'noValidImages'));
+      return loadingMsg.edit(await T(m.author.id, 'noValidImages'));
     }
     
     let validIndex = -1;
@@ -333,15 +366,15 @@ const COMMAND_FUNCTIONS = {
       }
     }
     if (validIndex === -1) {
-      return loadingMsg.edit(T(m.author.id, 'noValidImages'));
+      return loadingMsg.edit(await T(m.author.id, 'noValidImages'));
     }
     
     imageSearchCache.set(m.author.id, { items, index: validIndex, query, apiId: apiUsed.id });
     const embed = new EmbedBuilder()
-      .setTitle(`📷 Resultados para: ${query}`)
+      .setTitle(`📷 ${await T(m.author.id, 'results')}: ${query}`)
       .setImage(items[validIndex].link)
-      .setDescription(`[Página donde está la imagen](${items[validIndex].image.contextLink})`)
-      .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length} • API: ${apiUsed.id} (${apiUsed.dailyRequests}/${apiUsed.maxDailyRequests} hoy)` })
+      .setDescription(`[${await T(m.author.id, 'imageSource')}](${items[validIndex].image.contextLink})`)
+      .setFooter({ text: `${await T(m.author.id, 'imageCount')} ${validIndex + 1} ${await T(m.author.id, 'of')} ${items.length} • API: ${apiUsed.id} (${apiUsed.dailyRequests}/${apiUsed.maxDailyRequests} ${await T(m.author.id, 'today')})` })
       .setColor('#00c7ff');
     
     const row = new ActionRowBuilder().addComponents(
@@ -354,12 +387,12 @@ const COMMAND_FUNCTIONS = {
 
   bs: async (m, args) => {
     const query = args.join(' ');
-    if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
+    if (!query) return m.reply(await T(m.author.id, 'noSearchQuery'));
     
     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
     const embed = new EmbedBuilder()
-      .setTitle(`🔍 Búsqueda: ${query}`)
-      .setDescription(`[Ver resultados en Google](${searchUrl})`)
+      .setTitle(`${await T(m.author.id, 'generalSearch')} ${query}`)
+      .setDescription(`[${await T(m.author.id, 'viewResults')}](${searchUrl})`)
       .setColor('#4285f4')
       .setTimestamp();
     
@@ -367,25 +400,24 @@ const COMMAND_FUNCTIONS = {
   },
 
   td: async (m, args) => {
-    // Removido el check de CHANNELS - ahora funciona en cualquier canal
-    if (!m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
+    if (!m.reference?.messageId) return m.reply(await T(m.author.id, 'mustReply'));
     
     try {
       const ref = await m.channel.messages.fetch(m.reference.messageId);
       if (!ref.content || ref.content.length === 0) {
-        return m.reply('❌ El mensaje no contiene texto para traducir.');
+        return m.reply(await T(m.author.id, 'noTextToTranslate'));
       }
       
-      const loadingMsg = await m.reply('🔄 Traduciendo...');
+      const loadingMsg = await m.reply(await T(m.author.id, 'translating'));
       const userLang = getLang(m.author.id);
       const res = await translate(ref.content, userLang);
       
       if (!res) {
-        return loadingMsg.edit(T(m.author.id, 'translationError'));
+        return loadingMsg.edit(await T(m.author.id, 'translationError'));
       }
       
       if (res.from === userLang) {
-        return loadingMsg.edit(T(m.author.id, 'alreadyInLang'));
+        return loadingMsg.edit(await T(m.author.id, 'alreadyInLang'));
       }
       
       const fromLangInfo = getLanguageInfo(res.from);
@@ -393,18 +425,18 @@ const COMMAND_FUNCTIONS = {
       
       const embed = new EmbedBuilder()
         .setColor('#00c7ff')
-        .setTitle('🌐 Traducción')
+        .setTitle('🌐 ' + await T(m.author.id, 'translation'))
         .addFields(
-          { name: `${T(m.author.id, 'originalMessage')} ${fromLangInfo.emoji}`, value: ref.content.length > 1000 ? ref.content.substring(0, 1000) + '...' : ref.content },
-          { name: `${T(m.author.id, 'translation')} ${toLangInfo.emoji}`, value: res.text.length > 1000 ? res.text.substring(0, 1000) + '...' : res.text }
+          { name: `${await T(m.author.id, 'originalMessage')} ${fromLangInfo.emoji}`, value: ref.content.length > 1000 ? ref.content.substring(0, 1000) + '...' : ref.content },
+          { name: `${await T(m.author.id, 'translation')} ${toLangInfo.emoji}`, value: res.text.length > 1000 ? res.text.substring(0, 1000) + '...' : res.text }
         )
-        .setFooter({ text: `${T(m.author.id, 'detectedLanguage')}: ${fromLangInfo.name} → ${toLangInfo.name} | ${res.service}` })
+        .setFooter({ text: `${await T(m.author.id, 'detectedLanguage')}: ${fromLangInfo.name} → ${toLangInfo.name} | ${res.service}` })
         .setTimestamp();
       
       return loadingMsg.edit({ content: '', embeds: [embed] });
     } catch (error) {
       console.error('Translation error:', error);
-      return m.reply(T(m.author.id, 'translationError'));
+      return m.reply(await T(m.author.id, 'translationError'));
     }
   },
 
@@ -412,21 +444,19 @@ const COMMAND_FUNCTIONS = {
     const currentLang = getLang(m.author.id);
     const currentLangInfo = getLanguageInfo(currentLang);
     
-    // Si no hay argumentos, mostrar idioma actual y selector
     if (args.length === 0) {
       const embed = new EmbedBuilder()
-        .setTitle('🌐 Configuración de Idioma')
-        .setDescription(`${T(m.author.id, 'currentLanguage')}: ${currentLangInfo.emoji} **${currentLangInfo.name}**\n\n${T(m.author.id, 'selectLanguage')}`)
+        .setTitle(await T(m.author.id, 'languageConfig'))
+        .setDescription(`${await T(m.author.id, 'currentLanguage')}: ${currentLangInfo.emoji} **${currentLangInfo.name}**\n\n${await T(m.author.id, 'selectLanguage')}`)
         .setColor('#00c7ff')
-        .setFooter({ text: 'También puedes usar: .id [código] (ej: .id en)' });
+        .setFooter({ text: await T(m.author.id, 'canAlsoUse') });
 
-      // Crear menú de selección dividido en dos partes (Discord limit: 25 options)
       const firstHalf = LANGUAGES.slice(0, 12);
       const secondHalf = LANGUAGES.slice(12);
 
       const selectMenu1 = new StringSelectMenuBuilder()
         .setCustomId('language_select_1')
-        .setPlaceholder('🌍 Seleccionar idioma (Parte 1)')
+        .setPlaceholder(await T(m.author.id, 'selectLang1'))
         .addOptions(firstHalf.map(lang => ({
           label: lang.label,
           value: lang.value,
@@ -436,7 +466,7 @@ const COMMAND_FUNCTIONS = {
 
       const selectMenu2 = new StringSelectMenuBuilder()
         .setCustomId('language_select_2')
-        .setPlaceholder('🌎 Seleccionar idioma (Parte 2)')
+        .setPlaceholder(await T(m.author.id, 'selectLang2'))
         .addOptions(secondHalf.map(lang => ({
           label: lang.label,
           value: lang.value,
@@ -450,21 +480,20 @@ const COMMAND_FUNCTIONS = {
       return m.reply({ embeds: [embed], components: [row1, row2] });
     }
 
-    // Si hay argumentos, cambiar idioma directamente
     const newLang = args[0].toLowerCase();
     const langExists = LANGUAGES.find(l => l.value === newLang);
     
     if (!langExists) {
       const availableLangs = LANGUAGES.map(l => `\`${l.value}\``).join(', ');
-      return m.reply(`❌ Idioma no válido. Idiomas disponibles:\n${availableLangs}`);
+      return m.reply(`${await T(m.author.id, 'invalidLanguage')}\n${availableLangs}`);
     }
 
     prefs[m.author.id] = newLang;
     savePrefs();
 
     const embed = new EmbedBuilder()
-      .setTitle('✅ Idioma Cambiado')
-      .setDescription(`${T(m.author.id, 'languageChanged')} ${langExists.emoji} **${langExists.name}**`)
+      .setTitle(await T(m.author.id, 'languageChangedTitle'))
+      .setDescription(`${await T(m.author.id, 'languageChanged')} ${langExists.emoji} **${langExists.name}**`)
       .setColor('#00ff00')
       .setTimestamp();
 
@@ -472,15 +501,15 @@ const COMMAND_FUNCTIONS = {
   },
 
   chat: async (m, args) => {
-    if (m.mentions.users.size !== 1) return m.reply('Debes mencionar exactamente a un usuario.');
+    if (m.mentions.users.size !== 1) return m.reply(await T(m.author.id, 'mentionOneUser'));
     const other = m.mentions.users.first();
-    if (other.id === m.author.id) return m.reply('No puedes chatear contigo mismo.');
+    if (other.id === m.author.id) return m.reply(await T(m.author.id, 'cannotChatYourself'));
     activeChats.set(m.channel.id, { users: [m.author.id, other.id] });
     const m1 = await m.guild.members.fetch(m.author.id);
     const m2 = await m.guild.members.fetch(other.id);
     const embed = new EmbedBuilder()
-      .setTitle('💬 Chat Automático Iniciado')
-      .setDescription(`Chat entre **${m1.nickname || m1.user.username}** y **${m2.nickname || m2.user.username}**`)
+      .setTitle(await T(m.author.id, 'chatStarted'))
+      .setDescription(`${await T(m.author.id, 'chatBetween')} **${m1.nickname || m1.user.username}** y **${m2.nickname || m2.user.username}**`)
       .setThumbnail(m1.user.displayAvatarURL({ size: 64 }))
       .setImage(m2.user.displayAvatarURL({ size: 64 }))
       .setColor('#00c7ff')
@@ -489,12 +518,11 @@ const COMMAND_FUNCTIONS = {
   },
 
   dchat: async (m, args) => {
-    // Removido: Solo flux_fer puede usar dchat - ahora cualquier usuario puede
     if (activeChats.has(m.channel.id)) {
       activeChats.delete(m.channel.id);
-      return m.reply(T(m.author.id, 'chatDeactivated'));
+      return m.reply(await T(m.author.id, 'chatDeactivated'));
     }
-    return m.reply('❌ No hay chat activo en este canal.');
+    return m.reply(await T(m.author.id, 'noChatActive'));
   },
 
   help: async (m) => {
@@ -502,15 +530,15 @@ const COMMAND_FUNCTIONS = {
     const langInfo = getLanguageInfo(userLang);
     
     const embed = new EmbedBuilder()
-      .setTitle('📜 Lista de Comandos')
-      .setDescription(`${langInfo.emoji} Idioma configurado: **${langInfo.name}**`)
+      .setTitle(await T(m.author.id, 'commandsList'))
+      .setDescription(`${langInfo.emoji} ${await T(m.author.id, 'configuredLanguage')} **${langInfo.name}**`)
       .setColor('#00c7ff')
-      .setFooter({ text: 'Todos los comandos funcionan en cualquier canal' });
+      .setFooter({ text: await T(m.author.id, 'allChannelsWork') });
       
     for (let cmd of COMMANDS_LIST) {
       embed.addFields({ 
         name: `${cmd.category} ${cmd.name}`, 
-        value: `${cmd.description}\n📝 Ejemplo: \`${cmd.example}\``,
+        value: `${cmd.description}\n${await T(m.author.id, 'example')} \`${cmd.example}\``,
         inline: false
       });
     }
@@ -519,7 +547,7 @@ const COMMAND_FUNCTIONS = {
 
   apis: async (m) => {
     const embed = new EmbedBuilder()
-      .setTitle('🔧 Estado de APIs')
+      .setTitle(await T(m.author.id, 'apiStatus'))
       .setColor('#00c7ff')
       .setTimestamp();
       
@@ -530,7 +558,20 @@ const COMMAND_FUNCTIONS = {
       
       embed.addFields({
         name: `${status} ${api.id}`,
-        value: `**Estado:** ${api.active ? 'Activo' : 'Inactivo'}\n**Cuota:** ${quota} ${api.quotaExhausted ? 'Agotada' : 'Disponible'}\n**Requests:** ${api.dailyRequests}/${api.maxDailyRequests}\n**Último reset:** ${api.lastReset}`,
+        value: `**${await T(m.author.id, 'status')}:** ${api.active ? await T(m.author.id, 'active') : await T(m.author.id, 'inactive')}\n**${await T(m.author.id, 'quota')}:** ${quota} ${api.quotaExhausted ? await T(m.author.id, 'exhausted') : await T(m.author.id, 'available')}\n**${await T(m.author.id, 'requests')}:** ${api.dailyRequests}/${api.maxDailyRequests}\n**${await T(m.author.id, 'lastReset')}:** ${api.lastReset}`,
+        inline: true
+      });
+    }
+    return m.channel.send({ embeds: [embed] });
+  }
+    for (let api of API_POOLS.google) {
+      resetDailyIfNeeded(api);
+      const status = api.active ? '✅' : '❌';
+      const quota = api.quotaExhausted ? '🔴' : '🟢';
+      
+      embed.addFields({
+        name: `${status} ${api.id}`,
+        value: `**${await T(m.author.id, 'status')}:** ${api.active ? await T(m.author.id, 'active') : await T(m.author.id, 'inactive')}\n**${await T(m.author.id, 'quota')}:** ${quota} ${api.quotaExhausted ? await T(m.author.id, 'exhausted') : await T(m.author.id, 'available')}\n**${await T(m.author.id, 'requests')}:** ${api.dailyRequests}/${api.maxDailyRequests}\n**${await T(m.author.id, 'lastReset')}:** ${api.lastReset}`,
         inline: true
       });
     }
@@ -549,9 +590,6 @@ client.once('ready', () => {
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
-  // Removido: Sistema de restricciones por roles y URLs
-  // Ahora cualquier usuario puede usar todos los comandos en cualquier servidor
-
   if (!m.content.startsWith('.')) return;
 
   const [command, ...args] = m.content.slice(1).trim().split(/ +/);
@@ -560,7 +598,7 @@ client.on('messageCreate', async (m) => {
       await COMMAND_FUNCTIONS[command](m, args);
     } catch (e) {
       console.error(`Error ejecutando comando ${command}:`, e);
-      m.reply('❌ Error ejecutando el comando. Inténtalo de nuevo.');
+      m.reply(await T(m.author.id, 'commandError'));
     }
   }
 });
@@ -597,9 +635,9 @@ client.on('interactionCreate', async (i) => {
     const footerText = api ? `Imagen ${validIndex + 1} de ${cache.items.length} • API: ${api.id} (${api.dailyRequests}/${api.maxDailyRequests} hoy)` : `Imagen ${validIndex + 1} de ${cache.items.length}`;
     
     const embed = new EmbedBuilder()
-      .setTitle(`📷 Resultados para: ${cache.query}`)
+      .setTitle(`📷 ${await T(uid, 'results')}: ${cache.query}`)
       .setImage(img.link)
-      .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
+      .setDescription(`[${await T(uid, 'imageSource')}](${img.image.contextLink})`)
       .setFooter({ text: footerText })
       .setColor('#00c7ff');
       
@@ -623,8 +661,8 @@ client.on('interactionCreate', async (i) => {
       savePrefs();
       
       const embed = new EmbedBuilder()
-        .setTitle('✅ Idioma Cambiado')
-        .setDescription(`${T(i.user.id, 'languageChanged')} ${langInfo.emoji} **${langInfo.name}**`)
+        .setTitle(await T(i.user.id, 'languageChangedTitle'))
+        .setDescription(`${await T(i.user.id, 'languageChanged')} ${langInfo.emoji} **${langInfo.name}**`)
         .setColor('#00ff00')
         .setTimestamp();
         
