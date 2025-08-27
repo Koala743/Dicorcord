@@ -290,7 +290,7 @@ const COMMANDS_LIST = [
   },
   {
     name: ".dchat",
-    description: "Detiene el chat automático (solo flux_fer)",
+    description: "Detiene el chat automático (cualquier usuario puede usarlo)",
     example: ".dchat",
     category: "💬 Chat"
   },
@@ -489,7 +489,7 @@ const COMMAND_FUNCTIONS = {
   },
 
   dchat: async (m, args) => {
-    if (m.author.username !== 'flux_fer') return m.reply(T(m.author.id, 'notAuthorized'));
+    // Removido: Solo flux_fer puede usar dchat - ahora cualquier usuario puede
     if (activeChats.has(m.channel.id)) {
       activeChats.delete(m.channel.id);
       return m.reply(T(m.author.id, 'chatDeactivated'));
@@ -542,28 +542,15 @@ client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
   console.log(`📊 ${LANGUAGES.length} idiomas soportados`);
   console.log(`🔧 ${API_POOLS.google.length} APIs de Google configuradas`);
+  console.log(`🌍 Bot disponible para TODOS los usuarios en CUALQUIER servidor`);
+  console.log(`🚀 Sin restricciones de roles o canales específicos`);
 });
 
 client.on('messageCreate', async (m) => {
   if (m.author.bot || !m.content) return;
 
-  const urlRegex = /https?:\/\/[^\s]+/i;
-
-  if (urlRegex.test(m.content)) {
-    try {
-      const member = await m.guild.members.fetch(m.author.id);
-      const allowedRoles = new Set([
-        '1305327128341905459',
-        '1244056080825454642',
-        '1244039798696710212'
-      ]);
-      const hasAllowedRole = member.roles.cache.some(r => allowedRoles.has(r.id));
-      if (!hasAllowedRole) {
-        await m.delete().catch(() => {});
-        return;
-      }
-    } catch {}
-  }
+  // Removido: Sistema de restricciones por roles y URLs
+  // Ahora cualquier usuario puede usar todos los comandos en cualquier servidor
 
   if (!m.content.startsWith('.')) return;
 
