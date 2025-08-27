@@ -135,10 +135,20 @@ async function googleGeneralSearch(query, site = null) {
   api.dailyRequests++;
   savePools();
 
-  // Búsqueda específica para Hentaila con capítulo 1
+  // Búsqueda específica para cada sitio
   let searchQuery;
   if (site === 'hentaila.com') {
     searchQuery = `${query} "capitulo 1" OR "/1" site:${site}`;
+  } else if (site === 'xvideos.es') {
+    searchQuery = `${query} site:${site}`;
+  } else if (site === 'es.pornhub.com') {
+    searchQuery = `${query} site:${site}`;
+  } else if (site === 'www.xnxx.es') {
+    searchQuery = `${query} site:${site}`;
+  } else if (site === 'www.videosdemadurasx.com') {
+    searchQuery = `${query} site:${site}`;
+  } else if (site === 'www.serviporno.com') {
+    searchQuery = `${query} site:${site}`;
   } else {
     searchQuery = site ? `${query} site:${site}` : query;
   }
@@ -149,8 +159,8 @@ async function googleGeneralSearch(query, site = null) {
     const res = await axios.get(url, { timeout: 8000 });
     let items = res.data.items || [];
     
-    // Filtrado específico para Hentaila
-    if (site === 'hentaila.com') {
+    // Filtrado para todos los sitios
+    if (site) {
       items = items.filter(item => {
         const title = (item.title || '').toLowerCase();
         const snippet = (item.snippet || '').toLowerCase();
@@ -159,17 +169,20 @@ async function googleGeneralSearch(query, site = null) {
         
         // Verificar que contenga los términos de búsqueda
         const hasSearchTerms = searchTerms.some(term => 
-          title.includes(term) || snippet.includes(term) || link.includes(term)
+          term.length > 2 && (title.includes(term) || snippet.includes(term) || link.includes(term))
         );
         
-        // Verificar que sea capítulo 1 o contenga referencias al primer capítulo
-        const isChapter1 = link.includes('/1') || 
-                          title.includes('capitulo 1') || 
-                          title.includes('chapter 1') || 
-                          snippet.includes('capitulo 1') ||
-                          link.match(/\/media\/[^\/]+\/1(?:\/|$|\?)/);
+        // Filtrados específicos por sitio
+        if (site === 'hentaila.com') {
+          const isChapter1 = link.includes('/1') || 
+                            title.includes('capitulo 1') || 
+                            title.includes('chapter 1') || 
+                            snippet.includes('capitulo 1') ||
+                            link.match(/\/media\/[^\/]+\/1(?:\/|$|\?)/);
+          return hasSearchTerms && (isChapter1 || !link.includes('/media/'));
+        }
         
-        return hasSearchTerms && (isChapter1 || !link.includes('/media/'));
+        return hasSearchTerms;
       });
     }
     
@@ -185,6 +198,64 @@ async function googleGeneralSearch(query, site = null) {
     
     return null;
   }
+}
+
+// Función para obtener imagen específica de cada sitio
+function getVideoThumbnail(video, site) {
+  let thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
+  
+  if (site === 'hentaila.com') {
+    const link = video.link;
+    const urlMatch = link.match(/hentaila\.com\/(?:media|catalogo)\/([^\/\?]+)(?:\/(\d+))?/);
+    if (urlMatch) {
+      const videoName = urlMatch[1].replace(/\?.*$/, '');
+      
+      let videoId = null;
+      // Múltiples métodos para obtener ID
+      const urlIdMatch = video.link.match(/\/(\d+)(?:\/|$|\?)/);
+      if (urlIdMatch) {
+        videoId = urlIdMatch[1];
+      } else {
+        const titleIdMatch = video.title.match(/(\d{2,})/);
+        if (titleIdMatch) {
+          videoId = titleIdMatch[1];
+        } else {
+          const snippetIdMatch = video.snippet.match(/(\d{2,})/);
+          if (snippetIdMatch) {
+            videoId = snippetIdMatch[1];
+          } else {
+            let hash = 0;
+            const str = videoName.toLowerCase().replace(/-/g, '');
+            for (let i = 0; i < str.length; i++) {
+              const char = str.charCodeAt(i);
+              hash = ((hash << 5) - hash) + char;
+              hash = hash & hash;
+            }
+            videoId = Math.abs(hash).toString().slice(-3).padStart(3, '1');
+          }
+        }
+      }
+      
+      if (videoId) {
+        thumb = `https://cdn.hentaila.com/screenshots/${videoId}/1.jpg`;
+      }
+    }
+  } else if (site === 'xvideos.es') {
+    // Intentar extraer thumbnail de Xvideos
+    if (!thumb && video.link) {
+      const videoId = video.link.match(/\/(\d+)\//);
+      if (videoId) {
+        thumb = `https://img-cf.xvideos-cdn.com/videos/thumbslll/${videoId[1]}/thumb.jpg`;
+      }
+    }
+  } else if (site === 'es.pornhub.com') {
+    // Usar thumbnail por defecto de Pornhub si no hay
+    if (!thumb) {
+      thumb = 'https://ei.phncdn.com/pics/gifs/004/416/612/4416612a.webm.jpg';
+    }
+  }
+  
+  return thumb || 'https://i.imgur.com/defaultThumbnail.png';
 }
 
 async function youtubeSearch(query) {
@@ -320,23 +391,64 @@ const COMMAND_FUNCTIONS = {
     if (!query) return m.reply('⚠️ Debes escribir algo para buscar.');
 
     const uid = m.author.id;
+    
+    // Pre-buscar en cada sitio para ver cuáles tienen resultados
+    const testSites = ['hentaila.com', 'xvideos.es', 'es.pornhub.com', 'www.xnxx.es', 'www.videosdemadurasx.com', 'www.serviporno.com'];
+    const availableSites = [];
+    
+    // Hacer búsquedas rápidas para detectar contenido
+    for (const site of testSites) {
+      try {
+        const result = await googleGeneralSearch(query, site);
+        if (result && result.items && result.items.length > 0) {
+          availableSites.push(site);
+        }
+      } catch (error) {
+        console.log(`Error testing ${site}:`, error.message);
+      }
+    }
+    
+    // Agregar YouTube siempre (no necesita pre-test)
+    availableSites.unshift('youtube');
+    
+    if (availableSites.length === 1) {
+      return m.reply(`❌ Solo encontré resultados en YouTube para "${query}". Intenta con otros términos de búsqueda.`);
+    }
+    
     pendingVideoSearch.set(uid, query);
+
+    const siteOptions = [];
+    
+    // YouTube siempre primero
+    siteOptions.push({ label: 'YouTube', value: 'youtube', emoji: '🔴' });
+    
+    // Agregar solo sitios con contenido
+    if (availableSites.includes('xvideos.es')) {
+      siteOptions.push({ label: 'Xvideos', value: 'xvideos.es', emoji: '🟠' });
+    }
+    if (availableSites.includes('es.pornhub.com')) {
+      siteOptions.push({ label: 'Pornhub', value: 'es.pornhub.com', emoji: '🟡' });
+    }
+    if (availableSites.includes('www.xnxx.es')) {
+      siteOptions.push({ label: 'XNXX', value: 'www.xnxx.es', emoji: '🟢' });
+    }
+    if (availableSites.includes('hentaila.com')) {
+      siteOptions.push({ label: 'Hentaila', value: 'hentaila.com', emoji: '🟣' });
+    }
+    if (availableSites.includes('www.videosdemadurasx.com')) {
+      siteOptions.push({ label: 'Maduras X', value: 'www.videosdemadurasx.com', emoji: '🔥' });
+    }
+    if (availableSites.includes('www.serviporno.com')) {
+      siteOptions.push({ label: 'ServiPorno', value: 'www.serviporno.com', emoji: '💋' });
+    }
 
     const siteSelector = new StringSelectMenuBuilder()
       .setCustomId(`videosite-${uid}`)
-      .setPlaceholder('🎬 Selecciona la plataforma donde buscar')
-      .addOptions([
-        { label: 'YouTube', value: 'youtube', emoji: '🔴' },
-        { label: 'Xvideos', value: 'xvideos.es', emoji: '🟠' },
-        { label: 'Pornhub', value: 'es.pornhub.com', emoji: '🟡' },
-        { label: 'XNXX', value: 'www.xnxx.es', emoji: '🟢' },
-        { label: 'Hentaila', value: 'hentaila.com', emoji: '🟣' },
-        { label: 'Maduras X', value: 'www.videosdemadurasx.com', emoji: '🔥' },
-        { label: 'ServiPorno', value: 'www.serviporno.com', emoji: '💋' },
-      ]);
+      .setPlaceholder(`🎬 Selecciona plataforma (${siteOptions.length} disponibles)`)
+      .addOptions(siteOptions);
 
     return m.reply({
-      content: 'Selecciona la plataforma donde deseas buscar:',
+      content: `🔍 Encontré contenido de "${query}" en ${siteOptions.length} plataformas:`,
       components: [new ActionRowBuilder().addComponents(siteSelector)]
     });
   },
@@ -477,90 +589,38 @@ client.on('interactionCreate', async (i) => {
         ]
       });
     } else {
-      const video = cache.items[newIndex];
-      let title = video.title;
-      let link = video.link;
-      let thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
-      const context = video.displayLink;
+        const video = cache.items[newIndex];
+        let title = video.title;
+        let link = video.link;
+        let thumb = getVideoThumbnail(video, cache.site);
+        const context = video.displayLink;
 
-      // Procesamiento especial para Hentaila
-      if (cache.site === 'hentaila.com') {
-        // Extraer información del video encontrado
-        const urlMatch = link.match(/hentaila\.com\/(?:media|catalogo)\/([^\/\?]+)(?:\/(\d+))?/);
-        if (urlMatch) {
-          const videoName = urlMatch[1].replace(/\?.*$/, ''); // Remover parámetros de consulta
-          
-          // Construir URL correcta del video (siempre capítulo 1)
-          link = `https://hentaila.com/media/${videoName}/1`;
-          
-          // Múltiples métodos para obtener el ID del video
-          let videoId = null;
-          
-          // Método 1: Extraer de la URL original
-          const urlIdMatch = video.link.match(/\/(\d+)(?:\/|$|\?)/);
-          if (urlIdMatch) {
-            videoId = urlIdMatch[1];
+        // Procesamiento especial para enlaces directos por sitio
+        if (cache.site === 'hentaila.com') {
+          const urlMatch = link.match(/hentaila\.com\/(?:media|catalogo)\/([^\/\?]+)(?:\/(\d+))?/);
+          if (urlMatch) {
+            const videoName = urlMatch[1].replace(/\?.*$/, '');
+            link = `https://hentaila.com/media/${videoName}/1`;
           }
-          
-          // Método 2: Buscar en el título
-          if (!videoId) {
-            const titleIdMatch = video.title.match(/(\d{2,})/);
-            if (titleIdMatch) {
-              videoId = titleIdMatch[1];
-            }
-          }
-          
-          // Método 3: Buscar en el snippet
-          if (!videoId) {
-            const snippetIdMatch = video.snippet.match(/(\d{2,})/);
-            if (snippetIdMatch) {
-              videoId = snippetIdMatch[1];
-            }
-          }
-          
-          // Método 4: Generar ID basado en el nombre del video
-          if (!videoId) {
-            // Crear un hash más consistente
-            let hash = 0;
-            const str = videoName.toLowerCase().replace(/-/g, '');
-            for (let i = 0; i < str.length; i++) {
-              const char = str.charCodeAt(i);
-              hash = ((hash << 5) - hash) + char;
-              hash = hash & hash;
-            }
-            videoId = Math.abs(hash).toString().slice(-3).padStart(3, '1');
-          }
-          
-          // Construir URL de la imagen - siempre intentar cargar
-          if (videoId) {
-            thumb = `https://cdn.hentaila.com/screenshots/${videoId}/1.jpg`;
-          } else {
-            // Fallback con el nombre del video
-            const fallbackId = videoName.replace(/[^a-z0-9]/gi, '').slice(0, 3).padStart(3, '1');
-            thumb = `https://cdn.hentaila.com/screenshots/${fallbackId}/1.jpg`;
-          }
-          
-          console.log(`Hentaila Nav - Video: ${videoName}, ID: ${videoId}, Thumb: ${thumb}`);
         }
-      }
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🎬 ${title.slice(0, 80)}...`)
-        .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${context}`)
-        .setColor('#ff1493')
-        .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
-        .setFooter({ text: `Video ${newIndex + 1} de ${cache.items.length} | ${cache.site}` })
-        .setTimestamp();
+        const embed = new EmbedBuilder()
+          .setTitle(`🎬 ${title.slice(0, 80)}...`)
+          .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${context}`)
+          .setColor('#ff1493')
+          .setThumbnail(thumb)
+          .setFooter({ text: `Video ${newIndex + 1} de ${cache.items.length} | ${cache.site}` })
+          .setTimestamp();
 
-      await i.update({
-        embeds: [embed],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === 0),
-            new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === cache.items.length - 1)
-          )
-        ]
-      });
+        await i.update({
+          embeds: [embed],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('prevVideo').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === 0),
+              new ButtonBuilder().setCustomId('nextVideo').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(newIndex === cache.items.length - 1)
+            )
+          ]
+        });
     }
   }
 
@@ -615,72 +675,18 @@ client.on('interactionCreate', async (i) => {
         const { items, apiUsed } = result;
         if (!items.length) return i.update({ content: '❌ No se encontraron resultados.', components: [] });
 
-        videoSearchCache.set(extractedUid, { items, index: 0, query, site: selectedSite, platform: 'other', apiUsed });
-
         const video = items[0];
         let title = video.title;
         let link = video.link;
-        let thumb = video.pagemap?.cse_thumbnail?.[0]?.src;
+        let thumb = getVideoThumbnail(video, selectedSite);
         const context = video.displayLink;
 
-        // Procesamiento especial para Hentaila
+        // Procesamiento especial para enlaces directos
         if (selectedSite === 'hentaila.com') {
-          // Extraer información del video encontrado
           const urlMatch = link.match(/hentaila\.com\/(?:media|catalogo)\/([^\/\?]+)(?:\/(\d+))?/);
           if (urlMatch) {
-            const videoName = urlMatch[1].replace(/\?.*$/, ''); // Remover parámetros de consulta
-            
-            // Construir URL correcta del video (siempre capítulo 1)
+            const videoName = urlMatch[1].replace(/\?.*$/, '');
             link = `https://hentaila.com/media/${videoName}/1`;
-            
-            // Múltiples métodos para obtener el ID del video
-            let videoId = null;
-            
-            // Método 1: Extraer de la URL original
-            const urlIdMatch = video.link.match(/\/(\d+)(?:\/|$|\?)/);
-            if (urlIdMatch) {
-              videoId = urlIdMatch[1];
-            }
-            
-            // Método 2: Buscar en el título
-            if (!videoId) {
-              const titleIdMatch = video.title.match(/(\d{2,})/);
-              if (titleIdMatch) {
-                videoId = titleIdMatch[1];
-              }
-            }
-            
-            // Método 3: Buscar en el snippet
-            if (!videoId) {
-              const snippetIdMatch = video.snippet.match(/(\d{2,})/);
-              if (snippetIdMatch) {
-                videoId = snippetIdMatch[1];
-              }
-            }
-            
-            // Método 4: Generar ID basado en el nombre del video
-            if (!videoId) {
-              // Crear un hash más consistente
-              let hash = 0;
-              const str = videoName.toLowerCase().replace(/-/g, '');
-              for (let i = 0; i < str.length; i++) {
-                const char = str.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash;
-              }
-              videoId = Math.abs(hash).toString().slice(-3).padStart(3, '1');
-            }
-            
-            // Construir URL de la imagen - siempre intentar cargar
-            if (videoId) {
-              thumb = `https://cdn.hentaila.com/screenshots/${videoId}/1.jpg`;
-            } else {
-              // Fallback con el nombre del video
-              const fallbackId = videoName.replace(/[^a-z0-9]/gi, '').slice(0, 3).padStart(3, '1');
-              thumb = `https://cdn.hentaila.com/screenshots/${fallbackId}/1.jpg`;
-            }
-            
-            console.log(`Hentaila - Video: ${videoName}, ID: ${videoId}, Thumb: ${thumb}`);
           }
         }
 
@@ -688,7 +694,7 @@ client.on('interactionCreate', async (i) => {
           .setTitle(`🎬 ${title.slice(0, 80)}...`)
           .setDescription(`**🔥 Clic para ver el contenido 🔥**\n[📺 Ir al enlace](${link})\n\n🌐 **Fuente**: ${context}`)
           .setColor('#ff1493')
-          .setThumbnail(thumb || 'https://i.imgur.com/defaultThumbnail.png')
+          .setThumbnail(thumb)
           .setFooter({ text: `Video 1 de ${items.length} | ${selectedSite} | API: ${apiUsed.id}` })
           .setTimestamp();
 
