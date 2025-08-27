@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 
@@ -11,37 +11,61 @@ const client = new Client({
   ]
 });
 
-const CHANNELS = new Set([
-  '1381953561008541920',
-  '1386131661942554685',
-  '1299860715884249088'
-]);
+// Removido CHANNELS - ahora funciona en cualquier canal
 
 const LANGUAGES = [
-  { label: 'Español', value: 'es', emoji: '🇪🇸' },
-  { label: 'Inglés', value: 'en', emoji: '🇬🇧' },
-  { label: 'Francés', value: 'fr', emoji: '🇫🇷' },
-  { label: 'Alemán', value: 'de', emoji: '🇩🇪' },
-  { label: 'Portugués', value: 'pt', emoji: '🇵🇹' },
-  { label: 'Italiano', value: 'it', emoji: '🇮🇹' },
-  { label: 'Ruso', value: 'ru', emoji: '🇷🇺' },
-  { label: 'Japonés', value: 'ja', emoji: '🇯🇵' },
-  { label: 'Chino (Simpl.)', value: 'zh-CN', emoji: '🇨🇳' },
-  { label: 'Coreano', value: 'ko', emoji: '🇰🇷' },
-  { label: 'Árabe', value: 'ar', emoji: '🇸🇦' },
-  { label: 'Hindi', value: 'hi', emoji: '🇮🇳' }
+  { label: 'Español', value: 'es', emoji: '🇪🇸', name: 'Español' },
+  { label: 'Inglés', value: 'en', emoji: '🇬🇧', name: 'English' },
+  { label: 'Francés', value: 'fr', emoji: '🇫🇷', name: 'Français' },
+  { label: 'Alemán', value: 'de', emoji: '🇩🇪', name: 'Deutsch' },
+  { label: 'Portugués', value: 'pt', emoji: '🇵🇹', name: 'Português' },
+  { label: 'Italiano', value: 'it', emoji: '🇮🇹', name: 'Italiano' },
+  { label: 'Ruso', value: 'ru', emoji: '🇷🇺', name: 'Русский' },
+  { label: 'Japonés', value: 'ja', emoji: '🇯🇵', name: '日本語' },
+  { label: 'Chino (Simpl.)', value: 'zh-CN', emoji: '🇨🇳', name: '中文' },
+  { label: 'Coreano', value: 'ko', emoji: '🇰🇷', name: '한국어' },
+  { label: 'Árabe', value: 'ar', emoji: '🇸🇦', name: 'العربية' },
+  { label: 'Hindi', value: 'hi', emoji: '🇮🇳', name: 'हिन्दी' },
+  { label: 'Holandés', value: 'nl', emoji: '🇳🇱', name: 'Nederlands' },
+  { label: 'Sueco', value: 'sv', emoji: '🇸🇪', name: 'Svenska' },
+  { label: 'Polaco', value: 'pl', emoji: '🇵🇱', name: 'Polski' },
+  { label: 'Turco', value: 'tr', emoji: '🇹🇷', name: 'Türkçe' }
 ];
 
 const trans = {
   es: {
-    mustReply: '⚠️ Usa el comando con un mensaje válido.',
-    timeout: '⏳ Tiempo agotado. Usa el comando nuevamente.',
-    alreadyInLang: '⚠️ El mensaje ya está en tu idioma.',
-    notAuthorized: '⚠️ No eres el usuario autorizado.',
+    mustReply: '⚠️ Usa el comando citando un mensaje válido.',
+    timeout: '⏳ Error en la traducción. Inténtalo de nuevo.',
+    alreadyInLang: '⚠️ El mensaje ya está en tu idioma configurado.',
+    notAuthorized: '⚠️ No tienes permisos para usar este comando.',
     noSearchQuery: '⚠️ Debes proporcionar texto para buscar.',
     noImagesFound: '❌ No se encontraron imágenes para esa búsqueda.',
     noValidImages: '❌ No se encontraron imágenes válidas.',
-    chatDeactivated: '🛑 Chat automático desactivado.'
+    chatDeactivated: '🛑 Chat automático desactivado.',
+    languageChanged: '✅ Tu idioma ha sido cambiado a',
+    currentLanguage: '🌐 Tu idioma actual es',
+    selectLanguage: '🌐 Selecciona tu idioma preferido:',
+    translationError: '❌ No se pudo traducir el mensaje. Inténtalo más tarde.',
+    originalMessage: 'Mensaje original',
+    translation: 'Traducción',
+    detectedLanguage: 'Idioma detectado'
+  },
+  en: {
+    mustReply: '⚠️ Use the command by replying to a valid message.',
+    timeout: '⏳ Translation error. Try again.',
+    alreadyInLang: '⚠️ The message is already in your configured language.',
+    notAuthorized: '⚠️ You don\'t have permissions to use this command.',
+    noSearchQuery: '⚠️ You must provide text to search.',
+    noImagesFound: '❌ No images found for that search.',
+    noValidImages: '❌ No valid images found.',
+    chatDeactivated: '🛑 Automatic chat deactivated.',
+    languageChanged: '✅ Your language has been changed to',
+    currentLanguage: '🌐 Your current language is',
+    selectLanguage: '🌐 Select your preferred language:',
+    translationError: '❌ Could not translate the message. Try later.',
+    originalMessage: 'Original message',
+    translation: 'Translation',
+    detectedLanguage: 'Detected language'
   }
 };
 
@@ -112,7 +136,12 @@ function getLang(u) {
 }
 
 function T(u, k) {
-  return trans.es[k] || '';
+  const userLang = getLang(u);
+  return (trans[userLang] && trans[userLang][k]) || trans.es[k] || k;
+}
+
+function getLanguageInfo(code) {
+  return LANGUAGES.find(l => l.value === code) || { label: code, emoji: '🌐', name: code };
 }
 
 async function isImageUrlValid(url) {
@@ -125,13 +154,68 @@ async function isImageUrlValid(url) {
   }
 }
 
-async function translate(text, lang) {
-  try {
-    const r = await axios.get(`https://lingva.ml/api/v1/auto/${lang}/${encodeURIComponent(text)}`);
-    return r.data?.translation ? { text: r.data.translation, from: r.data.from } : null;
-  } catch {
-    return null;
+// Traductor mejorado con múltiples APIs de respaldo
+async function translate(text, targetLang, sourceLang = 'auto') {
+  const translationAPIs = [
+    // API principal: Lingva
+    async () => {
+      const response = await axios.get(
+        `https://lingva.ml/api/v1/${sourceLang}/${targetLang}/${encodeURIComponent(text)}`,
+        { timeout: 8000 }
+      );
+      return {
+        text: response.data.translation,
+        from: response.data.info?.detectedSource || response.data.from || sourceLang,
+        service: 'Lingva'
+      };
+    },
+    
+    // API de respaldo: LibreTranslate
+    async () => {
+      const response = await axios.post('https://libretranslate.com/translate', {
+        q: text,
+        source: sourceLang === 'auto' ? 'auto' : sourceLang,
+        target: targetLang,
+        format: 'text'
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 8000
+      });
+      return {
+        text: response.data.translatedText,
+        from: response.data.detectedLanguage || sourceLang,
+        service: 'LibreTranslate'
+      };
+    },
+    
+    // API de respaldo: MyMemory
+    async () => {
+      const langPair = sourceLang === 'auto' ? `|${targetLang}` : `${sourceLang}|${targetLang}`;
+      const response = await axios.get(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`,
+        { timeout: 8000 }
+      );
+      return {
+        text: response.data.responseData.translatedText,
+        from: response.data.matches?.[0]?.source || sourceLang,
+        service: 'MyMemory'
+      };
+    }
+  ];
+
+  for (const apiCall of translationAPIs) {
+    try {
+      const result = await apiCall();
+      if (result && result.text && result.text !== text) {
+        return result;
+      }
+    } catch (error) {
+      console.log(`Translation API failed: ${error.message}`);
+      continue;
+    }
   }
+  
+  return null;
 }
 
 const activeChats = new Map();
@@ -188,9 +272,15 @@ const COMMANDS_LIST = [
   },
   {
     name: ".td",
-    description: "Traduce el mensaje citado al idioma del usuario",
+    description: "Traduce el mensaje citado a tu idioma configurado",
     example: ".td (respondiendo un mensaje)",
     category: "🌐 Traducción"
+  },
+  {
+    name: ".id",
+    description: "Cambia tu idioma preferido o muestra el actual",
+    example: ".id o .id es",
+    category: "🌐 Idioma"
   },
   {
     name: ".chat @usuario",
@@ -222,10 +312,19 @@ const COMMAND_FUNCTIONS = {
   web: async (m, args) => {
     const query = args.join(' ');
     if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
+    
+    const loadingMsg = await m.reply('🔍 Buscando imágenes...');
+    
     const result = await googleImageSearchTry(query);
-    if (result === null) return m.reply('❌ Todas las APIs de Google están agotadas o fallan.');
+    if (result === null) {
+      return loadingMsg.edit('❌ Todas las APIs de Google están agotadas o fallan.');
+    }
+    
     const { items, apiUsed } = result;
-    if (!items || !items.length) return m.reply(T(m.author.id, 'noValidImages'));
+    if (!items || !items.length) {
+      return loadingMsg.edit(T(m.author.id, 'noValidImages'));
+    }
+    
     let validIndex = -1;
     for (let i = 0; i < items.length; i++) {
       if (await isImageUrlValid(items[i].link)) {
@@ -233,39 +332,143 @@ const COMMAND_FUNCTIONS = {
         break;
       }
     }
-    if (validIndex === -1) return m.reply(T(m.author.id, 'noValidImages'));
+    if (validIndex === -1) {
+      return loadingMsg.edit(T(m.author.id, 'noValidImages'));
+    }
+    
     imageSearchCache.set(m.author.id, { items, index: validIndex, query, apiId: apiUsed.id });
     const embed = new EmbedBuilder()
       .setTitle(`📷 Resultados para: ${query}`)
       .setImage(items[validIndex].link)
       .setDescription(`[Página donde está la imagen](${items[validIndex].image.contextLink})`)
-      .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length} • Usado: ${apiUsed.id} (${apiUsed.dailyRequests}/${apiUsed.maxDailyRequests} hoy)` })
+      .setFooter({ text: `Imagen ${validIndex + 1} de ${items.length} • API: ${apiUsed.id} (${apiUsed.dailyRequests}/${apiUsed.maxDailyRequests} hoy)` })
       .setColor('#00c7ff');
+    
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === 0),
       new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === items.length - 1)
     );
-    await m.channel.send({ embeds: [embed], components: [row] });
+    
+    await loadingMsg.edit({ content: '', embeds: [embed], components: [row] });
   },
 
   bs: async (m, args) => {
-    // Lugar para implementar la función específica del comando .bs
+    const query = args.join(' ');
+    if (!query) return m.reply(T(m.author.id, 'noSearchQuery'));
+    
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    const embed = new EmbedBuilder()
+      .setTitle(`🔍 Búsqueda: ${query}`)
+      .setDescription(`[Ver resultados en Google](${searchUrl})`)
+      .setColor('#4285f4')
+      .setTimestamp();
+    
+    return m.reply({ embeds: [embed] });
   },
 
   td: async (m, args) => {
-    if (!CHANNELS.has(m.channel.id) || !m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
+    // Removido el check de CHANNELS - ahora funciona en cualquier canal
+    if (!m.reference?.messageId) return m.reply(T(m.author.id, 'mustReply'));
+    
     try {
       const ref = await m.channel.messages.fetch(m.reference.messageId);
-      const res = await translate(ref.content, getLang(m.author.id));
-      if (!res) return m.reply(T(m.author.id, 'timeout'));
-      if (res.from === getLang(m.author.id)) return m.reply(T(m.author.id, 'alreadyInLang'));
+      if (!ref.content || ref.content.length === 0) {
+        return m.reply('❌ El mensaje no contiene texto para traducir.');
+      }
+      
+      const loadingMsg = await m.reply('🔄 Traduciendo...');
+      const userLang = getLang(m.author.id);
+      const res = await translate(ref.content, userLang);
+      
+      if (!res) {
+        return loadingMsg.edit(T(m.author.id, 'translationError'));
+      }
+      
+      if (res.from === userLang) {
+        return loadingMsg.edit(T(m.author.id, 'alreadyInLang'));
+      }
+      
+      const fromLangInfo = getLanguageInfo(res.from);
+      const toLangInfo = getLanguageInfo(userLang);
+      
       const embed = new EmbedBuilder()
         .setColor('#00c7ff')
-        .setDescription(`${LANGUAGES.find(l => l.value === getLang(m.author.id)).emoji} : ${res.text}`);
-      return m.reply({ embeds: [embed] });
-    } catch {
-      return m.reply('No se pudo traducir el mensaje.');
+        .setTitle('🌐 Traducción')
+        .addFields(
+          { name: `${T(m.author.id, 'originalMessage')} ${fromLangInfo.emoji}`, value: ref.content.length > 1000 ? ref.content.substring(0, 1000) + '...' : ref.content },
+          { name: `${T(m.author.id, 'translation')} ${toLangInfo.emoji}`, value: res.text.length > 1000 ? res.text.substring(0, 1000) + '...' : res.text }
+        )
+        .setFooter({ text: `${T(m.author.id, 'detectedLanguage')}: ${fromLangInfo.name} → ${toLangInfo.name} | ${res.service}` })
+        .setTimestamp();
+      
+      return loadingMsg.edit({ content: '', embeds: [embed] });
+    } catch (error) {
+      console.error('Translation error:', error);
+      return m.reply(T(m.author.id, 'translationError'));
     }
+  },
+
+  id: async (m, args) => {
+    const currentLang = getLang(m.author.id);
+    const currentLangInfo = getLanguageInfo(currentLang);
+    
+    // Si no hay argumentos, mostrar idioma actual y selector
+    if (args.length === 0) {
+      const embed = new EmbedBuilder()
+        .setTitle('🌐 Configuración de Idioma')
+        .setDescription(`${T(m.author.id, 'currentLanguage')}: ${currentLangInfo.emoji} **${currentLangInfo.name}**\n\n${T(m.author.id, 'selectLanguage')}`)
+        .setColor('#00c7ff')
+        .setFooter({ text: 'También puedes usar: .id [código] (ej: .id en)' });
+
+      // Crear menú de selección dividido en dos partes (Discord limit: 25 options)
+      const firstHalf = LANGUAGES.slice(0, 12);
+      const secondHalf = LANGUAGES.slice(12);
+
+      const selectMenu1 = new StringSelectMenuBuilder()
+        .setCustomId('language_select_1')
+        .setPlaceholder('🌍 Seleccionar idioma (Parte 1)')
+        .addOptions(firstHalf.map(lang => ({
+          label: lang.label,
+          value: lang.value,
+          emoji: lang.emoji,
+          default: lang.value === currentLang
+        })));
+
+      const selectMenu2 = new StringSelectMenuBuilder()
+        .setCustomId('language_select_2')
+        .setPlaceholder('🌎 Seleccionar idioma (Parte 2)')
+        .addOptions(secondHalf.map(lang => ({
+          label: lang.label,
+          value: lang.value,
+          emoji: lang.emoji,
+          default: lang.value === currentLang
+        })));
+
+      const row1 = new ActionRowBuilder().addComponents(selectMenu1);
+      const row2 = new ActionRowBuilder().addComponents(selectMenu2);
+
+      return m.reply({ embeds: [embed], components: [row1, row2] });
+    }
+
+    // Si hay argumentos, cambiar idioma directamente
+    const newLang = args[0].toLowerCase();
+    const langExists = LANGUAGES.find(l => l.value === newLang);
+    
+    if (!langExists) {
+      const availableLangs = LANGUAGES.map(l => `\`${l.value}\``).join(', ');
+      return m.reply(`❌ Idioma no válido. Idiomas disponibles:\n${availableLangs}`);
+    }
+
+    prefs[m.author.id] = newLang;
+    savePrefs();
+
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Idioma Cambiado')
+      .setDescription(`${T(m.author.id, 'languageChanged')} ${langExists.emoji} **${langExists.name}**`)
+      .setColor('#00ff00')
+      .setTimestamp();
+
+    return m.reply({ embeds: [embed] });
   },
 
   chat: async (m, args) => {
@@ -291,25 +494,44 @@ const COMMAND_FUNCTIONS = {
       activeChats.delete(m.channel.id);
       return m.reply(T(m.author.id, 'chatDeactivated'));
     }
-    return m.reply(T(m.author.id, 'mustReply'));
+    return m.reply('❌ No hay chat activo en este canal.');
   },
 
   help: async (m) => {
-    const embed = new EmbedBuilder().setTitle('📜 Lista de Comandos').setColor('#00c7ff');
+    const userLang = getLang(m.author.id);
+    const langInfo = getLanguageInfo(userLang);
+    
+    const embed = new EmbedBuilder()
+      .setTitle('📜 Lista de Comandos')
+      .setDescription(`${langInfo.emoji} Idioma configurado: **${langInfo.name}**`)
+      .setColor('#00c7ff')
+      .setFooter({ text: 'Todos los comandos funcionan en cualquier canal' });
+      
     for (let cmd of COMMANDS_LIST) {
-      embed.addFields({ name: cmd.name, value: `${cmd.description}\nEjemplo: \`${cmd.example}\` (${cmd.category})` });
+      embed.addFields({ 
+        name: `${cmd.category} ${cmd.name}`, 
+        value: `${cmd.description}\n📝 Ejemplo: \`${cmd.example}\``,
+        inline: false
+      });
     }
     return m.channel.send({ embeds: [embed] });
   },
 
   apis: async (m) => {
-    const embed = new EmbedBuilder().setTitle('🔧 Estado de APIs').setColor('#00c7ff').setTimestamp();
+    const embed = new EmbedBuilder()
+      .setTitle('🔧 Estado de APIs')
+      .setColor('#00c7ff')
+      .setTimestamp();
+      
     for (let api of API_POOLS.google) {
       resetDailyIfNeeded(api);
+      const status = api.active ? '✅' : '❌';
+      const quota = api.quotaExhausted ? '🔴' : '🟢';
+      
       embed.addFields({
-        name: api.id,
-        value: `Activo: ${api.active}\nAgotada: ${api.quotaExhausted}\nRequests hoy: ${api.dailyRequests}/${api.maxDailyRequests}\nÚltimo reset: ${api.lastReset}`,
-        inline: false
+        name: `${status} ${api.id}`,
+        value: `**Estado:** ${api.active ? 'Activo' : 'Inactivo'}\n**Cuota:** ${quota} ${api.quotaExhausted ? 'Agotada' : 'Disponible'}\n**Requests:** ${api.dailyRequests}/${api.maxDailyRequests}\n**Último reset:** ${api.lastReset}`,
+        inline: true
       });
     }
     return m.channel.send({ embeds: [embed] });
@@ -318,6 +540,8 @@ const COMMAND_FUNCTIONS = {
 
 client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
+  console.log(`📊 ${LANGUAGES.length} idiomas soportados`);
+  console.log(`🔧 ${API_POOLS.google.length} APIs de Google configuradas`);
 });
 
 client.on('messageCreate', async (m) => {
@@ -348,52 +572,78 @@ client.on('messageCreate', async (m) => {
     try {
       await COMMAND_FUNCTIONS[command](m, args);
     } catch (e) {
-      m.reply('❌ Error ejecutando el comando.');
+      console.error(`Error ejecutando comando ${command}:`, e);
+      m.reply('❌ Error ejecutando el comando. Inténtalo de nuevo.');
     }
   }
 });
 
 client.on('interactionCreate', async (i) => {
-  if (!i.isButton()) return;
-  const uid = i.user.id;
-  const cache = imageSearchCache.get(uid);
-  if (!cache) return i.deferUpdate();
-  let newIndex = cache.index;
-  if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
-  if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
-  async function findValidImage(startIndex, direction) {
-    let idx = startIndex;
-    while (idx >= 0 && idx < cache.items.length) {
-      if (await isImageUrlValid(cache.items[idx].link)) return idx;
-      idx += direction;
+  if (i.isButton()) {
+    const uid = i.user.id;
+    const cache = imageSearchCache.get(uid);
+    if (!cache) return i.deferUpdate();
+    
+    let newIndex = cache.index;
+    if (i.customId === 'prevImage' && newIndex > 0) newIndex--;
+    if (i.customId === 'nextImage' && newIndex < cache.items.length - 1) newIndex++;
+    
+    async function findValidImage(startIndex, direction) {
+      let idx = startIndex;
+      while (idx >= 0 && idx < cache.items.length) {
+        if (await isImageUrlValid(cache.items[idx].link)) return idx;
+        idx += direction;
+      }
+      return -1;
     }
-    return -1;
+    
+    const direction = newIndex < cache.index ? -1 : 1;
+    let validIndex = await findValidImage(newIndex, direction);
+    if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
+      validIndex = cache.index;
+    }
+    if (validIndex === -1) return i.deferUpdate();
+    
+    cache.index = validIndex;
+    const img = cache.items[validIndex];
+    const api = API_POOLS.google.find(a => a.id === cache.apiId) || null;
+    const footerText = api ? `Imagen ${validIndex + 1} de ${cache.items.length} • API: ${api.id} (${api.dailyRequests}/${api.maxDailyRequests} hoy)` : `Imagen ${validIndex + 1} de ${cache.items.length}`;
+    
+    const embed = new EmbedBuilder()
+      .setTitle(`📷 Resultados para: ${cache.query}`)
+      .setImage(img.link)
+      .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
+      .setFooter({ text: footerText })
+      .setColor('#00c7ff');
+      
+    await i.update({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === 0),
+          new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === cache.items.length - 1)
+        )
+      ]
+    });
   }
-  const direction = newIndex < cache.index ? -1 : 1;
-  let validIndex = await findValidImage(newIndex, direction);
-  if (validIndex === -1 && (await isImageUrlValid(cache.items[cache.index].link))) {
-    validIndex = cache.index;
+  
+  if (i.isStringSelectMenu()) {
+    if (i.customId.startsWith('language_select_')) {
+      const selectedLang = i.values[0];
+      const langInfo = getLanguageInfo(selectedLang);
+      
+      prefs[i.user.id] = selectedLang;
+      savePrefs();
+      
+      const embed = new EmbedBuilder()
+        .setTitle('✅ Idioma Cambiado')
+        .setDescription(`${T(i.user.id, 'languageChanged')} ${langInfo.emoji} **${langInfo.name}**`)
+        .setColor('#00ff00')
+        .setTimestamp();
+        
+      await i.update({ embeds: [embed], components: [] });
+    }
   }
-  if (validIndex === -1) return i.deferUpdate();
-  cache.index = validIndex;
-  const img = cache.items[validIndex];
-  const api = API_POOLS.google.find(a => a.id === cache.apiId) || null;
-  const footerText = api ? `Imagen ${validIndex + 1} de ${cache.items.length} • Usado: ${api.id} (${api.dailyRequests}/${api.maxDailyRequests} hoy)` : `Imagen ${validIndex + 1} de ${cache.items.length}`;
-  const embed = new EmbedBuilder()
-    .setTitle(`📷 Resultados para: ${cache.query}`)
-    .setImage(img.link)
-    .setDescription(`[Página donde está la imagen](${img.image.contextLink})`)
-    .setFooter({ text: footerText })
-    .setColor('#00c7ff');
-  await i.update({
-    embeds: [embed],
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prevImage').setLabel('⬅️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === 0),
-        new ButtonBuilder().setCustomId('nextImage').setLabel('➡️').setStyle(ButtonStyle.Primary).setDisabled(validIndex === cache.items.length - 1)
-      )
-    ]
-  });
 });
 
 client.login(process.env.DISCORD_TOKEN);
