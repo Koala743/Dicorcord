@@ -249,7 +249,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
       const globalIndex = startIndex + i + 1
       const priceText = pass.price !== null && pass.price !== undefined ? (pass.price === 0 ? "Gratis" : `${pass.price} Robux`) : "Desconocido"
       const passUrl = `https://www.roblox.com/game-pass/${pass.id}`
-      const thumbnailUrl = `https://tr.rbxcdn.com/${pass.id}/450/450/Image/Png` // URL tentativa, puede no funcionar para todos
+      const thumbnailUrl = `https://www.roblox.com/asset-thumbnail/image?assetId=${pass.id}&width=420&height=420&format=png`
 
       return new EmbedBuilder()
         .setTitle(`${globalIndex}. ${pass.name}`)
@@ -281,7 +281,6 @@ async function handleGamePassesView(interaction, cache, page = 0) {
 
     await interaction.editReply({ embeds: [mainEmbed, ...passEmbeds], components: [buttons] })
   } catch (error) {
-    console.error("Error obteniendo pases del juego:", error.message)
     const embed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
       .setDescription("❌ Error al obtener los pases del juego.")
@@ -298,6 +297,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     await interaction.editReply({ embeds: [embed], components: [backButton] })
   }
 }
+
 
 
 async function handleGamePassesView(interaction, cache, page = 0) {
