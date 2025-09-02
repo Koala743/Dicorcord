@@ -206,24 +206,6 @@ function createPlayerBar(current, max) {
   return bar
 }
 
-const axios = require('axios')
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js')
-
-async function getBestGamePassThumbnail(passId) {
-  const sizes = ["420x420", "256x256", "150x150", "100x100", "60x60"]
-  for (const size of sizes) {
-    try {
-      const url = `https://thumbnails.roblox.com/v1/game-passes?gamePassIds=${passId}&size=${size}&format=Png&isCircular=false`
-      const response = await axios.get(url)
-      const data = response.data.data?.[0]
-      if (data && data.imageUrl) {
-        return data.imageUrl
-      }
-    } catch {}
-  }
-  return null
-}
-
 async function handleGamePassesView(interaction, cache, page = 0) {
   const { universeId, gameData, gameIcon } = cache
 
@@ -263,25 +245,18 @@ async function handleGamePassesView(interaction, cache, page = 0) {
       .setFooter({ text: `Usa los botones para navegar entre páginas` })
       .setTimestamp()
 
-    const passEmbeds = []
-    for (let i = 0; i < currentPasses.length; i++) {
-      const pass = currentPasses[i]
+    const passEmbeds = currentPasses.map((pass, i) => {
       const globalIndex = startIndex + i + 1
-      const priceText = (pass.price !== null && pass.price !== undefined)
-        ? (pass.price === 0 ? "Gratis" : `${pass.price} Robux`)
-        : "Desconocido"
+      const priceText = pass.price !== null && pass.price !== undefined ? (pass.price === 0 ? "Gratis" : `${pass.price} Robux`) : "Desconocido"
       const passUrl = `https://www.roblox.com/game-pass/${pass.id}`
-      const thumbnailUrl = await getBestGamePassThumbnail(pass.id)
+      const thumbnailUrl = `https://tr.rbxcdn.com/${pass.id}/450/450/Image/Png` // URL tentativa, puede no funcionar para todos
 
-      const embed = new EmbedBuilder()
+      return new EmbedBuilder()
         .setTitle(`${globalIndex}. ${pass.name}`)
         .setDescription(`🆔 ID: \`${pass.id}\`\n💰 Precio: **${priceText}**\n🔗 [Ver Pase](${passUrl})`)
+        .setThumbnail(thumbnailUrl)
         .setColor("#FFD700")
-
-      if (thumbnailUrl) embed.setThumbnail(thumbnailUrl)
-
-      passEmbeds.push(embed)
-    }
+    })
 
     const buttons = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -306,6 +281,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
 
     await interaction.editReply({ embeds: [mainEmbed, ...passEmbeds], components: [buttons] })
   } catch (error) {
+    console.error("Error obteniendo pases del juego:", error.message)
     const embed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
       .setDescription("❌ Error al obtener los pases del juego.")
@@ -322,8 +298,6 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     await interaction.editReply({ embeds: [embed], components: [backButton] })
   }
 }
-
-
 
 
 async function handleGamePassesView(interaction, cache, page = 0) {
