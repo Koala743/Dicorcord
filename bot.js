@@ -293,74 +293,14 @@ async function handlePlayerSearchResult(interaction, query) {
   await interaction.editReply({ embeds: [embed], components: [button] })
 }
 
-async function handleRobloxNavigation(interaction, action) {
-  const userId = interaction.user.id
-  const cache = robloxSearchCache.get(userId)
-  if (!cache) {
-    return interaction.reply({ content: "❌ No hay datos de juego disponibles. Usa .roblox [juego] primero.", ephemeral: true })
-  }
-
-  try {
-    if (action === "playRoblox") {
-      // Buscar primer servidor con espacio disponible
-      const server = cache.publicServers.find(s => s.playing < s.maxPlayers)
-      let playUrl
-      if (server) {
-        // Enlace directo a servidor específico
-        playUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id}`
-      } else {
-        // Enlace general al juego
-        playUrl = `https://www.roblox.com/games/${cache.placeId}`
-      }
-      return interaction.reply({
-        content: `🎮 **${cache.gameData.name}**\n🔗 [Entrar al servidor${server ? ` #${server.id}` : ""}](${playUrl})`,
-        ephemeral: true,
-      })
-    }
-    // ... (otros casos igual que antes)
-    // Por ejemplo, handlePlayerSearch, handleGamePassesView, handleRobloxServersView, etc.
-  } catch (error) {
-    console.error(`Error en navegación Roblox - Acción: ${action}`, error)
-    return interaction.reply({ content: "❌ Error procesando la acción. Intenta de nuevo.", ephemeral: true })
-  }
-}
-
-async function handlePlayerSearchResult(interaction, query) {
-  await interaction.deferReply({ ephemeral: true })
-
-  const playerData = await searchRobloxPlayer(query)
-  if (!playerData) {
-    return interaction.editReply({ content: "❌ No se encontró ningún jugador con ese nombre o ID." })
-  }
-
-  const createdDate = new Date(playerData.created).toLocaleDateString("es-ES")
-
-  
-  const avatarUrl = playerData.avatar
-
-  const embed = new EmbedBuilder()
-    .setTitle(`👤 ${playerData.displayName} (@${playerData.name})`)
-    .setDescription(
-      `**📝 Descripción:**\n${playerData.description}\n\n**📅 Cuenta creada:** ${createdDate}\n**🆔 ID:** ${playerData.id}\n**🚫 Baneado:** ${playerData.isBanned ? "Sí" : "No"}`,
-    )
-    .setColor("#00b2ff")
-    .setThumbnail(avatarUrl)
-    .setFooter({ text: "Información del jugador de Roblox" })
-    .setTimestamp()
-
-  const button = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setLabel("👤 Ver Perfil").setStyle(ButtonStyle.Link).setURL(playerData.profileUrl),
-  )
-
-  await interaction.editReply({ embeds: [embed], components: [button] })
-}
-
 async function handleGamePassesView(interaction, cache, page = 0) {
   const { universeId, gameData, gameIcon } = cache
+
   await interaction.deferUpdate()
 
   try {
     const gamePasses = await getGamePasses(universeId)
+
     if (gamePasses.length === 0) {
       const embed = new EmbedBuilder()
         .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
@@ -374,28 +314,29 @@ async function handleGamePassesView(interaction, cache, page = 0) {
           .setLabel("🔙 Volver")
           .setStyle(ButtonStyle.Secondary),
       )
+
       return interaction.editReply({ embeds: [embed], components: [backButton] })
     }
 
-    const passesPerPage = 5
+    const passesPerPage = 10
     const totalPages = Math.ceil(gamePasses.length / passesPerPage)
     const startIndex = page * passesPerPage
     const endIndex = startIndex + passesPerPage
     const currentPasses = gamePasses.slice(startIndex, endIndex)
 
-    let description = `**🎫 PASES DEL JUEGO (Página ${page + 1}/${totalPages}):**\n\n`
+    let passesList = `**🎫 PASES DEL JUEGO (Página ${page + 1}/${totalPages}):**\n\n`
 
     const embeds = []
     for (let i = 0; i < currentPasses.length; i++) {
       const pass = currentPasses[i]
       const globalIndex = startIndex + i + 1
       const price = pass.price ? `${pass.price} Robux` : "Gratis"
-      const passIconUrl = `https://tr.rbxcdn.com/${pass.id}/150/150/Image/Webp/noFilter`
+      const passIconUrl = `https://tr.rbxcdn.com/${pass.id}/150/150/Image/Webp/noFilter` // URL de la imagen del pase
 
       const passEmbed = new EmbedBuilder()
         .setTitle(`${globalIndex}. ${pass.name}`)
         .setDescription(`💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})`)
-        .setThumbnail(passIconUrl)
+        .setThumbnail(passIconUrl) // Mostrar imagen del pase
         .setColor("#FFD700")
 
       embeds.push(passEmbed)
@@ -449,7 +390,6 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     await interaction.editReply({ embeds: [embed], components: [backButton] })
   }
 }
-
 
 async function handleRobloxNavigation(interaction, action) {
   const userId = interaction.user.id
@@ -628,8 +568,6 @@ async function handleRobloxNavigation(interaction, action) {
   }
 }
 
-// ... (importaciones y configuración inicial igual que antes)
-
 async function handleRobloxSearch(message, args) {
   const input = args.join(" ")
   if (!input) return message.reply("⚠️ Debes escribir el ID del juego de Roblox o el nombre.")
@@ -644,30 +582,44 @@ async function handleRobloxSearch(message, args) {
       const placeInfoUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
       try {
         const placeInfoResponse = await axios.get(placeInfoUrl, {
-          headers: { "User -Agent": "Mozilla/5.0" },
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
         })
         universeId = placeInfoResponse.data.universeId
-      } catch {
+      } catch (error) {
+        console.error("Error obteniendo universeId desde placeId:", error)
         return message.reply("❌ No se pudo encontrar el juego con ese ID.")
       }
     } else {
       const searchUrl = `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(input)}&model.maxRows=10&model.startRowIndex=0`
       const searchResponse = await axios.get(searchUrl, {
-        headers: { "User -Agent": "Mozilla/5.0" },
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
       })
       const games = searchResponse.data.games || []
 
       if (!games.length) {
         const broadSearchUrl = `https://catalog.roblox.com/v1/search/items?category=Experiences&keyword=${encodeURIComponent(input)}&limit=10`
-        const broadSearchResponse = await axios.get(broadSearchUrl, {
-          headers: { "User -Agent": "Mozilla/5.0" },
-        })
-        const catalogGames = broadSearchResponse.data.data || []
-        if (!catalogGames.length) {
+        try {
+          const broadSearchResponse = await axios.get(broadSearchUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          })
+          const catalogGames = broadSearchResponse.data.data || []
+          if (!catalogGames.length) {
+            return message.reply(
+              "❌ No se encontró ningún juego con ese nombre. Intenta con palabras clave diferentes.",
+            )
+          }
+          placeId = catalogGames[0].id
+          universeId = catalogGames[0].universeId
+        } catch (error) {
+          console.error("Error en búsqueda amplia de juegos:", error)
           return message.reply("❌ No se encontró ningún juego con ese nombre.")
         }
-        placeId = catalogGames[0].id
-        universeId = catalogGames[0].universeId
       } else {
         const bestMatch = games.reduce((best, current) => {
           const currentScore = calculateSimilarity(input.toLowerCase(), current.name.toLowerCase())
@@ -681,23 +633,34 @@ async function handleRobloxSearch(message, args) {
 
     const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${universeId}`
     const gameInfoResponse = await axios.get(gameInfoUrl, {
-      headers: { "User -Agent": "Mozilla/5.0" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
     })
     gameData = gameInfoResponse.data.data?.[0]
-    if (!gameData) return message.reply("❌ No se pudo obtener información del juego.")
 
-    savedGames[gameData.name] = { placeId, universeId, name: gameData.name }
+    if (!gameData) {
+      return message.reply("❌ No se pudo obtener información del juego.")
+    }
+
+    savedGames[gameData.name] = {
+      placeId: placeId,
+      universeId: universeId,
+      name: gameData.name,
+    }
     saveSavedGames()
 
     const publicServersUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&limit=100`
     const publicServersResponse = await axios.get(publicServersUrl, {
-      headers: { "User -Agent": "Mozilla/5.0" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
     })
     const publicServers = publicServersResponse.data.data || []
 
     const totalServers = publicServers.length
-    const totalPlayers = publicServers.reduce((sum, s) => sum + s.playing, 0)
-    const totalMaxPlayers = publicServers.reduce((sum, s) => sum + s.maxPlayers, 0)
+    const totalPlayers = publicServers.reduce((sum, server) => sum + server.playing, 0)
+    const totalMaxPlayers = publicServers.reduce((sum, server) => sum + server.maxPlayers, 0)
 
     const gameIcon = await getGameIcon(universeId)
 
@@ -711,7 +674,7 @@ async function handleRobloxSearch(message, args) {
       totalMaxPlayers,
       gameIcon,
       serversPage: 0,
-      isEphemeral: true,
+      isEphemeral: true, // Añadir estado de visibilidad
     })
 
     const embed = new EmbedBuilder()
@@ -730,7 +693,9 @@ async function handleRobloxSearch(message, args) {
 🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}`)
       .setColor("#00b2ff")
       .setThumbnail(gameIcon)
-      .setFooter({ text: `ID: ${placeId} | Universe ID: ${universeId} | Total de servidores: ${totalServers}` })
+      .setFooter({
+        text: `ID: ${placeId} | Universe ID: ${universeId} | Total de servidores: ${totalServers}`,
+      })
       .setTimestamp()
 
     const row1 = new ActionRowBuilder().addComponents(
@@ -773,7 +738,6 @@ async function handleRobloxSearch(message, args) {
     return message.reply(`❌ Error al obtener información de Roblox: ${error.message}`)
   }
 }
-
 
 client.once("ready", () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`)
