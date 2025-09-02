@@ -320,6 +320,7 @@ async function handlePlayerSearchResult(interaction, query) {
   await interaction.editReply({ embeds: [embed], components: [button] })
 }
 
+
 async function handleGamePassesView(interaction, cache, page = 0) {
   const { universeId, gameData, gameIcon } = cache
 
@@ -351,25 +352,18 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     const endIndex = startIndex + passesPerPage
     const currentPasses = gamePasses.slice(startIndex, endIndex)
 
-    const embeds = []
-    for (let i = 0; i < currentPasses.length; i++) {
-      const pass = currentPasses[i]
+    let passesList = `**🎫 PASES DEL JUEGO (Página ${page + 1}/${totalPages}):**\n\n`
+
+    currentPasses.forEach((pass, i) => {
       const globalIndex = startIndex + i + 1
-      const price = pass.price ? `${pass.price} Robux` : "Gratis"
-      const passIconUrl = `https://tr.rbxcdn.com/${pass.id}/150/150/Image/Webp/noFilter`
+      passesList += `**${globalIndex}.** ${pass.name}\n`
+      passesList += `🆔 ID: \`${pass.id}\`\n`
+      passesList += `🔗 [Ver Pase](https://www.roblox.com/game-pass/${pass.id})\n\n`
+    })
 
-      const passEmbed = new EmbedBuilder()
-        .setTitle(`${globalIndex}. ${pass.name}`)
-        .setDescription(`💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})\n🖼️ [Imagen del Pase](${passIconUrl})`)
-        .setThumbnail(passIconUrl)
-        .setColor("#FFD700")
-
-      embeds.push(passEmbed)
-    }
-
-    const mainEmbed = new EmbedBuilder()
+    const embed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
-      .setDescription(`Mostrando pases del juego. Total: ${gamePasses.length} pases.`)
+      .setDescription(passesList)
       .setColor("#FFD700")
       .setThumbnail(gameIcon)
       .setFooter({ text: `Página ${page + 1}/${totalPages}` })
@@ -396,7 +390,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     cache.gamePasses = gamePasses
     robloxSearchCache.set(interaction.user.id, cache)
 
-    await interaction.editReply({ embeds: [mainEmbed, ...embeds], components: [buttons] })
+    await interaction.editReply({ embeds: [embed], components: [buttons] })
   } catch (error) {
     console.error("Error obteniendo pases del juego:", error.message)
     const embed = new EmbedBuilder()
