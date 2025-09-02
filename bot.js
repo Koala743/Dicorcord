@@ -2,20 +2,15 @@ const {
   Client,
   GatewayIntentBits,
   ActionRowBuilder,
-  StringSelectMenuBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  AttachmentBuilder,
 } = require("discord.js")
 const axios = require("axios")
 const fs = require("fs")
-const path = require("path")
-const cheerio = require("cheerio")
-const puppeteer = require("puppeteer")
 
 const client = new Client({
   intents: [
@@ -26,52 +21,6 @@ const client = new Client({
   ],
 })
 
-const CHANNELS = new Set(["1381953561008541920", "1386131661942554685", "1299860715884249088"])
-
-const LANGUAGES = [
-  { label: "Español", value: "es", emoji: "🇪🇸" },
-  { label: "Inglés", value: "en", emoji: "🇬🇧" },
-  { label: "Francés", value: "fr", emoji: "🇫🇷" },
-  { label: "Alemán", value: "de", emoji: "🇩🇪" },
-  { label: "Portugués", value: "pt", emoji: "🇵🇹" },
-  { label: "Italiano", value: "it", emoji: "🇮🇹" },
-  { label: "Ruso", value: "ru", emoji: "🇷🇺" },
-  { label: "Japonés", value: "ja", emoji: "🇯🇵" },
-  { label: "Coreano", value: "ko", emoji: "🇰🇷" },
-  { label: "Chino (Simpl.)", value: "zh-CN", emoji: "🇨🇳" },
-]
-
-const ROLE_CONFIG = {
-  restricted: "1244039798696710211",
-  allowed: new Set(["1244056080825454642", "1305327128341905459", "1244039798696710212"]),
-}
-
-const API_POOLS = {
-  google: [
-    {
-      id: "google_1",
-      apiKey: "AIzaSyDIrZO_rzRxvf9YvbZK1yPdsj4nrc0nqwY",
-      cx: "34fe95d6cf39d4dd4",
-      active: true,
-      quotaExhausted: false,
-      dailyRequests: 0,
-      maxDailyRequests: 100,
-      lastReset: new Date().toDateString(),
-    },
-    {
-      id: "google_2",
-      apiKey: "AIzaSyCOY3_MeHHHLiOXq2tAUypm1aHbpkFwQ80",
-      cx: "f21e2b3468dc449e2",
-      active: true,
-      quotaExhausted: false,
-      dailyRequests: 0,
-      maxDailyRequests: 100,
-      lastReset: new Date().toDateString(),
-    },
-  ],
-  youtube: [],
-}
-
 const COMMANDS_LIST = [
   {
     name: ".roblox [juego]",
@@ -81,219 +30,8 @@ const COMMANDS_LIST = [
   },
 ]
 
-class APIManager {
-  constructor() {
-    this.loadAPIStatus()
-    this.resetDailyCounters()
-  }
-
-  getNextAvailableAPI(type = "google") {
-    const apis = API_POOLS[type]
-    if (!apis) return null
-    for (const api of apis) {
-      if (api.active && !api.quotaExhausted && api.dailyRequests < api.maxDailyRequests) {
-        return api
-      }
-    }
-    this.resetDailyCounters()
-    for (const api of apis) {
-      if (api.active && !api.quotaExhausted) {
-        return api
-      }
-    }
-    return null
-  }
-
-  markAPIAsExhausted(apiId, type = "google") {
-    const apis = API_POOLS[type]
-    const api = apis.find((a) => a.id === apiId)
-    if (api) {
-      api.quotaExhausted = true
-      console.log(`⚠️ API ${apiId} marcada como agotada. Cambiando a la siguiente...`)
-      this.saveAPIStatus()
-    }
-  }
-
-  incrementRequestCount(apiId, type = "google") {
-    const apis = API_POOLS[type]
-    const api = apis.find((a) => a.id === apiId)
-    if (api) {
-      api.dailyRequests++
-      if (api.dailyRequests >= api.maxDailyRequests) {
-        api.quotaExhausted = true
-        console.log(`📊 API ${apiId} alcanzó el límite diario (${api.maxDailyRequests} requests)`)
-      }
-      this.saveAPIStatus()
-    }
-  }
-
-  resetDailyCounters() {
-    const today = new Date().toDateString()
-    Object.keys(API_POOLS).forEach((type) => {
-      API_POOLS[type].forEach((api) => {
-        if (api.lastReset !== today) {
-          api.dailyRequests = 0
-          api.quotaExhausted = false
-          api.lastReset = today
-          console.log(`🔄 Reseteando contadores para API ${api.id}`)
-        }
-      })
-    })
-    this.saveAPIStatus()
-  }
-
-  saveAPIStatus() {
-    try {
-      fs.writeFileSync("./apiStatus.json", JSON.stringify(API_POOLS, null, 2))
-    } catch (error) {
-      console.error("Error guardando estado de APIs:", error)
-    }
-  }
-
-  loadAPIStatus() {
-    try {
-      const data = fs.readFileSync("./apiStatus.json", "utf8")
-      const savedPools = JSON.parse(data)
-      Object.keys(savedPools).forEach((type) => {
-        if (API_POOLS[type]) {
-          savedPools[type].forEach((savedApi) => {
-            const currentApi = API_POOLS[type].find((a) => a.id === savedApi.id)
-            if (currentApi) {
-              currentApi.dailyRequests = savedApi.dailyRequests || 0
-              currentApi.quotaExhausted = savedApi.quotaExhausted || false
-              currentApi.lastReset = savedApi.lastReset || new Date().toDateString()
-            }
-          })
-        }
-      })
-    } catch (error) {
-      console.log("📝 Creando nuevo archivo de estado de APIs...")
-      this.saveAPIStatus()
-    }
-  }
-
-  getAPIStats(type = "google") {
-    const apis = API_POOLS[type]
-    const active = apis.filter((a) => a.active && !a.quotaExhausted).length
-    const total = apis.length
-    const totalRequests = apis.reduce((sum, api) => sum + api.dailyRequests, 0)
-    return { active, total, totalRequests }
-  }
-
-  getCurrentAPIInfo(type = "google") {
-    const api = this.getNextAvailableAPI(type)
-    if (!api) return null
-    const remaining = api.maxDailyRequests - api.dailyRequests
-    return {
-      id: api.id,
-      remaining: remaining,
-      used: api.dailyRequests,
-      max: api.maxDailyRequests,
-    }
-  }
-}
-
-const apiManager = new APIManager()
-
-async function makeGoogleAPIRequest(url, type = "google") {
-  let attempts = 0
-  const maxAttempts = API_POOLS[type].length
-
-  while (attempts < maxAttempts) {
-    const api = apiManager.getNextAvailableAPI(type)
-    if (!api) {
-      throw new Error(`❌ Todas las APIs de ${type} están agotadas. Intenta mañana.`)
-    }
-
-    const finalUrl = url.replace("GOOGLE_API_KEY", api.apiKey).replace("GOOGLE_CX", api.cx)
-
-    try {
-      console.log(`🔄 Usando API ${api.id} (Request #${api.dailyRequests + 1})`)
-      const response = await axios.get(finalUrl)
-      apiManager.incrementRequestCount(api.id, type)
-      return response
-    } catch (error) {
-      attempts++
-      if (
-        error.response?.status === 429 ||
-        error.response?.data?.error?.message?.includes("quota") ||
-        error.response?.data?.error?.message?.includes("limit")
-      ) {
-        console.log(`⚠️ Cuota agotada en API ${api.id}. Cambiando a la siguiente...`)
-        apiManager.markAPIAsExhausted(api.id, type)
-        continue
-      }
-      if (attempts >= maxAttempts) {
-        throw error
-      }
-    }
-  }
-  throw new Error(`❌ Todas las APIs de ${type} fallaron después de ${maxAttempts} intentos`)
-}
-
 const robloxSearchCache = new Map()
-let prefs = {}
-let errorLoggingEnabled = false
 let savedGames = {}
-
-const translations = {
-  es: {
-    mustReply: "⚠️ Usa el comando respondiendo a un mensaje.",
-    timeout: "⏳ Tiempo agotado. Usa el comando nuevamente.",
-    alreadyInLang: "⚠️ El mensaje ya está en tu idioma.",
-    notYours: "⚠️ No puedes traducir tu propio idioma.",
-    langSaved: "🎉 Idioma guardado exitosamente.",
-    chatActivated: "💬 Chat de traducción automática ACTIVADO para los usuarios seleccionados.",
-    chatDeactivated: "🛑 Chat de traducción automática FINALIZADO.",
-    chatNoSession: "❌ No hay chat activo para finalizar.",
-    notAuthorized: "⚠️ No eres el usuario autorizado para usar este comando.",
-    noSearchQuery: "⚠️ Debes escribir algo para buscar.",
-    noValidImages: "❌ No se encontraron imágenes válidas.",
-    sameLanguage: "⚠️ Ambos usuarios tienen el mismo idioma, no se inició el chat.",
-    inviteRestricted:
-      "⚠️ No podés enviar enlaces de invitación porque tenés el rol de Miembro, el cual está restringido. Tu mensaje fue eliminado automáticamente.",
-    autoTranslateOn: "🔄 Traducción automática ACTIVADA. Tus mensajes se traducirán a",
-    autoTranslateOff: "🛑 Traducción automática DESACTIVADA.",
-    autoTranslateNotActive: "⚠️ No tienes traducción automática activa.",
-    invalidLanguage: "⚠️ Idioma no válido. Usa códigos como: es, en, fr, de, pt, it, ru, ja, ko, zh-CN",
-    userNoLanguage:
-      "⚠️ El usuario mencionado no tiene un idioma guardado. Debe usar .ID para configurar su idioma primero.",
-  },
-  en: {
-    mustReply: "⚠️ Use the command by replying to a message.",
-    timeout: "⏳ Time ran out. Use the command again.",
-    alreadyInLang: "⚠️ Message already in your language.",
-    notYours: "⚠️ You can't translate your own language.",
-    langSaved: "🎉 Language saved successfully.",
-    chatActivated: "💬 Auto-translate chat ACTIVATED for selected users.",
-    chatDeactivated: "🛑 Auto-translate chat STOPPED.",
-    chatNoSession: "❌ No active chat session to stop.",
-    notAuthorized: "⚠️ You are not authorized to use this command.",
-    noSearchQuery: "⚠️ You must provide a search query.",
-    noValidImages: "❌ No valid images found.",
-    sameLanguage: "⚠️ Both users have the same language, chat not started.",
-    inviteRestricted:
-      "⚠️ You are not allowed to send invite links because you have the Member role, which is restricted. Your message was automatically deleted.",
-    autoTranslateOn: "🔄 Auto-translate ACTIVATED. Your messages will be translated to",
-    autoTranslateOff: "🛑 Auto-translate DEACTIVATED.",
-    autoTranslateNotActive: "⚠️ You don't have auto-translate active.",
-    invalidLanguage: "⚠️ Invalid language. Use codes like: es, en, fr, de, pt, it, ru, ja, ko, zh-CN",
-    userNoLanguage:
-      "⚠️ The mentioned user doesn't have a saved language. They must use .ID to set their language first.",
-  },
-}
-
-function loadPreferences() {
-  try {
-    prefs = JSON.parse(fs.readFileSync("./langPrefs.json"))
-  } catch {
-    prefs = {}
-  }
-}
-
-function savePreferences() {
-  fs.writeFileSync("./langPrefs.json", JSON.stringify(prefs, null, 2))
-}
 
 function loadSavedGames() {
   try {
@@ -305,39 +43,6 @@ function loadSavedGames() {
 
 function saveSavedGames() {
   fs.writeFileSync("./savedGames.json", JSON.stringify(savedGames, null, 2))
-}
-
-function getUserLanguage(userId) {
-  return prefs[userId] || "es"
-}
-
-function getTranslation(userId, key) {
-  const userLang = getUserLanguage(userId)
-  return translations[userLang]?.[key] || translations["es"][key]
-}
-
-async function logError(channel, error, context = "") {
-  if (!errorLoggingEnabled) return
-  const errorEmbed = new EmbedBuilder()
-    .setTitle("🚨 Error Detectado")
-    .setDescription(
-      `**Contexto:** ${context}\n**Error:** \`${error.message}\`\n**Stack:** \`\`\`${error.stack?.slice(0, 1000) || "No disponible"}\`\`\``,
-    )
-    .setColor("#FF0000")
-    .setTimestamp()
-
-  try {
-    await channel.send({ embeds: [errorEmbed] })
-  } catch (e) {
-    console.error("Error enviando log de error:", e)
-  }
-}
-
-async function sendWarning(interactionOrMessage, text) {
-  const reply = await interactionOrMessage.reply({ content: text, ephemeral: true })
-  setTimeout(() => {
-    if (reply?.delete) reply.delete().catch(() => {})
-  }, 5000)
 }
 
 function calculateSimilarity(str1, str2) {
@@ -369,63 +74,60 @@ function levenshteinDistance(str1, str2) {
 }
 
 async function searchRobloxPlayer(query) {
-  try {
-    let playerId = null
-    let playerData = null
+  let playerId = null
+  let playerData = null
 
-    if (!isNaN(query)) {
-      playerId = query
-    } else {
-      const searchUrl = `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(query)}&limit=10`
-      const searchResponse = await axios.get(searchUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      })
-
-      const users = searchResponse.data.data || []
-      if (users.length === 0) {
-        return null
-      }
-
-      const bestMatch = users.reduce((best, current) => {
-        const currentScore = calculateSimilarity(query.toLowerCase(), current.name.toLowerCase())
-        const bestScore = calculateSimilarity(query.toLowerCase(), best.name.toLowerCase())
-        return currentScore > bestScore ? current : best
-      })
-
-      playerId = bestMatch.id
-    }
-
-    const userInfoUrl = `https://roblox.com/users/profile?userId=${playerId}`
-    const userInfoResponse = await axios.get(userInfoUrl, {
+  if (!isNaN(query)) {
+    playerId = query
+  } else {
+    const searchUrl = `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(query)}&limit=10`
+    const searchResponse = await axios.get(searchUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
     })
 
-    const $ = cheerio.load(userInfoResponse.data)
-    const name = $('.profile-name').text().trim();
-    const displayName = $('.profile-display-name').text().trim() || name;
-    const description = $('.profile-about-content-text').text().trim() || "Sin descripción";
-    const created = $('[data-testid="profile-created-date"]').text().trim();
-    const isBanned = $('.icon-status-banned').length > 0;
-    const avatar = $('.avatar-card-image').attr('src') || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/420/420/Avatar/Png`;
-
-
-    return {
-      id: playerId,
-      name: name,
-      displayName: displayName,
-      description: description,
-      created: created,
-      isBanned: isBanned,
-      avatar: avatar,
-      profileUrl: `https://www.roblox.com/users/${playerId}/profile`,
+    const users = searchResponse.data.data || []
+    if (users.length === 0) {
+      return null
     }
-  } catch (error) {
-    console.error("Error buscando jugador de Roblox:", error)
-    return null
+
+    const bestMatch = users.reduce((best, current) => {
+      const currentScore = calculateSimilarity(query.toLowerCase(), current.name.toLowerCase())
+      const bestScore = calculateSimilarity(query.toLowerCase(), best.name.toLowerCase())
+      return currentScore > bestScore ? current : best
+    })
+
+    playerId = bestMatch.id
+  }
+
+  const userInfoUrl = `https://users.roblox.com/v1/users/${playerId}`
+  const userInfoResponse = await axios.get(userInfoUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    },
+  })
+
+  playerData = userInfoResponse.data
+
+  const avatarUrl = `https://thumbnails.roblox.com/v1/users/avatar?userIds=${playerId}&size=420x420&format=Png&isCircular=false`
+  const avatarResponse = await axios.get(avatarUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    },
+  })
+
+  const avatarData = avatarResponse.data.data?.[0]
+
+  return {
+    id: playerData.id,
+    name: playerData.name,
+    displayName: playerData.displayName,
+    description: playerData.description || "Sin descripción",
+    created: playerData.created,
+    isBanned: playerData.isBanned,
+    avatar: avatarData?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/420/420/Avatar/Png`,
+    profileUrl: `https://www.roblox.com/users/${playerId}/profile`,
   }
 }
 
@@ -441,7 +143,7 @@ async function getGamePasses(universeId) {
     )
     return response.data.data || []
   } catch (error) {
-    console.log("Error obteniendo pases del juego:", error.message)
+    console.error("Error obteniendo pases del juego:", error.message)
     return []
   }
 }
@@ -460,7 +162,7 @@ async function getGameIcon(universeId) {
       response.data.data?.[0]?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
     )
   } catch (error) {
-    console.log("Error obteniendo icono del juego:", error.message)
+    console.error("Error obteniendo icono del juego:", error.message)
     return `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
   }
 }
@@ -595,220 +297,6 @@ async function handlePlayerSearchResult(interaction, query) {
   await interaction.editReply({ embeds: [embed], components: [button] })
 }
 
-function createAPIUsageEmbed() {
-  const googleStats = apiManager.getAPIStats("google")
-  const youtubeStats = apiManager.getAPIStats("youtube")
-
-  const embed = new EmbedBuilder().setTitle("📊 Estado de APIs en Tiempo Real").setColor("#00c7ff").setTimestamp()
-
-  let googleInfo = "**🔍 Google Custom Search APIs:**\n"
-  API_POOLS.google.forEach((api, index) => {
-    const status = api.quotaExhausted ? "🔴" : api.active ? "🟢" : "🟡"
-    const usage = `${api.dailyRequests}/${api.maxDailyRequests}`
-    const percentage = Math.round((api.dailyRequests / api.maxDailyRequests) * 100)
-
-    googleInfo += `${status} **API ${index + 1}**: ${usage} (${percentage}%)\n`
-  })
-
-  let youtubeInfo = "**🎬 YouTube Data APIs:**\n"
-  API_POOLS.youtube.forEach((api, index) => {
-    const status = api.quotaExhausted ? "🔴" : api.active ? "🟢" : "🟡"
-    const usage = `${api.dailyRequests}/${api.maxDailyRequests}`
-    const percentage = Math.round((api.dailyRequests / api.maxDailyRequests) * 100)
-
-    youtubeInfo += `${status} **API ${index + 1}**: ${usage} (${percentage}%)\n`
-  })
-
-  embed.addFields(
-    { name: "Google APIs", value: googleInfo, inline: true },
-    { name: "YouTube APIs", value: youtubeInfo, inline: true },
-    {
-      name: "📈 Resumen",
-      value: `🔍 Google: ${googleStats.active}/${googleStats.total} activas\n🎬 YouTube: ${youtubeStats.active}/${youtubeStats.total} activas\n📊 Total requests hoy: ${googleStats.totalRequests + youtubeStats.totalRequests}`,
-      inline: false,
-    },
-  )
-
-  return embed
-}
-
-function addAPIUsageToEmbed(embed, apiType = "google") {
-  const apiInfo = apiManager.getCurrentAPIInfo(apiType)
-  if (apiInfo) {
-    const percentage = Math.round((apiInfo.used / apiInfo.max) * 100)
-    const statusEmoji = percentage > 90 ? "🔴" : percentage > 70 ? "🟡" : "🟢"
-
-    embed.setFooter({
-      text: `${embed.data.footer?.text || ""} | ${statusEmoji} API: ${apiInfo.remaining}/${apiInfo.max} (${100 - percentage}% disponible)`,
-    })
-  }
-  return embed
-}
-
-async function handleRobloxSearch(message, args) {
-  const input = args.join(" ")
-  if (!input) return message.reply("⚠️ Debes escribir el ID del juego de Roblox o el nombre.")
-
-  try {
-    let universeId = null
-    let placeId = null
-    let gameData = null
-
-    if (!isNaN(input)) {
-      placeId = input
-      const placeInfoUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
-      try {
-        const placeInfoResponse = await axios.get(placeInfoUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          },
-        })
-        universeId = placeInfoResponse.data.universeId
-      } catch (error) {
-        await logError(message.channel, error, "Error obteniendo universeId desde placeId")
-        return message.reply("❌ No se pudo encontrar el juego con ese ID.")
-      }
-    } else {
-      const searchUrl = `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(input)}&model.maxRows=10&model.startRowIndex=0`
-      const searchResponse = await axios.get(searchUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      })
-      const games = searchResponse.data.games || []
-
-      if (!games.length) {
-        const broadSearchUrl = `https://catalog.roblox.com/v1/search/items?category=Experiences&keyword=${encodeURIComponent(input)}&limit=10`
-        try {
-          const broadSearchResponse = await axios.get(broadSearchUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            },
-          })
-          const catalogGames = broadSearchResponse.data.data || []
-          if (!catalogGames.length) {
-            return message.reply(
-              "❌ No se encontró ningún juego con ese nombre. Intenta con palabras clave diferentes.",
-            )
-          }
-          placeId = catalogGames[0].id
-          universeId = catalogGames[0].universeId
-        } catch (error) {
-          await logError(message.channel, error, "Error en búsqueda amplia de juegos")
-          return message.reply("❌ No se encontró ningún juego con ese nombre.")
-        }
-      } else {
-        const bestMatch = games.reduce((best, current) => {
-          const currentScore = calculateSimilarity(input.toLowerCase(), current.name.toLowerCase())
-          const bestScore = calculateSimilarity(input.toLowerCase(), best.name.toLowerCase())
-          return currentScore > bestScore ? current : best
-        })
-        placeId = bestMatch.rootPlaceId
-        universeId = bestMatch.universeId
-      }
-    }
-
-    const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${universeId}`
-    const gameInfoResponse = await axios.get(gameInfoUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    })
-    gameData = gameInfoResponse.data.data?.[0]
-
-    if (!gameData) {
-      return message.reply("❌ No se pudo obtener información del juego.")
-    }
-
-    savedGames[gameData.name] = {
-      placeId: placeId,
-      universeId: universeId,
-      name: gameData.name,
-    }
-    saveSavedGames()
-
-    const publicServersUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&limit=100`
-    const publicServersResponse = await axios.get(publicServersUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    })
-    const publicServers = publicServersResponse.data.data || []
-
-    const totalServers = publicServers.length
-    const totalPlayers = publicServers.reduce((sum, server) => sum + server.playing, 0)
-    const totalMaxPlayers = publicServers.reduce((sum, server) => sum + server.maxPlayers, 0)
-
-    const gameIcon = await getGameIcon(universeId)
-
-    robloxSearchCache.set(message.author.id, {
-      publicServers,
-      gameData,
-      placeId,
-      universeId,
-      totalServers,
-      totalPlayers,
-      totalMaxPlayers,
-      gameIcon,
-      serversPage: 0,
-    })
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🎮 ${gameData.name}`)
-      .setDescription(`**📊 Estadísticas del Juego:**
-
-**👥 JUGADORES TOTALES: ${totalPlayers.toLocaleString()}/${totalMaxPlayers.toLocaleString()}**
-
-**🌐 Servidores Públicos:**
-🟢 Servidores: ${totalServers}
-👥 Jugadores: ${totalPlayers.toLocaleString()}/${totalMaxPlayers.toLocaleString()}
-
-**📈 Información General:**
-⭐ Rating: ${gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${gameData.totalDownVotes?.toLocaleString() || 0}👎
-🎯 Visitas: ${gameData.visits?.toLocaleString() || "N/A"}
-🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}`)
-      .setColor("#00b2ff")
-      .setThumbnail(gameIcon)
-      .setFooter({
-        text: `ID: ${placeId} | Universe ID: ${universeId} | Total de servidores: ${totalServers}`,
-      })
-      .setTimestamp()
-
-    const row1 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`publicRoblox-${message.author.id}`)
-        .setLabel("🌐 Ver Servidores")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(totalServers === 0),
-      new ButtonBuilder()
-        .setCustomId(`playRoblox-${message.author.id}`)
-        .setLabel("🎮 Jugar")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`refreshRoblox-${message.author.id}`)
-        .setLabel("🔄 Actualizar")
-        .setStyle(ButtonStyle.Secondary),
-    )
-
-    const row2 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`searchPlayerRoblox-${message.author.id}`)
-        .setLabel("👤 Buscar Jugador")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`gamePassesRoblox-${message.author.id}`)
-        .setLabel("🎫 Pases del Juego")
-        .setStyle(ButtonStyle.Secondary),
-    )
-
-    await message.channel.send({ embeds: [embed], components: [row1, row2] })
-  } catch (error) {
-    console.error("Error en búsqueda de Roblox:", error.message)
-    await logError(message.channel, error, "Error general en búsqueda de Roblox")
-    return message.reply(`❌ Error al obtener información de Roblox: ${error.message}`)
-  }
-}
-
 async function handleGamePassesView(interaction, cache, page = 0) {
   const { universeId, gameData, gameIcon } = cache
 
@@ -886,7 +374,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
 
     await interaction.editReply({ embeds: [embed], components: [buttons] })
   } catch (error) {
-    await logError(interaction.channel, error, "Error obteniendo pases del juego")
+    console.error("Error obteniendo pases del juego:", error.message)
     const embed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
       .setDescription("❌ Error al obtener los pases del juego.")
@@ -913,7 +401,7 @@ async function handleRobloxNavigation(interaction, action) {
   }
 
   if (!cache) {
-    await logError(interaction.channel, new Error("Cache no encontrado"), `Usuario: ${userId}, Acción: ${action}`)
+    console.error(`Cache no encontrado. Usuario: ${userId}, Acción: ${action}`)
     return interaction.reply({
       content: "❌ No hay datos de juego disponibles. Usa .roblox [juego] primero.",
       ephemeral: true,
@@ -1025,7 +513,7 @@ async function handleRobloxNavigation(interaction, action) {
 
         return interaction.editReply({ embeds: [embed], components: [row1, row2] })
       } catch (error) {
-        await logError(interaction.channel, error, "Error refrescando datos de Roblox")
+        console.error("Error refrescando datos de Roblox:", error)
         return interaction.editReply({ content: "❌ Error al actualizar datos del servidor." })
       }
     } else if (action === "backRoblox") {
@@ -1076,14 +564,176 @@ async function handleRobloxNavigation(interaction, action) {
       return interaction.update({ embeds: [embed], components: [row1, row2] })
     }
   } catch (error) {
-    await logError(interaction.channel, error, `Error en navegación Roblox - Acción: ${action}`)
+    console.error(`Error en navegación Roblox - Acción: ${action}`, error)
     return interaction.reply({ content: "❌ Error procesando la acción. Intenta de nuevo.", ephemeral: true })
+  }
+}
+
+async function handleRobloxSearch(message, args) {
+  const input = args.join(" ")
+  if (!input) return message.reply("⚠️ Debes escribir el ID del juego de Roblox o el nombre.")
+
+  try {
+    let universeId = null
+    let placeId = null
+    let gameData = null
+
+    if (!isNaN(input)) {
+      placeId = input
+      const placeInfoUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
+      try {
+        const placeInfoResponse = await axios.get(placeInfoUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        })
+        universeId = placeInfoResponse.data.universeId
+      } catch (error) {
+        console.error("Error obteniendo universeId desde placeId:", error)
+        return message.reply("❌ No se pudo encontrar el juego con ese ID.")
+      }
+    } else {
+      const searchUrl = `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(input)}&model.maxRows=10&model.startRowIndex=0`
+      const searchResponse = await axios.get(searchUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      })
+      const games = searchResponse.data.games || []
+
+      if (!games.length) {
+        const broadSearchUrl = `https://catalog.roblox.com/v1/search/items?category=Experiences&keyword=${encodeURIComponent(input)}&limit=10`
+        try {
+          const broadSearchResponse = await axios.get(broadSearchUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          })
+          const catalogGames = broadSearchResponse.data.data || []
+          if (!catalogGames.length) {
+            return message.reply(
+              "❌ No se encontró ningún juego con ese nombre. Intenta con palabras clave diferentes.",
+            )
+          }
+          placeId = catalogGames[0].id
+          universeId = catalogGames[0].universeId
+        } catch (error) {
+          console.error("Error en búsqueda amplia de juegos:", error)
+          return message.reply("❌ No se encontró ningún juego con ese nombre.")
+        }
+      } else {
+        const bestMatch = games.reduce((best, current) => {
+          const currentScore = calculateSimilarity(input.toLowerCase(), current.name.toLowerCase())
+          const bestScore = calculateSimilarity(input.toLowerCase(), best.name.toLowerCase())
+          return currentScore > bestScore ? current : best
+        })
+        placeId = bestMatch.rootPlaceId
+        universeId = bestMatch.universeId
+      }
+    }
+
+    const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${universeId}`
+    const gameInfoResponse = await axios.get(gameInfoUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    })
+    gameData = gameInfoResponse.data.data?.[0]
+
+    if (!gameData) {
+      return message.reply("❌ No se pudo obtener información del juego.")
+    }
+
+    savedGames[gameData.name] = {
+      placeId: placeId,
+      universeId: universeId,
+      name: gameData.name,
+    }
+    saveSavedGames()
+
+    const publicServersUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&limit=100`
+    const publicServersResponse = await axios.get(publicServersUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    })
+    const publicServers = publicServersResponse.data.data || []
+
+    const totalServers = publicServers.length
+    const totalPlayers = publicServers.reduce((sum, server) => sum + server.playing, 0)
+    const totalMaxPlayers = publicServers.reduce((sum, server) => sum + server.maxPlayers, 0)
+
+    const gameIcon = await getGameIcon(universeId)
+
+    robloxSearchCache.set(message.author.id, {
+      publicServers,
+      gameData,
+      placeId,
+      universeId,
+      totalServers,
+      totalPlayers,
+      totalMaxPlayers,
+      gameIcon,
+      serversPage: 0,
+    })
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🎮 ${gameData.name}`)
+      .setDescription(`**📊 Estadísticas del Juego:**
+
+**👥 JUGADORES TOTALES: ${totalPlayers.toLocaleString()}/${totalMaxPlayers.toLocaleString()}**
+
+**🌐 Servidores Públicos:**
+🟢 Servidores: ${totalServers}
+👥 Jugadores: ${totalPlayers.toLocaleString()}/${totalMaxPlayers.toLocaleString()}
+
+**📈 Información General:**
+⭐ Rating: ${gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${gameData.totalDownVotes?.toLocaleString() || 0}👎
+🎯 Visitas: ${gameData.visits?.toLocaleString() || "N/A"}
+🎮 Jugando ahora: ${gameData.playing?.toLocaleString() || totalPlayers.toLocaleString()}`)
+      .setColor("#00b2ff")
+      .setThumbnail(gameIcon)
+      .setFooter({
+        text: `ID: ${placeId} | Universe ID: ${universeId} | Total de servidores: ${totalServers}`,
+      })
+      .setTimestamp()
+
+    const row1 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`publicRoblox-${message.author.id}`)
+        .setLabel("🌐 Ver Servidores")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(totalServers === 0),
+      new ButtonBuilder()
+        .setCustomId(`playRoblox-${message.author.id}`)
+        .setLabel("🎮 Jugar")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`refreshRoblox-${message.author.id}`)
+        .setLabel("🔄 Actualizar")
+        .setStyle(ButtonStyle.Secondary),
+    )
+
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`searchPlayerRoblox-${message.author.id}`)
+        .setLabel("👤 Buscar Jugador")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`gamePassesRoblox-${message.author.id}`)
+        .setLabel("🎫 Pases del Juego")
+        .setStyle(ButtonStyle.Secondary),
+    )
+
+    await message.channel.send({ embeds: [embed], components: [row1, row2] })
+  } catch (error) {
+    console.error("Error en búsqueda de Roblox:", error.message)
+    return message.reply(`❌ Error al obtener información de Roblox: ${error.message}`)
   }
 }
 
 client.once("ready", () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`)
-  loadPreferences()
   loadSavedGames()
 })
 
@@ -1091,25 +741,23 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.content) return
 
   try {
-    await handleInviteRestrictions(message)
-
     if (message.content.startsWith(".")) {
       await handleCommands(message)
     }
   } catch (error) {
-    await logError(message.channel, error, "Error en messageCreate")
+    console.error("Error en messageCreate:", error)
   }
 })
 
 client.on("interactionCreate", async (interaction) => {
   try {
-    if (interaction.isModalSubmit()) {
-      await handleModalSubmit(interaction)
-    } else if (interaction.isButton()) {
+    if (interaction.isButton()) {
       await handleButtonInteraction(interaction)
+    } else if (interaction.isModalSubmit()) {
+      await handleModalSubmit(interaction)
     }
   } catch (error) {
-    await logError(interaction.channel, error, "Error en interactionCreate")
+    console.error("Error en interactionCreate:", error)
   }
 })
 
@@ -1118,28 +766,6 @@ async function handleModalSubmit(interaction) {
     const query = interaction.fields.getTextInputValue("playerSearchInput")
     await handlePlayerSearchResult(interaction, query)
   }
-}
-
-async function handleInviteRestrictions(message) {
-  const inviteRegex = /(discord.gg\/|discord.com\/invite\/)/i
-  if (inviteRegex.test(message.content) && message.member) {
-    const hasRestricted = message.member.roles.cache.has(ROLE_CONFIG.restricted)
-    const hasAllowed = message.member.roles.cache.some((role) => ROLE_CONFIG.allowed.has(role.id))
-
-    if (hasRestricted && !hasAllowed) {
-      try {
-        await message.delete()
-        const userLang = getUserLanguage(message.author.id)
-        const warning = getTranslation(message.author.id, "inviteRestricted")
-        await message.author.send({ content: warning })
-      } catch (error) {
-        console.error("Error handling invite restriction:", error.message)
-        await logError(message.channel, error, "Error manejando restricción de invites")
-      }
-      return true
-    }
-  }
-  return false
 }
 
 async function handleCommands(message) {
@@ -1151,29 +777,9 @@ async function handleCommands(message) {
       case "roblox":
         await handleRobloxSearch(message, args)
         break
-      case "error":
-        if (message.author.username !== "flux_fer") {
-          return sendWarning(message, "⚠️ Solo el administrador puede activar el registro de errores.")
-        }
-        errorLoggingEnabled = true
-        return message.reply("✅ Registro de errores ACTIVADO. Los errores se mostrarán en el chat.")
-      case "derror":
-        if (message.author.username !== "flux_fer") {
-          return sendWarning(message, "⚠️ Solo el administrador puede desactivar el registro de errores.")
-        }
-        errorLoggingEnabled = false
-        return message.reply("🛑 Registro de errores DESACTIVADO. Los errores no se mostrarán en el chat.")
-      case "apistats":
-        if (message.author.username !== "flux_fer") {
-          return sendWarning(message, "⚠️ Solo el administrador puede ver las estadísticas.")
-        }
-        const embed = createAPIUsageEmbed()
-        return message.reply({ embeds: [embed], ephemeral: true })
-      default:
-        return message.reply("❌ Comando no reconocido. Solo el comando `.roblox` está disponible.")
     }
   } catch (error) {
-    await logError(message.channel, error, `Error ejecutando comando: ${cmd}`)
+    console.error(`Error ejecutando comando: ${cmd}`, error)
     return message.reply(`❌ Error ejecutando el comando: ${error.message}`)
   }
 }
@@ -1200,7 +806,7 @@ async function handleButtonInteraction(interaction) {
       await handleRobloxNavigation(interaction, customId.split("-")[0])
     }
   } catch (error) {
-    await logError(interaction.channel, error, "Error en handleButtonInteraction")
+    console.error("Error en handleButtonInteraction:", error)
   }
 }
 
