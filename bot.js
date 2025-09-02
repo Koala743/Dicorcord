@@ -8,8 +8,6 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  StringSelectMenuBuilder, // Necesario para menús desplegables
-  StringSelectMenuInteraction,
 } = require("discord.js")
 const axios = require("axios")
 const fs = require("fs")
@@ -122,9 +120,6 @@ async function searchRobloxPlayer(query) {
   const avatarData = avatarResponse.data.data?.[0]
 
   let currentlyPlaying = "N/A"
-  let presenceStatus = "Desconocido" // Nuevo campo para el estado de presencia
-  let lastOnline = "N/A" // Nuevo campo para la última vez en línea
-
   try {
     const presenceUrl = `https://presence.roblox.com/v1/users/${playerId}/presence`
     const presenceResponse = await axios.post(presenceUrl, { userIds: [playerId] }, {
@@ -134,40 +129,16 @@ async function searchRobloxPlayer(query) {
       },
     })
     const presenceData = presenceResponse.data.userPresences?.[0]
-
-    if (presenceData) {
-      switch (presenceData.userPresenceType) {
-        case 0:
-          presenceStatus = "Offline"
-          break
-        case 1:
-          presenceStatus = "Online"
-          break
-        case 2:
-          presenceStatus = "In-Game"
-          break
-        case 3:
-          presenceStatus = "Studio"
-          break
-        default:
-          presenceStatus = "Desconocido"
-      }
-
-      if (presenceData.lastLocation) {
-        lastOnline = presenceData.lastLocation
-      }
-
-      if (presenceData.userPresenceType === 2 && presenceData.universeId) {
-        const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${presenceData.universeId}`
-        const gameInfoResponse = await axios.get(gameInfoUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          },
-        })
-        const game = gameInfoResponse.data.data?.[0]
-        if (game) {
-          currentlyPlaying = game.name
-        }
+    if (presenceData && presenceData.userPresenceType === 2 && presenceData.universeId) {
+      const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${presenceData.universeId}`
+      const gameInfoResponse = await axios.get(gameInfoUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      })
+      const game = gameInfoResponse.data.data?.[0]
+      if (game) {
+        currentlyPlaying = game.name
       }
     }
   } catch (error) {
@@ -184,8 +155,6 @@ async function searchRobloxPlayer(query) {
     avatar: avatarData?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/420/420/Avatar/Png`,
     profileUrl: `https://www.roblox.com/users/${playerId}/profile`,
     currentlyPlaying: currentlyPlaying,
-    presenceStatus: presenceStatus, // Añadir el estado de presencia
-    lastOnline: lastOnline, // Añadir la última ubicación/actividad
   }
 }
 
@@ -370,49 +339,38 @@ async function handlePlayerSearch(interaction, cache) {
 }
 
 async function handlePlayerSearchResult(interaction, query) {
-  await interaction.deferReply({ ephemeral: true })
-
+  await interaction.deferReply({ ephemeral: true });
   try {
-    const playerData = await searchRobloxPlayer(query)
-
+    const playerData = await searchRobloxPlayer(query);
     if (!playerData) {
-      return interaction.editReply({ content: `❌ No se encontró ningún jugador con el nombre o ID: \`${query}\`.` })
+      return interaction.editReply({ content: `❌ No se encontró ningún jugador con el nombre o ID: \`${query}\`.` });
     }
-
     const createdDate = new Date(playerData.created).toLocaleDateString("es-ES", {
       year: "numeric",
       month: "long",
       day: "numeric",
-    })
-
-    let statusEmoji = "⚪"; // Desconocido
-    if (playerData.presenceStatus === "Online") statusEmoji = "🟢";
-    else if (playerData.presenceStatus === "Offline") statusEmoji = "⚫";
-    else if (playerData.presenceStatus === "In-Game") statusEmoji = "🎮";
-    else if (playerData.presenceStatus === "Studio") statusEmoji = "🛠️";
-
+    });
+    const embedColor = "#FF4500"; 
     const embed = new EmbedBuilder()
-      .setTitle(`👤 Información del Jugador: ${playerData.displayName}`)
+      .setTitle(`👤 ${playerData.displayName} (${playerData.name})`) // Nombre/Apodo
       .setURL(playerData.profileUrl)
       .setThumbnail(playerData.avatar)
-      .setColor("#0099ff")
+      .setColor(embedColor) // Color rojo atractivo
       .addFields(
-        { name: "Nombre de Usuario", value: playerData.name, inline: true },
-        { name: "ID", value: `\`${playerData.id}\``, inline: true },
-        { name: "Estado", value: `${statusEmoji} ${playerData.presenceStatus}`, inline: true },
-        { name: "Jugando Ahora", value: playerData.currentlyPlaying, inline: true },
-        { name: "Última Actividad", value: playerData.lastOnline, inline: true },
-        { name: "Cuenta Creada", value: createdDate, inline: true },
-        { name: "Baneado", value: playerData.isBanned ? "Sí 🚫" : "No ✅", inline: true },
-        { name: "Descripción", value: playerData.description.substring(0, 1024) || "Sin descripción", inline: false },
+        { name: "🆔 ID", value: `\`${playerData.id}\``, inline: true },
+        { name: "📅 Creado", value: createdDate, inline: true }, 
+        { name: "🎮 Jugando Ahora", value: playerData.currentlyPlaying || "N/A", inline: true }, // Juego actual
+        { name: "🚫 Baneado", value: playerData.isBanned ? "Sí" : "No", inline: true }, // Baneado o no
+        { name: "🟢 Estado", value: playerData.isBanned ? "Inactivo" : "Activo", inline: true }, // Estado Activo/Inactivo
+        { name: "📝 Descripción", value: playerData.description.substring(0, 250) || "Sin descripción", inline: false },
       )
       .setFooter({ text: `Última actualización: ${new Date().toLocaleTimeString()}` })
-      .setTimestamp()
+      .setTimestamp();
 
-    await interaction.editReply({ embeds: [embed] })
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error("Error al buscar jugador de Roblox:", error)
-    await interaction.editReply({ content: "❌ Ocurrió un error al buscar la información del jugador." })
+    console.error("Error al buscar jugador de Roblox:", error);
+    await interaction.editReply({ content: "❌ Ocurrió un error al buscar la información del jugador." });
   }
 }
 
@@ -691,9 +649,8 @@ async function handleRobloxSearch(message, args) {
     let universeId = null
     let placeId = null
     let gameData = null
-    let gamesFound = [] // Para almacenar múltiples resultados de búsqueda
 
-    if (!isNaN(input)) { // Si el input es un número, asume que es un Place ID
+    if (!isNaN(input)) {
       placeId = input
       const placeInfoUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
       try {
@@ -707,17 +664,16 @@ async function handleRobloxSearch(message, args) {
         console.error("Error obteniendo universeId desde placeId:", error)
         return message.reply("❌ No se pudo encontrar el juego con ese ID.")
       }
-    } else { // Si el input es texto, busca por nombre
+    } else {
       const searchUrl = `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(input)}&model.maxRows=10&model.startRowIndex=0`
       const searchResponse = await axios.get(searchUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         },
       })
-      gamesFound = searchResponse.data.games || []
+      const games = searchResponse.data.games || []
 
-      if (gamesFound.length === 0) {
-        // Si no se encuentran resultados en la primera API, intenta una búsqueda más amplia
+      if (!games.length) {
         const broadSearchUrl = `https://catalog.roblox.com/v1/search/items?category=Experiences&keyword=${encodeURIComponent(input)}&limit=10`
         try {
           const broadSearchResponse = await axios.get(broadSearchUrl, {
@@ -725,33 +681,27 @@ async function handleRobloxSearch(message, args) {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             },
           })
-          gamesFound = broadSearchResponse.data.data || []
-          // Mapear los resultados de catalog.roblox.com para que coincidan con el formato esperado
-          gamesFound = gamesFound.map(game => ({
-            rootPlaceId: game.id,
-            universeId: game.universeId,
-            name: game.name,
-            // Añadir otros campos si son necesarios para calculateSimilarity o display
-          }));
+          const catalogGames = broadSearchResponse.data.data || []
+          if (!catalogGames.length) {
+            return message.reply(
+              "❌ No se encontró ningún juego con ese nombre. Intenta con palabras clave diferentes.",
+            )
+          }
+          placeId = catalogGames[0].id
+          universeId = catalogGames[0].universeId
         } catch (error) {
           console.error("Error en búsqueda amplia de juegos:", error)
+          return message.reply("❌ No se encontró ningún juego con ese nombre.")
         }
+      } else {
+        const bestMatch = games.reduce((best, current) => {
+          const currentScore = calculateSimilarity(input.toLowerCase(), current.name.toLowerCase())
+          const bestScore = calculateSimilarity(input.toLowerCase(), best.name.toLowerCase())
+          return currentScore > bestScore ? current : best
+        })
+        placeId = bestMatch.rootPlaceId
+        universeId = bestMatch.universeId
       }
-
-      if (gamesFound.length === 0) {
-        return message.reply(
-          "❌ No se encontró ningún juego con ese nombre. Intenta con palabras clave diferentes.",
-        )
-      }
-
-      // Si hay múltiples resultados, selecciona el mejor match
-      const bestMatch = gamesFound.reduce((best, current) => {
-        const currentScore = calculateSimilarity(input.toLowerCase(), current.name.toLowerCase())
-        const bestScore = calculateSimilarity(input.toLowerCase(), best.name.toLowerCase())
-        return currentScore > bestScore ? current : best
-      })
-      placeId = bestMatch.rootPlaceId
-      universeId = bestMatch.universeId
     }
 
     const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${universeId}`
@@ -843,16 +793,7 @@ async function handleRobloxSearch(message, args) {
         .setStyle(ButtonStyle.Secondary),
     )
 
-    // Añadir botón para ver servidores públicos
-    const row3 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`publicRoblox-${message.author.id}`)
-        .setLabel("🌐 Ver Servidores Públicos")
-        .setStyle(ButtonStyle.Secondary),
-    );
-
-
-    await message.reply({ embeds: [embed], components: [row1, row2, row3], ephemeral: true })
+    await message.reply({ embeds: [embed], components: [row1, row2], ephemeral: true })
   } catch (error) {
     console.error("Error en búsqueda de Roblox:", error.message)
     return message.reply(`❌ Error al obtener información de Roblox: ${error.message}`)
@@ -900,13 +841,6 @@ client.on("interactionCreate", async (interaction) => {
       }
     } else if (interaction.isModalSubmit()) {
       await handleModalSubmit(interaction)
-    } else if (interaction.isStringSelectMenu()) {
-      // Aquí se manejarían las selecciones de menú desplegable si se implementaran
-      // Por ejemplo, para seleccionar un juego de una lista de resultados
-      // if (interaction.customId === 'gameSelectMenu') {
-      //   const selectedGameId = interaction.values[0];
-      //   // Lógica para procesar el juego seleccionado
-      // }
     }
   } catch (error) {
     console.error("Error en interactionCreate:", error)
