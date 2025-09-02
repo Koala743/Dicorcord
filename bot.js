@@ -206,121 +206,6 @@ function createPlayerBar(current, max) {
   return bar
 }
 
-async function handleRobloxServersView(interaction, cache, page = 0) {
-  const { publicServers, gameData, gameIcon, totalServers } = cache
-
-  if (!publicServers || publicServers.length === 0) {
-    return interaction.reply({ content: "❌ No hay servidores públicos disponibles.", ephemeral: true })
-  }
-
-  if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferUpdate()
-  }
-
-  const serversPerPage = 20
-  const totalPages = Math.ceil(publicServers.length / serversPerPage)
-  const startIndex = page * serversPerPage
-  const endIndex = startIndex + serversPerPage
-  const currentServers = publicServers.slice(startIndex, endIndex)
-
-  let serversList = `**🌐 SERVIDORES PÚBLICOS (Página ${page + 1}/${totalPages}):**\n\n`
-
-  currentServers.forEach((server, index) => {
-    const globalIndex = startIndex + index + 1
-    const playerBar = createPlayerBar(server.playing, server.maxPlayers)
-
-    serversList += `**${globalIndex}.** Servidor #${globalIndex}\n`
-    serversList += `👥 **${server.playing}/${server.maxPlayers}** ${playerBar}\n`
-    serversList += `🆔 ID: \`${server.id}\`\n`
-    serversList += `📡 Ping: ${server.ping || "N/A"}ms\n`
-    serversList += `🌍 Región: ${server.location || "Global"}\n`
-    serversList += `🚀 [Unirse](https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${server.id})\n\n`
-  })
-
-  const embed = new EmbedBuilder()
-    .setTitle(`🌐 ${gameData.name} - Servidores Públicos`)
-    .setDescription(serversList)
-    .setColor("#4CAF50")
-    .setThumbnail(gameIcon)
-    .setFooter({
-      text: `Página ${page + 1}/${totalPages} | Total: ${totalServers} servidores`,
-    })
-    .setTimestamp()
-
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`prevServersRoblox-${interaction.user.id}`)
-      .setLabel("⬅️ Anterior")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(page === 0),
-    new ButtonBuilder()
-      .setCustomId(`nextServersRoblox-${interaction.user.id}`)
-      .setLabel("➡️ Siguiente")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(page >= totalPages - 1),
-    new ButtonBuilder()
-      .setCustomId(`refreshServersRoblox-${interaction.user.id}`)
-      .setLabel("🔄 Actualizar")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`backRoblox-${interaction.user.id}`)
-      .setLabel("🔙 Volver")
-      .setStyle(ButtonStyle.Secondary),
-  )
-
-  cache.serversPage = page
-  robloxSearchCache.set(interaction.user.id, cache)
-
-  await interaction.editReply({ embeds: [embed], components: [buttons] })
-}
-
-async function handlePlayerSearch(interaction, cache) {
-  const modal = new ModalBuilder().setCustomId("playerSearchModal").setTitle("Buscar Jugador de Roblox")
-
-  const playerInput = new TextInputBuilder()
-    .setCustomId("playerSearchInput")
-    .setLabel("Nombre de usuario o ID del jugador")
-    .setStyle(TextInputStyle.Short)
-    .setMinLength(1)
-    .setMaxLength(50)
-    .setPlaceholder("Ejemplo: Builderman o 156")
-
-  const firstActionRow = new ActionRowBuilder().addComponents(playerInput)
-
-  await interaction.showModal(modal.addComponents(firstActionRow))
-}
-
-async function handlePlayerSearchResult(interaction, query) {
-  await interaction.deferReply({ ephemeral: true })
-
-  const playerData = await searchRobloxPlayer(query)
-
-  if (!playerData) {
-    return interaction.editReply({
-      content: "❌ No se encontró ningún jugador con ese nombre o ID.",
-    })
-  }
-
-  const createdDate = new Date(playerData.created).toLocaleDateString("es-ES")
-
-  const embed = new EmbedBuilder()
-    .setTitle(`👤 ${playerData.displayName} (@${playerData.name})`)
-    .setDescription(
-      `**📝 Descripción:**\n${playerData.description}\n\n**📅 Cuenta creada:** ${createdDate}\n**🆔 ID:** ${playerData.id}\n**🚫 Baneado:** ${playerData.isBanned ? "Sí" : "No"}\n**🎮 Jugando:** ${playerData.currentlyPlaying}`
-    )
-    .setColor("#00b2ff")
-    .setThumbnail(playerData.avatar)
-    .setFooter({ text: "Información del jugador de Roblox" })
-    .setTimestamp()
-
-  const button = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setLabel("👤 Ver Perfil").setStyle(ButtonStyle.Link).setURL(playerData.profileUrl),
-  )
-
-  await interaction.editReply({ embeds: [embed], components: [button] })
-}
-
-
 async function handleGamePassesView(interaction, cache, page = 0) {
   const { universeId, gameData, gameIcon } = cache
 
@@ -346,24 +231,26 @@ async function handleGamePassesView(interaction, cache, page = 0) {
       return interaction.editReply({ embeds: [embed], components: [backButton] })
     }
 
-    const passesPerPage = 10
+    const passesPerPage = 5
     const totalPages = Math.ceil(gamePasses.length / passesPerPage)
     const startIndex = page * passesPerPage
     const endIndex = startIndex + passesPerPage
     const currentPasses = gamePasses.slice(startIndex, endIndex)
 
-    let passesList = `**🎫 PASES DEL JUEGO (Página ${page + 1}/${totalPages}):**\n\n`
-
-    currentPasses.forEach((pass, i) => {
+    const embeds = currentPasses.map((pass, i) => {
       const globalIndex = startIndex + i + 1
-      passesList += `**${globalIndex}.** ${pass.name}\n`
-      passesList += `🆔 ID: \`${pass.id}\`\n`
-      passesList += `🔗 [Ver Pase](https://www.roblox.com/game-pass/${pass.id})\n\n`
+      const passImageUrl = `https://tr.rbxcdn.com/${pass.id}/150/150/Image/Png`
+
+      return new EmbedBuilder()
+        .setTitle(`${globalIndex}. ${pass.name}`)
+        .setDescription(`🆔 ID: \`${pass.id}\`\n🔗 [Ver Pase](https://www.roblox.com/game-pass/${pass.id})`)
+        .setThumbnail(passImageUrl)
+        .setColor("#FFD700")
     })
 
-    const embed = new EmbedBuilder()
+    const mainEmbed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
-      .setDescription(passesList)
+      .setDescription(`Mostrando pases del juego. Total: ${gamePasses.length} pases.`)
       .setColor("#FFD700")
       .setThumbnail(gameIcon)
       .setFooter({ text: `Página ${page + 1}/${totalPages}` })
@@ -390,7 +277,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     cache.gamePasses = gamePasses
     robloxSearchCache.set(interaction.user.id, cache)
 
-    await interaction.editReply({ embeds: [embed], components: [buttons] })
+    await interaction.editReply({ embeds: [mainEmbed, ...embeds], components: [buttons] })
   } catch (error) {
     console.error("Error obteniendo pases del juego:", error.message)
     const embed = new EmbedBuilder()
@@ -409,6 +296,9 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     await interaction.editReply({ embeds: [embed], components: [backButton] })
   }
 }
+
+
+
 
 async function handleRobloxNavigation(interaction, action) {
   const userId = interaction.user.id
