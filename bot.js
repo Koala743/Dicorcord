@@ -282,7 +282,7 @@ async function handlePlayerSearchResult(interaction, query) {
       `**📝 Descripción:**\n${playerData.description}\n\n**📅 Cuenta creada:** ${createdDate}\n**🆔 ID:** ${playerData.id}\n**🚫 Baneado:** ${playerData.isBanned ? "Sí" : "No"}`,
     )
     .setColor("#00b2ff")
-    .setThumbnail(playerData.avatar) // Mostrar avatar del jugador
+    .setThumbnail(playerData.avatar)
     .setFooter({ text: "Información del jugador de Roblox" })
     .setTimestamp()
 
@@ -331,12 +331,12 @@ async function handleGamePassesView(interaction, cache, page = 0) {
       const pass = currentPasses[i]
       const globalIndex = startIndex + i + 1
       const price = pass.price ? `${pass.price} Robux` : "Gratis"
-      const passIconUrl = `https://tr.rbxcdn.com/${pass.id}/150/150/Image/Webp/noFilter` // URL de la imagen del pase
+      const passIconUrl = `https://tr.rbxcdn.com/${pass.id}/150/150/Image/Webp/noFilter`
 
       const passEmbed = new EmbedBuilder()
         .setTitle(`${globalIndex}. ${pass.name}`)
         .setDescription(`💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})`)
-        .setThumbnail(passIconUrl) // Mostrar imagen del pase
+        .setThumbnail(passIconUrl)
         .setColor("#FFD700")
 
       embeds.push(passEmbed)
@@ -425,11 +425,18 @@ async function handleRobloxNavigation(interaction, action) {
     } else if (action === "refreshServersRoblox") {
       await handleRobloxServersView(interaction, cache, cache.serversPage || 0)
     } else if (action === "playRoblox") {
-      const playUrl = `https://www.roblox.com/games/${cache.placeId}`
+      let playUrl;
+      if (cache.publicServers && cache.publicServers.length > 0) {
+        const selectedServer = cache.publicServers[0]; // Choose the first available server
+        playUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${selectedServer.id}`;
+      } else {
+        playUrl = `https://www.roblox.com/games/${cache.placeId}`; // Fallback to general game page
+      }
+
       return interaction.reply({
-        content: `🎮 **${cache.gameData.name}**\n🔗 ${playUrl}\n*Clic en el enlace para jugar directamente*`,
+        content: `🎮 **${cache.gameData.name}**\n🔗 ${playUrl}\n*Clic en el enlace para jugar directamente.*`,
         ephemeral: true,
-      })
+      });
     } else if (action === "refreshRoblox") {
       try {
         await interaction.deferUpdate()
@@ -674,7 +681,7 @@ async function handleRobloxSearch(message, args) {
       totalMaxPlayers,
       gameIcon,
       serversPage: 0,
-      isEphemeral: true, // Añadir estado de visibilidad
+      isEphemeral: true,
     })
 
     const embed = new EmbedBuilder()
@@ -799,7 +806,6 @@ async function handleToggleVisibility(interaction) {
   cache.isEphemeral = !cache.isEphemeral
   robloxSearchCache.set(userId, cache)
 
-  // Re-renderizar el mensaje con la nueva visibilidad
   const embed = new EmbedBuilder()
     .setTitle(`🎮 ${cache.gameData.name}`)
     .setDescription(`**📊 Estadísticas del Juego:**
