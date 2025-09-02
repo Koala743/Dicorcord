@@ -206,6 +206,29 @@ function createPlayerBar(current, max) {
   return bar
 }
 
+async function checkImageExists(url) {
+  try {
+    const response = await axios.head(url)
+    return response.status === 200
+  } catch {
+    return false
+  }
+}
+
+async function getGamePassThumbnail(passId) {
+  try {
+    const url = `https://thumbnails.roblox.com/v1/game-passes?gamePassIds=${passId}&size=150x150&format=Png&isCircular=false`
+    const response = await axios.get(url)
+    const data = response.data.data?.[0]
+    if (data && data.imageUrl) {
+      return data.imageUrl
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 async function handleGamePassesView(interaction, cache, page = 0) {
   const { universeId, gameData, gameIcon } = cache
 
@@ -237,16 +260,21 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     const endIndex = startIndex + passesPerPage
     const currentPasses = gamePasses.slice(startIndex, endIndex)
 
-    const embeds = currentPasses.map((pass, i) => {
+    const embeds = []
+    for (let i = 0; i < currentPasses.length; i++) {
+      const pass = currentPasses[i]
       const globalIndex = startIndex + i + 1
-      const passImageUrl = `https://tr.rbxcdn.com/${pass.id}/150/150/Image/Png`
+      const thumbnailUrl = await getGamePassThumbnail(pass.id)
 
-      return new EmbedBuilder()
+      const embed = new EmbedBuilder()
         .setTitle(`${globalIndex}. ${pass.name}`)
         .setDescription(`🆔 ID: \`${pass.id}\`\n🔗 [Ver Pase](https://www.roblox.com/game-pass/${pass.id})`)
-        .setThumbnail(passImageUrl)
         .setColor("#FFD700")
-    })
+
+      if (thumbnailUrl) embed.setThumbnail(thumbnailUrl)
+
+      embeds.push(embed)
+    }
 
     const mainEmbed = new EmbedBuilder()
       .setTitle(`🎫 ${gameData.name} - Pases del Juego`)
@@ -296,8 +324,6 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     await interaction.editReply({ embeds: [embed], components: [backButton] })
   }
 }
-
-
 
 
 async function handleRobloxNavigation(interaction, action) {
