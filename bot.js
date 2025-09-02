@@ -119,6 +119,32 @@ async function searchRobloxPlayer(query) {
 
   const avatarData = avatarResponse.data.data?.[0]
 
+  let currentlyPlaying = "N/A"
+  try {
+    const presenceUrl = `https://presence.roblox.com/v1/users/${playerId}/presence`
+    const presenceResponse = await axios.post(presenceUrl, { userIds: [playerId] }, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Content-Type": "application/json",
+      },
+    })
+    const presenceData = presenceResponse.data.userPresences?.[0]
+    if (presenceData && presenceData.userPresenceType === 2 && presenceData.universeId) {
+      const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${presenceData.universeId}`
+      const gameInfoResponse = await axios.get(gameInfoUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      })
+      const game = gameInfoResponse.data.data?.[0]
+      if (game) {
+        currentlyPlaying = game.name
+      }
+    }
+  } catch (error) {
+    console.error("Error obteniendo presencia del jugador:", error.message)
+  }
+
   return {
     id: playerData.id,
     name: playerData.name,
@@ -128,6 +154,7 @@ async function searchRobloxPlayer(query) {
     isBanned: playerData.isBanned,
     avatar: avatarData?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/420/420/Avatar/Png`,
     profileUrl: `https://www.roblox.com/users/${playerId}/profile`,
+    currentlyPlaying: currentlyPlaying,
   }
 }
 
@@ -279,7 +306,7 @@ async function handlePlayerSearchResult(interaction, query) {
   const embed = new EmbedBuilder()
     .setTitle(`👤 ${playerData.displayName} (@${playerData.name})`)
     .setDescription(
-      `**📝 Descripción:**\n${playerData.description}\n\n**📅 Cuenta creada:** ${createdDate}\n**🆔 ID:** ${playerData.id}\n**🚫 Baneado:** ${playerData.isBanned ? "Sí" : "No"}`,
+      `**📝 Descripción:**\n${playerData.description}\n\n**📅 Cuenta creada:** ${createdDate}\n**🆔 ID:** ${playerData.id}\n**🚫 Baneado:** ${playerData.isBanned ? "Sí" : "No"}\n**🎮 Jugando:** ${playerData.currentlyPlaying}`
     )
     .setColor("#00b2ff")
     .setThumbnail(playerData.avatar)
@@ -324,8 +351,6 @@ async function handleGamePassesView(interaction, cache, page = 0) {
     const endIndex = startIndex + passesPerPage
     const currentPasses = gamePasses.slice(startIndex, endIndex)
 
-    let passesList = `**🎫 PASES DEL JUEGO (Página ${page + 1}/${totalPages}):**\n\n`
-
     const embeds = []
     for (let i = 0; i < currentPasses.length; i++) {
       const pass = currentPasses[i]
@@ -335,7 +360,7 @@ async function handleGamePassesView(interaction, cache, page = 0) {
 
       const passEmbed = new EmbedBuilder()
         .setTitle(`${globalIndex}. ${pass.name}`)
-        .setDescription(`💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})`)
+        .setDescription(`💰 **Precio:** ${price}\n🎫 **ID:** ${pass.id}\n🔗 [Ver Pase](https://www.roblox.com/es/game-pass/${pass.id})\n🖼️ [Imagen del Pase](${passIconUrl})`)
         .setThumbnail(passIconUrl)
         .setColor("#FFD700")
 
@@ -427,10 +452,10 @@ async function handleRobloxNavigation(interaction, action) {
     } else if (action === "playRoblox") {
       let playUrl;
       if (cache.publicServers && cache.publicServers.length > 0) {
-        const selectedServer = cache.publicServers[0]; // Choose the first available server
+        const selectedServer = cache.publicServers[0];
         playUrl = `https://www.roblox.com/games/start?placeId=${cache.placeId}&gameInstanceId=${selectedServer.id}`;
       } else {
-        playUrl = `https://www.roblox.com/games/${cache.placeId}`; // Fallback to general game page
+        playUrl = `https://www.roblox.com/games/${cache.placeId}`;
       }
 
       return interaction.reply({
@@ -494,11 +519,6 @@ async function handleRobloxNavigation(interaction, action) {
           .setTimestamp()
 
         const row1 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`publicRoblox-${userId}`)
-            .setLabel("🌐 Ver Servidores")
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(totalServers === 0),
           new ButtonBuilder().setCustomId(`playRoblox-${userId}`).setLabel("🎮 Jugar").setStyle(ButtonStyle.Success),
           new ButtonBuilder()
             .setCustomId(`refreshRoblox-${userId}`)
@@ -544,11 +564,6 @@ async function handleRobloxNavigation(interaction, action) {
         .setTimestamp()
 
       const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`publicRoblox-${userId}`)
-          .setLabel("🌐 Ver Servidores")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(cache.totalServers === 0),
         new ButtonBuilder().setCustomId(`playRoblox-${userId}`).setLabel("🎮 Jugar").setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(`refreshRoblox-${userId}`)
@@ -707,11 +722,6 @@ async function handleRobloxSearch(message, args) {
 
     const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`publicRoblox-${message.author.id}`)
-        .setLabel("🌐 Ver Servidores")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(totalServers === 0),
-      new ButtonBuilder()
         .setCustomId(`playRoblox-${message.author.id}`)
         .setLabel("🎮 Jugar")
         .setStyle(ButtonStyle.Success),
@@ -732,14 +742,7 @@ async function handleRobloxSearch(message, args) {
         .setStyle(ButtonStyle.Secondary),
     )
 
-    const visibilityRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`toggleVisibility-${message.author.id}`)
-        .setLabel("👁️ Alternar Visibilidad")
-        .setStyle(ButtonStyle.Secondary),
-    )
-
-    await message.reply({ embeds: [embed], components: [row1, row2, visibilityRow], ephemeral: true })
+    await message.reply({ embeds: [embed], components: [row1, row2], ephemeral: true })
   } catch (error) {
     console.error("Error en búsqueda de Roblox:", error.message)
     return message.reply(`❌ Error al obtener información de Roblox: ${error.message}`)
@@ -782,9 +785,7 @@ client.on("interactionCreate", async (interaction) => {
         return
       }
 
-      if (customId.startsWith("toggleVisibility")) {
-        await handleToggleVisibility(interaction)
-      } else if (customId.includes("Roblox")) {
+      if (customId.includes("Roblox")) {
         await handleRobloxNavigation(interaction, customId.split("-")[0])
       }
     } else if (interaction.isModalSubmit()) {
@@ -794,75 +795,6 @@ client.on("interactionCreate", async (interaction) => {
     console.error("Error en interactionCreate:", error)
   }
 })
-
-async function handleToggleVisibility(interaction) {
-  const userId = interaction.user.id
-  const cache = robloxSearchCache.get(userId)
-
-  if (!cache) {
-    return interaction.reply({ content: "❌ No hay datos de juego para alternar visibilidad.", ephemeral: true })
-  }
-
-  cache.isEphemeral = !cache.isEphemeral
-  robloxSearchCache.set(userId, cache)
-
-  const embed = new EmbedBuilder()
-    .setTitle(`🎮 ${cache.gameData.name}`)
-    .setDescription(`**📊 Estadísticas del Juego:**
-
-**👥 JUGADORES TOTALES: ${cache.totalPlayers.toLocaleString()}/${cache.totalMaxPlayers.toLocaleString()}**
-
-**🌐 Servidores Públicos:**
-🟢 Servidores: ${cache.totalServers}
-👥 Jugadores: ${cache.totalPlayers.toLocaleString()}/${cache.totalMaxPlayers.toLocaleString()}
-
-**📈 Información General:**
-⭐ Rating: ${cache.gameData.totalUpVotes?.toLocaleString() || 0}👍 / ${cache.gameData.totalDownVotes?.toLocaleString() || 0}👎
-🎯 Visitas: ${cache.gameData.visits?.toLocaleString() || "N/A"}
-🎮 Jugando ahora: ${cache.gameData.playing?.toLocaleString() || cache.totalPlayers.toLocaleString()}`)
-    .setColor("#00b2ff")
-    .setThumbnail(cache.gameIcon)
-    .setFooter({
-      text: `ID: ${cache.placeId} | Universe ID: ${cache.universeId} | Total de servidores: ${cache.totalServers}`,
-    })
-    .setTimestamp()
-
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`publicRoblox-${userId}`)
-      .setLabel("🌐 Ver Servidores")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(cache.totalServers === 0),
-    new ButtonBuilder()
-      .setCustomId(`playRoblox-${userId}`)
-      .setLabel("🎮 Jugar")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`refreshRoblox-${userId}`)
-      .setLabel("🔄 Actualizar")
-      .setStyle(ButtonStyle.Secondary),
-  )
-
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`searchPlayerRoblox-${userId}`)
-      .setLabel("👤 Buscar Jugador")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`gamePassesRoblox-${userId}`)
-      .setLabel("🎫 Pases del Juego")
-      .setStyle(ButtonStyle.Secondary),
-  )
-
-  const visibilityRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`toggleVisibility-${userId}`)
-      .setLabel("👁️ Alternar Visibilidad")
-      .setStyle(ButtonStyle.Secondary),
-  )
-
-  await interaction.update({ embeds: [embed], components: [row1, row2, visibilityRow], ephemeral: cache.isEphemeral })
-}
 
 async function handleModalSubmit(interaction) {
   if (interaction.customId === "playerSearchModal") {
