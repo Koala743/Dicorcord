@@ -8,6 +8,7 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const axios = require("axios");
+const cheerio = require("cheerio");
 
 const client = new Client({
   intents: [
@@ -119,6 +120,25 @@ async function makeGoogleAPIRequest(query, site) {
   return allItems;
 }
 
+async function extractComicImage(url) {
+  try {
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+    let imgUrl = null;
+    imgUrl = $(".comic-image img").attr("src");
+    if (!imgUrl) {
+      imgUrl = $("img").first().attr("src");
+    }
+    if (imgUrl && !imgUrl.startsWith("http")) {
+      const baseUrl = new URL(url);
+      imgUrl = baseUrl.origin + imgUrl;
+    }
+    return imgUrl || null;
+  } catch {
+    return null;
+  }
+}
+
 const comicCache = new Map();
 
 client.on("messageCreate", async (message) => {
@@ -148,7 +168,8 @@ client.on("messageCreate", async (message) => {
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isStringSelectMenu()) {
     const [action, userId] = interaction.customId.split("-");
-    if (interaction.user.id !== userId) return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
 
     if (action === "siteSelect") {
       const site = interaction.values[0];
@@ -161,7 +182,7 @@ client.on("interactionCreate", async (interaction) => {
 
         comicCache.set(userId, { items, index: 0 });
 
-        const embed = createEmbed(items[0], 1, items.length);
+        const embed = await createEmbed(items[0], 1, items.length);
         const buttons = createButtons(userId, 0, items.length);
 
         await interaction.update({ content: "", embeds: [embed], components: [buttons] });
@@ -171,7 +192,8 @@ client.on("interactionCreate", async (interaction) => {
     }
   } else if (interaction.isButton()) {
     const [action, userId] = interaction.customId.split("-");
-    if (interaction.user.id !== userId) return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
 
     const data = comicCache.get(userId);
     if (!data || !data.items) return interaction.reply({ content: "No hay búsqueda activa.", ephemeral: true });
@@ -182,21 +204,26 @@ client.on("interactionCreate", async (interaction) => {
 
     comicCache.set(userId, { ...data, index: idx });
 
-    const embed = createEmbed(data.items[idx], idx + 1, data.items.length);
+    const embed = await createEmbed(data.items[idx], idx + 1, data.items.length);
     const buttons = createButtons(userId, idx, data.items.length);
 
     await interaction.update({ embeds: [embed], components: [buttons] });
   }
 });
 
-function createEmbed(item, current, total) {
+async function createEmbed(item, current, total) {
+  let imageUrl = item.pagemap?.cse_image?.[0]?.src || null;
+
+  if (!imageUrl && item.link) {
+    imageUrl = await extractComicImage(item.link);
+  }
+
   const embed = new EmbedBuilder()
     .setTitle(item.title + " 📚")
     .setURL(item.link)
     .setDescription(item.snippet || "Sin descripción")
     .setFooter({ text: `Resultado ${current} de ${total}` });
 
-  const imageUrl = item.pagemap?.cse_image?.[0]?.src;
   if (imageUrl) {
     embed.setImage(imageUrl);
   } else {
@@ -208,8 +235,16 @@ function createEmbed(item, current, total) {
 
 function createButtons(userId, index, total) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`prev-${userId}`).setLabel("⬅️").setStyle(ButtonStyle.Primary).setDisabled(index === 0),
-    new ButtonBuilder().setCustomId(`next-${userId}`).setLabel("➡️").setStyle(ButtonStyle.Primary).setDisabled(index === total - 1)
+    new ButtonBuilder()
+      .setCustomId(`prev-${userId}`)
+      .setLabel("⬅️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(index === 0),
+    new ButtonBuilder()
+      .setCustomId(`next-${userId}`)
+      .setLabel("➡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(index === total - 1)
   );
 }
 
