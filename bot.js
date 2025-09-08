@@ -6,6 +6,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  AttachmentBuilder,
 } = require("discord.js");
 const axios = require("axios");
 const cheerio = require("cheerio");
@@ -123,17 +124,34 @@ async function makeGoogleAPIRequest(query, site) {
 async function extractComicImage(url) {
   try {
     const { data } = await axios.get(url);
+    const cheerio = require("cheerio");
     const $ = cheerio.load(data);
-    let imgUrl = null;
-    imgUrl = $(".comic-image img").attr("src");
+    let imgUrl = $(".comic-image img").attr("src");
     if (!imgUrl) {
-      imgUrl = $("img").first().attr("src");
+      let maxArea = 0;
+      $("img").each((i, el) => {
+        const w = parseInt($(el).attr("width")) || 0;
+        const h = parseInt($(el).attr("height")) || 0;
+        if (w * h > maxArea) {
+          maxArea = w * h;
+          imgUrl = $(el).attr("src");
+        }
+      });
     }
     if (imgUrl && !imgUrl.startsWith("http")) {
       const baseUrl = new URL(url);
       imgUrl = baseUrl.origin + imgUrl;
     }
     return imgUrl || null;
+  } catch {
+    return null;
+  }
+}
+
+async function downloadImageBuffer(url) {
+  try {
+    const response = await axios.get(url, { responseType: "arraybuffer" });
+    return Buffer.from(response.data, "binary");
   } catch {
     return null;
   }
@@ -182,10 +200,11 @@ client.on("interactionCreate", async (interaction) => {
 
         comicCache.set(userId, { items, index: 0 });
 
-        const embed = await createEmbed(items[0], 1, items.length);
+        const { embed, attachment } = await createEmbedWithAttachment(items[0], 1, items.length);
+
         const buttons = createButtons(userId, 0, items.length);
 
-        await interaction.update({ content: "", embeds: [embed], components: [buttons] });
+        await interaction.update({ content: "", embeds: [embed], components: [buttons], files: attachment ? [attachment] : [] });
       } catch {
         await interaction.update({ content: "Error buscando comics.", components: [] });
       }
@@ -204,14 +223,14 @@ client.on("interactionCreate", async (interaction) => {
 
     comicCache.set(userId, { ...data, index: idx });
 
-    const embed = await createEmbed(data.items[idx], idx + 1, data.items.length);
+    const { embed, attachment } = await createEmbedWithAttachment(data.items[idx], idx + 1, data.items.length);
     const buttons = createButtons(userId, idx, data.items.length);
 
-    await interaction.update({ embeds: [embed], components: [buttons] });
+    await interaction.update({ embeds: [embed], components: [buttons], files: attachment ? [attachment] : [] });
   }
 });
 
-async function createEmbed(item, current, total) {
+async function createEmbedWithAttachment(item, current, total) {
   let imageUrl = item.pagemap?.cse_image?.[0]?.src || null;
 
   if (!imageUrl && item.link) {
@@ -225,12 +244,19 @@ async function createEmbed(item, current, total) {
     .setFooter({ text: `Resultado ${current} de ${total}` });
 
   if (imageUrl) {
-    embed.setImage(imageUrl);
+    const buffer = await downloadImageBuffer(imageUrl);
+    if (buffer) {
+      const attachment = new AttachmentBuilder(buffer, { name: "comic.jpg" });
+      embed.setImage("attachment://comic.jpg");
+      return { embed, attachment };
+    } else {
+      embed.setDescription((item.snippet || "") + "\n\n⚠️ Imagen no disponible (falló descarga)");
+      return { embed, attachment: null };
+    }
   } else {
     embed.setDescription((item.snippet || "") + "\n\n⚠️ Imagen no disponible");
+    return { embed, attachment: null };
   }
-
-  return embed;
 }
 
 function createButtons(userId, index, total) {
