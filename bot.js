@@ -9,13 +9,12 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  AttachmentBuilder,
-} = require("discord.js")
-const axios = require("axios")
-const fs = require("fs")
-const path = require("path")
-const cheerio = require("cheerio")
-const puppeteer = require("puppeteer")
+} = require("discord.js");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const cheerio = require("cheerio");
+const puppeteer = require("puppeteer");
 
 const client = new Client({
   intents: [
@@ -24,11 +23,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
   ],
-})
-
-// Eliminado CHANNELS
-// Eliminado LANGUAGES
-// Eliminado ROLE_CONFIG
+});
 
 const API_POOLS = {
   google: [
@@ -83,7 +78,7 @@ const API_POOLS = {
       lastReset: new Date().toDateString(),
     },
   ],
-}
+};
 
 const COMIC_SITES = [
   { label: "Chochox", value: "chochox.com", emoji: "🔴" },
@@ -91,144 +86,127 @@ const COMIC_SITES = [
   { label: "Ver Comics Porno", value: "ver-comics-porno.com", emoji: "🟣" },
   { label: "Hitomi", value: "hitomi.la", emoji: "🟠" },
   { label: "Ver Comics Porno XXX", value: "vercomicsporno.xxx", emoji: "🟢" },
-]
-
-const COMMANDS_LIST = [
-  {
-    name: ".cmx [búsqueda]",
-    description: "Busca comics adultos en sitios especializados",
-    example: ".cmx naruto",
-    category: "🔞 Adulto",
-  },
-]
+];
 
 class APIManager {
   constructor() {
-    this.loadAPIStatus()
-    this.resetDailyCounters()
+    this.loadAPIStatus();
+    this.resetDailyCounters();
   }
 
   getNextAvailableAPI(type = "google") {
-    const apis = API_POOLS[type]
-    if (!apis) return null
+    const apis = API_POOLS[type];
+    if (!apis) return null;
     for (const api of apis) {
       if (api.active && !api.quotaExhausted && api.dailyRequests < api.maxDailyRequests) {
-        return api
+        return api;
       }
     }
-    this.resetDailyCounters()
+    this.resetDailyCounters();
     for (const api of apis) {
       if (api.active && !api.quotaExhausted) {
-        return api
+        return api;
       }
     }
-    return null
+    return null;
   }
 
   markAPIAsExhausted(apiId, type = "google") {
-    const apis = API_POOLS[type]
-    const api = apis.find((a) => a.id === apiId)
+    const apis = API_POOLS[type];
+    const api = apis.find((a) => a.id === apiId);
     if (api) {
-      api.quotaExhausted = true
-      console.log(`⚠️ API ${apiId} marcada como agotada. Cambiando a la siguiente...`)
-      this.saveAPIStatus()
+      api.quotaExhausted = true;
+      console.log(`⚠️ API ${apiId} marcada como agotada. Cambiando a la siguiente...`);
+      this.saveAPIStatus();
     }
   }
 
   incrementRequestCount(apiId, type = "google") {
-    const apis = API_POOLS[type]
-    const api = apis.find((a) => a.id === apiId)
+    const apis = API_POOLS[type];
+    const api = apis.find((a) => a.id === apiId);
     if (api) {
-      api.dailyRequests++
+      api.dailyRequests++;
       if (api.dailyRequests >= api.maxDailyRequests) {
-        api.quotaExhausted = true
-        console.log(`📊 API ${apiId} alcanzó el límite diario (${api.maxDailyRequests} requests)`)
+        api.quotaExhausted = true;
+        console.log(`📊 API ${apiId} alcanzó el límite diario (${api.maxDailyRequests} requests)`);
       }
-      this.saveAPIStatus()
+      this.saveAPIStatus();
     }
   }
 
   resetDailyCounters() {
-    const today = new Date().toDateString()
+    const today = new Date().toDateString();
     Object.keys(API_POOLS).forEach((type) => {
       API_POOLS[type].forEach((api) => {
         if (api.lastReset !== today) {
-          api.dailyRequests = 0
-          api.quotaExhausted = false
-          api.lastReset = today
-          console.log(`🔄 Reseteando contadores para API ${api.id}`)
+          api.dailyRequests = 0;
+          api.quotaExhausted = false;
+          api.lastReset = today;
+          console.log(`🔄 Reseteando contadores para API ${api.id}`);
         }
-      })
-    })
-    this.saveAPIStatus()
+      });
+    });
+    this.saveAPIStatus();
   }
 
   saveAPIStatus() {
     try {
-      fs.writeFileSync("./apiStatus.json", JSON.stringify(API_POOLS, null, 2))
+      fs.writeFileSync("./apiStatus.json", JSON.stringify(API_POOLS, null, 2));
     } catch (error) {
-      console.error("Error guardando estado de APIs:", error)
+      console.error("Error guardando estado de APIs:", error);
     }
   }
 
   loadAPIStatus() {
     try {
-      const data = fs.readFileSync("./apiStatus.json", "utf8")
-      const savedPools = JSON.parse(data)
+      const data = fs.readFileSync("./apiStatus.json", "utf8");
+      const savedPools = JSON.parse(data);
       Object.keys(savedPools).forEach((type) => {
         if (API_POOLS[type]) {
           savedPools[type].forEach((savedApi) => {
-            const currentApi = API_POOLS[type].find((a) => a.id === savedApi.id)
+            const currentApi = API_POOLS[type].find((a) => a.id === savedApi.id);
             if (currentApi) {
-              currentApi.dailyRequests = savedApi.dailyRequests || 0
-              currentApi.quotaExhausted = savedApi.quotaExhausted || false
-              currentApi.lastReset = savedApi.lastReset || new Date().toDateString()
+              currentApi.dailyRequests = savedApi.dailyRequests || 0;
+              currentApi.quotaExhausted = savedApi.quotaExhausted || false;
+              currentApi.lastReset = savedApi.lastReset || new Date().toDateString();
             }
-          })
+          });
         }
-      })
+      });
     } catch (error) {
-      console.log("📝 Creando nuevo archivo de estado de APIs...")
-      this.saveAPIStatus()
+      console.log("📝 Creando nuevo archivo de estado de APIs...");
+      this.saveAPIStatus();
     }
   }
 
-  getAPIStats(type = "google") {
-    const apis = API_POOLS[type]
-    const active = apis.filter((a) => a.active && !a.quotaExhausted).length
-    const total = apis.length
-    const totalRequests = apis.reduce((sum, api) => sum + api.dailyRequests, 0)
-    return { active, total, totalRequests }
-  }
-
   getCurrentAPIInfo(type = "google") {
-    const api = this.getNextAvailableAPI(type)
-    if (!api) return null
-    const remaining = api.maxDailyRequests - api.dailyRequests
+    const api = this.getNextAvailableAPI(type);
+    if (!api) return null;
+    const remaining = api.maxDailyRequests - api.dailyRequests;
     return {
       id: api.id,
       remaining: remaining,
       used: api.dailyRequests,
       max: api.maxDailyRequests,
-    }
+    };
   }
 }
 
 class ComicScraper {
   constructor() {
-    this.comicCache = new Map()
+    this.comicCache = new Map();
   }
 
   async scrapeChochoxAPI(query) {
     try {
-      const searchUrl = `https://chochox.com/api/search?q=${encodeURIComponent(query)}&limit=20`
+      const searchUrl = `https://chochox.com/api/search?q=${encodeURIComponent(query)}&limit=20`;
       const response = await axios.get(searchUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           Accept: "application/json",
           Referer: "https://chochox.com/",
         },
-      })
+      });
 
       if (response.data && response.data.results) {
         return response.data.results.map((comic) => ({
@@ -238,23 +216,23 @@ class ComicScraper {
           pages: comic.pages || 0,
           id: comic.id,
           slug: comic.slug,
-        }))
+        }));
       }
     } catch (error) {
-      console.log("API de Chochox no disponible, usando scraping...")
+      console.log("API de Chochox no disponible, usando scraping...");
     }
-    return null
+    return null;
   }
 
   async scrapeReyComixAPI(query) {
     try {
-      const searchUrl = `https://reycomix.com/wp-json/wp/v2/posts?search=${encodeURIComponent(query)}&per_page=20`
+      const searchUrl = `https://reycomix.com/wp-json/wp/v2/posts?search=${encodeURIComponent(query)}&per_page=20`;
       const response = await axios.get(searchUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           Accept: "application/json",
         },
-      })
+      });
 
       if (response.data && Array.isArray(response.data)) {
         return response.data.map((comic) => ({
@@ -263,31 +241,31 @@ class ComicScraper {
           thumbnail: comic.featured_media_url,
           excerpt: comic.excerpt.rendered.replace(/<[^>]*>/g, ""),
           id: comic.id,
-        }))
+        }));
       }
     } catch (error) {
-      console.log("API de ReyComix no disponible, usando scraping...")
+      console.log("API de ReyComix no disponible, usando scraping...");
     }
-    return null
+    return null;
   }
 
   async getComicPages(comicUrl, site) {
     try {
       if (site === "chochox.com") {
-        return await this.getChochoxPages(comicUrl)
+        return await this.getChochoxPages(comicUrl);
       } else if (site === "reycomix.com") {
-        return await this.getReyComixPages(comicUrl)
+        return await this.getReyComixPages(comicUrl);
       }
     } catch (error) {
-      console.error("Error obteniendo páginas del comic:", error)
+      console.error("Error obteniendo páginas del comic:", error);
     }
-    return null
+    return null;
   }
 
   async getChochoxPages(comicUrl) {
     try {
-      const comicId = comicUrl.split("/").pop()
-      const apiUrl = `https://chochox.com/api/comic/${comicId}/pages`
+      const comicId = comicUrl.split("/").pop();
+      const apiUrl = `https://chochox.com/api/comic/${comicId}/pages`;
 
       const response = await axios.get(apiUrl, {
         headers: {
@@ -295,7 +273,7 @@ class ComicScraper {
           Accept: "application/json",
           Referer: comicUrl,
         },
-      })
+      });
 
       if (response.data && response.data.pages) {
         return {
@@ -307,55 +285,54 @@ class ComicScraper {
           })),
           totalPages: response.data.pages.length,
           sourceUrl: comicUrl,
-        }
+        };
       }
     } catch (error) {
-      console.log("API no disponible, usando scraping tradicional...")
-      return await this.scrapeChochoxComic(comicUrl)
+      console.log("API no disponible, usando scraping tradicional...");
+      return await this.scrapeChochoxComic(comicUrl);
     }
-    return null
+    return null;
   }
 
   async getReyComixPages(comicUrl) {
     try {
-      const browser = await puppeteer.launch({ headless: true })
-      const page = await browser.newPage()
+      const browser = await puppeteer.launch({ headless: true });
+      const page = await browser.newPage();
 
-      await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-      await page.goto(comicUrl, { waitUntil: "networkidle2" })
+      await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+      await page.goto(comicUrl, { waitUntil: "networkidle2" });
 
       const comicData = await page.evaluate(() => {
-        const title =
-          document.querySelector("h1")?.textContent || "Comic"
-        const images = []
+        const title = document.querySelector("h1")?.textContent || "Comic";
+        const images = [];
 
         document.querySelectorAll("img").forEach((img, index) => {
-          const src = img.src || img.getAttribute("data-src")
+          const src = img.src || img.getAttribute("data-src");
           if (src && (src.includes(".jpg") || src.includes(".png") || src.includes(".webp"))) {
             if (!src.includes("logo") && !src.includes("banner")) {
               images.push({
                 url: src,
                 index: index + 1,
                 filename: `page_${index + 1}.jpg`,
-              })
+              });
             }
           }
-        })
+        });
 
-        return { title, images }
-      })
+        return { title, images };
+      });
 
-      await browser.close()
+      await browser.close();
 
       return {
         title: comicData.title,
         pages: comicData.images,
         totalPages: comicData.images.length,
         sourceUrl: comicUrl,
-      }
+      };
     } catch (error) {
-      console.error("Error scraping ReyComix:", error)
-      return null
+      console.error("Error scraping ReyComix:", error);
+      return null;
     }
   }
 
@@ -364,161 +341,137 @@ class ComicScraper {
       const browser = await puppeteer.launch({
         headless: true,
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      })
-      const page = await browser.newPage()
+      });
+      const page = await browser.newPage();
 
       await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      )
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+      );
 
-      await page.goto(comicUrl, { waitUntil: "networkidle2" })
-      await page.waitForTimeout(3000)
+      await page.goto(comicUrl, { waitUntil: "networkidle2" });
+      await page.waitForTimeout(3000);
 
-      const content = await page.content()
-      const $ = cheerio.load(content)
+      const content = await page.content();
+      const $ = cheerio.load(content);
 
-      const images = []
-      const comicTitle = $("h1").first().text() || "Comic"
+      const images = [];
+      const comicTitle = $("h1").first().text() || "Comic";
 
       $("img").each((i, elem) => {
-        const src = $(elem).attr("src") || $(elem).attr("data-src")
+        const src = $(elem).attr("src") || $(elem).attr("data-src");
         if (src && this.isComicImage(src)) {
           images.push({
             url: this.normalizeImageUrl(src, comicUrl),
             index: this.extractImageNumber(src),
-            filename: this.extractFilename(src),
-          })
+            filename: `page_${this.extractImageNumber(src)}.jpg`,
+          });
         }
-      })
+      });
 
       $('div[style*="background-image"]').each((i, elem) => {
-        const style = $(elem).attr("style")
-        const match = style.match(/background-image:\s*url$$['"]?([^'"]+)['"]?$$/)
+        const style = $(elem).attr("style");
+        const match = style.match(/background-image:\s*url\(['"]?([^'"]+)['"]?\)/);
         if (match && this.isComicImage(match[1])) {
           images.push({
             url: this.normalizeImageUrl(match[1], comicUrl),
             index: this.extractImageNumber(match[1]),
-            filename: this.extractFilename(match[1]),
-          })
+            filename: `page_${this.extractImageNumber(match[1])}.jpg`,
+          });
         }
-      })
+      });
 
-      await browser.close()
+      await browser.close();
 
-      images.sort((a, b) => a.index - b.index)
+      images.sort((a, b) => a.index - b.index);
 
       return {
         title: comicTitle,
         pages: images,
         totalPages: images.length,
         sourceUrl: comicUrl,
-      }
+      };
     } catch (error) {
-      console.error("Error scraping comic:", error)
-      return null
+      console.error("Error scraping comic:", error);
+      return null;
     }
   }
 
   isComicImage(src) {
-    const imageExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif"]
-    const lowerSrc = src.toLowerCase()
+    const imageExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+    const lowerSrc = src.toLowerCase();
     return (
       imageExtensions.some((ext) => lowerSrc.includes(ext)) &&
       !lowerSrc.includes("logo") &&
       !lowerSrc.includes("banner") &&
       !lowerSrc.includes("ad")
-    )
+    );
   }
 
   extractImageNumber(src) {
-    const match = src.match(/(\d+)\.(?:jpg|jpeg|png|webp|gif)/i)
-    return match ? Number.parseInt(match[1]) : 0
-  }
-
-  extractFilename(src) {
-    return src.split("/").pop()
+    const match = src.match(/(\d+)\.(?:jpg|jpeg|png|webp|gif)/i);
+    return match ? Number.parseInt(match[1]) : 0;
   }
 
   normalizeImageUrl(src, baseUrl) {
-    if (src.startsWith("http")) return src
-    if (src.startsWith("//")) return "https:" + src
-    if (src.startsWith("/")) return new URL(baseUrl).origin + src
-    return new URL(src, baseUrl).href
+    if (src.startsWith("http")) return src;
+    if (src.startsWith("//")) return "https:" + src;
+    if (src.startsWith("/")) return new URL(baseUrl).origin + src;
+    return new URL(src, baseUrl).href;
   }
 }
 
-// Eliminado EnhancedXXXSearch (ya que .xxx no es un comando permitido)
-
-const apiManager = new APIManager()
-const comicScraper = new ComicScraper()
-// Eliminado enhancedXXXSearch
+const apiManager = new APIManager();
+const comicScraper = new ComicScraper();
 
 async function makeGoogleAPIRequest(url, type = "google") {
-  let attempts = 0
-  const maxAttempts = API_POOLS[type].length
+  let attempts = 0;
+  const maxAttempts = API_POOLS[type].length;
 
   while (attempts < maxAttempts) {
-    const api = apiManager.getNextAvailableAPI(type)
+    const api = apiManager.getNextAvailableAPI(type);
     if (!api) {
-      throw new Error(`❌ Todas las APIs de ${type} están agotadas. Intenta mañana.`)
+      throw new Error(`❌ Todas las APIs de ${type} están agotadas. Intenta mañana.`);
     }
 
-    const finalUrl = url.replace("GOOGLE_API_KEY", api.apiKey).replace("GOOGLE_CX", api.cx)
+    const finalUrl = url.replace("GOOGLE_API_KEY", api.apiKey).replace("GOOGLE_CX", api.cx);
 
     try {
-      console.log(`🔄 Usando API ${api.id} (Request #${api.dailyRequests + 1})`)
-      const response = await axios.get(finalUrl)
-      apiManager.incrementRequestCount(api.id, type)
-      return response
+      console.log(`🔄 Usando API ${api.id} (Request #${api.dailyRequests + 1})`);
+      const response = await axios.get(finalUrl);
+      apiManager.incrementRequestCount(api.id, type);
+      return response;
     } catch (error) {
-      attempts++
+      attempts++;
       if (
         error.response?.status === 429 ||
         error.response?.data?.error?.message?.includes("quota") ||
         error.response?.data?.error?.message?.includes("limit")
       ) {
-        console.log(`⚠️ Cuota agotada en API ${api.id}. Cambiando a la siguiente...`)
-        apiManager.markAPIAsExhausted(api.id, type)
-        continue
+        console.log(`⚠️ Cuota agotada en API ${api.id}. Cambiando a la siguiente...`);
+        apiManager.markAPIAsExhausted(api.id, type);
+        continue;
       }
       if (attempts >= maxAttempts) {
-        throw error
+        throw error;
       }
     }
   }
-  throw new Error(`❌ Todas las APIs de ${type} fallaron después de ${maxAttempts} intentos`)
+  throw new Error(`❌ Todas las APIs de ${type} fallaron después de ${maxAttempts} intentos`);
 }
 
-// Eliminado imageSearchCache
-// Eliminado pendingXXXSearch
-// Eliminado xxxSearchCache
-const pendingComicSearch = new Map()
-const comicSearchCache = new Map()
+const pendingComicSearch = new Map();
+const comicSearchCache = new Map();
 
-// Eliminado loadPreferences, savePreferences, loadSavedGames, saveSavedGames, getUserLanguage, getTranslation
-
-async function logError(channel, error, context = "") {
-  // Simplificado: solo loguea a consola, no envía a Discord
-  console.error(`🚨 Error Detectado - Contexto: ${context} - Error: ${error.message} - Stack: ${error.stack}`)
+function logError(channel, error, context = "") {
+  console.error(`🚨 Error Detectado - Contexto: ${context} - Error: ${error.message} - Stack: ${error.stack}`);
 }
-
-// Eliminado isImageUrlValid (ya no se usa para .web)
-
-async function sendWarning(interactionOrMessage, text) {
-  const reply = await interactionOrMessage.reply({ content: text, ephemeral: true })
-  setTimeout(() => {
-    if (reply?.delete) reply.delete().catch(() => {})
-  }, 5000)
-}
-
-// Eliminado todas las funciones de Roblox, traducción, chat, etc.
 
 async function handleComicCompleteView(interaction, comicData) {
-  const { title, pages, sourceUrl } = comicData
-  const userId = interaction.user.id
+  const { title, pages, sourceUrl } = comicData;
+  const userId = interaction.user.id;
 
   if (!pages || pages.length === 0) {
-    return interaction.reply({ content: "❌ No se encontraron imágenes del comic.", ephemeral: true })
+    return interaction.reply({ content: "❌ No se encontraron imágenes del comic.", ephemeral: true });
   }
 
   comicSearchCache.set(userId, {
@@ -526,35 +479,35 @@ async function handleComicCompleteView(interaction, comicData) {
     comicData: comicData,
     viewingComplete: true,
     currentImageIndex: 0,
-  })
+  });
 
-  const embed = await createComicViewerEmbed(comicData, 0)
-  const buttons = createComicViewerButtons(userId, 0, pages.length)
+  const embed = await createComicViewerEmbed(comicData, 0);
+  const buttons = createComicViewerButtons(userId, 0, pages.length);
 
   await interaction.update({
     embeds: [embed],
     components: buttons,
-  })
+  });
 }
 
 async function createComicViewerEmbed(comicData, imageIndex) {
-  const { title, pages, sourceUrl } = comicData
-  const currentImage = pages[imageIndex]
-  const apiInfo = apiManager.getCurrentAPIInfo("google")
+  const { title, pages, sourceUrl } = comicData;
+  const currentImage = pages[imageIndex];
+  const apiInfo = apiManager.getCurrentAPIInfo("google");
 
   const embed = new EmbedBuilder()
     .setTitle(`📚 ${title}`)
     .setDescription(
-      `**Página ${imageIndex + 1} de ${pages.length}**\n\n📖 **Archivo**: ${currentImage.filename}\n🔗 [Ver comic original](${sourceUrl})`,
+      `**Página ${imageIndex + 1} de ${pages.length}**\n\n📖 **Archivo**: ${currentImage.filename}\n🔗 [Ver comic original](${sourceUrl})`
     )
     .setImage(currentImage.url)
     .setColor("#9b59b6")
     .setFooter({
       text: `Página ${imageIndex + 1}/${pages.length} | API: ${apiInfo?.remaining || 0}/${apiInfo?.max || 0}`,
     })
-    .setTimestamp()
+    .setTimestamp();
 
-  return embed
+  return embed;
 }
 
 function createComicViewerButtons(userId, currentIndex, total) {
@@ -578,49 +531,48 @@ function createComicViewerButtons(userId, currentIndex, total) {
       .setCustomId(`comicLast-${userId}`)
       .setLabel("⏭️ Última")
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(currentIndex === total - 1),
-  )
+      .setDisabled(currentIndex === total - 1)
+  );
 
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`comicJump-${userId}`)
       .setLabel(`📄 Ir a página...`)
       .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`comicBack-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Danger),
-  )
+    new ButtonBuilder().setCustomId(`comicBack-${userId}`).setLabel("🔙 Volver").setStyle(ButtonStyle.Danger)
+  );
 
-  return [row1, row2]
+  return [row1, row2];
 }
 
 async function handleComicViewerNavigation(interaction, action) {
-  const userId = interaction.user.id
-  const cache = comicSearchCache.get(userId)
+  const userId = interaction.user.id;
+  const cache = comicSearchCache.get(userId);
 
   if (!cache || !cache.comicData) {
-    return interaction.reply({ content: "❌ No hay comic cargado.", ephemeral: true })
+    return interaction.reply({ content: "❌ No hay comic cargado.", ephemeral: true });
   }
 
-  const { comicData } = cache
-  let newIndex = cache.currentImageIndex || 0
+  const { comicData } = cache;
+  let newIndex = cache.currentImageIndex || 0;
 
   switch (action) {
     case "comicNext":
-      newIndex = Math.min(newIndex + 1, comicData.pages.length - 1)
-      break
+      newIndex = Math.min(newIndex + 1, comicData.pages.length - 1);
+      break;
     case "comicPrev":
-      newIndex = Math.max(newIndex - 1, 0)
-      break
+      newIndex = Math.max(newIndex - 1, 0);
+      break;
     case "comicFirst":
-      newIndex = 0
-      break
+      newIndex = 0;
+      break;
     case "comicLast":
-      newIndex = comicData.pages.length - 1
-      break
+      newIndex = comicData.pages.length - 1;
+      break;
     case "comicJump":
-      return handleComicJumpModal(interaction, cache)
-    case "comicBack": // Manejar el botón "Volver"
-      comicSearchCache.delete(userId); // Limpiar el caché del comic
-      // Redirigir a la búsqueda inicial de comics o simplemente actualizar el mensaje
+      return handleComicJumpModal(interaction, cache);
+    case "comicBack":
+      comicSearchCache.delete(userId);
       return interaction.update({
         content: "Volviendo a la búsqueda de comics...",
         embeds: [],
@@ -628,18 +580,18 @@ async function handleComicViewerNavigation(interaction, action) {
       });
   }
 
-  cache.currentImageIndex = newIndex
-  comicSearchCache.set(userId, cache)
+  cache.currentImageIndex = newIndex;
+  comicSearchCache.set(userId, cache);
 
-  const embed = await createComicViewerEmbed(comicData, newIndex)
-  const buttons = createComicViewerButtons(userId, newIndex, comicData.pages.length)
+  const embed = await createComicViewerEmbed(comicData, newIndex);
+  const buttons = createComicViewerButtons(userId, newIndex, comicData.pages.length);
 
-  await interaction.update({ embeds: [embed], components: buttons })
+  await interaction.update({ embeds: [embed], components: buttons });
 }
 
 async function handleComicJumpModal(interaction, cache) {
-  const { comicData } = cache
-  const modal = new ModalBuilder().setCustomId("comicJumpModal").setTitle("Ir a página específica")
+  const { comicData } = cache;
+  const modal = new ModalBuilder().setCustomId("comicJumpModal").setTitle("Ir a página específica");
 
   const pageInput = new TextInputBuilder()
     .setCustomId("comicPageInput")
@@ -647,161 +599,160 @@ async function handleComicJumpModal(interaction, cache) {
     .setStyle(TextInputStyle.Short)
     .setMinLength(1)
     .setMaxLength(3)
-    .setPlaceholder(`1-${comicData.pages.length}`)
+    .setPlaceholder(`1-${comicData.pages.length}`);
 
-  const firstActionRow = new ActionRowBuilder().addComponents(pageInput)
+  const firstActionRow = new ActionRowBuilder().addComponents(pageInput);
 
-  await interaction.showModal(modal.addComponents(firstActionRow))
+  await interaction.showModal(modal.addComponents(firstActionRow));
 }
 
-// Eliminado createAPIUsageEmbed (ya no hay comandos de admin)
-
 function addAPIUsageToEmbed(embed, apiType = "google") {
-  const apiInfo = apiManager.getCurrentAPIInfo(apiType)
+  const apiInfo = apiManager.getCurrentAPIInfo(apiType);
   if (apiInfo) {
-    const percentage = Math.round((apiInfo.used / apiInfo.max) * 100)
-    const statusEmoji = percentage > 90 ? "🔴" : percentage > 70 ? "🟡" : "🟢"
+    const percentage = Math.round((apiInfo.used / apiInfo.max) * 100);
+    const statusEmoji = percentage > 90 ? "🔴" : percentage > 70 ? "🟡" : "🟢";
 
     embed.setFooter({
-      text: `${embed.data.footer?.text || ""} | ${statusEmoji} API: ${apiInfo.remaining}/${apiInfo.max} (${100 - percentage}% disponible)`,
-    })
+      text: `${embed.data.footer?.text || ""} | ${statusEmoji} API: ${apiInfo.remaining}/${apiInfo.max} (${
+        100 - percentage
+      }% disponible)`,
+    });
   }
-  return embed
+  return embed;
 }
 
 client.once("ready", () => {
-  console.log(`✅ Bot conectado como ${client.user.tag}`)
-  // Eliminado loadPreferences y loadSavedGames
-})
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
+});
 
 client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.content) return
+  if (message.author.bot || !message.content) return;
 
   try {
-    // Eliminado handleInviteRestrictions, handleAutoTranslate, handleChatTranslation
     if (message.content.startsWith(".")) {
-      await handleCommands(message)
+      await handleCommands(message);
     }
   } catch (error) {
-    await logError(message.channel, error, "Error en messageCreate")
+    logError(message.channel, error, "Error en messageCreate");
   }
-})
+});
 
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isStringSelectMenu()) {
-      await handleSelectMenu(interaction)
+      await handleSelectMenu(interaction);
     } else if (interaction.isButton()) {
-      await handleButtonInteraction(interaction)
+      await handleButtonInteraction(interaction);
     } else if (interaction.isModalSubmit()) {
-      await handleModalSubmit(interaction)
+      await handleModalSubmit(interaction);
     }
   } catch (error) {
-    await logError(interaction.channel, error, "Error en interactionCreate")
+    logError(interaction.channel, error, "Error en interactionCreate");
   }
-})
+});
 
 async function handleModalSubmit(interaction) {
   if (interaction.customId === "comicJumpModal") {
-    const userId = interaction.user.id
-    const cache = comicSearchCache.get(userId)
+    const userId = interaction.user.id;
+    const cache = comicSearchCache.get(userId);
 
     if (!cache || !cache.comicData) {
-      return interaction.reply({ content: "❌ No hay comic cargado.", ephemeral: true })
+      return interaction.reply({ content: "❌ No hay comic cargado.", ephemeral: true });
     }
 
-    const page = Number.parseInt(interaction.fields.getTextInputValue("comicPageInput"))
-    const newIndex = Math.min(Math.max(page - 1, 0), cache.comicData.pages.length - 1)
+    const page = Number.parseInt(interaction.fields.getTextInputValue("comicPageInput"));
+    const newIndex = Math.min(Math.max(page - 1, 0), cache.comicData.pages.length - 1);
 
-    cache.currentImageIndex = newIndex
-    comicSearchCache.set(userId, cache)
+    cache.currentImageIndex = newIndex;
+    comicSearchCache.set(userId, cache);
 
-    const embed = await createComicViewerEmbed(cache.comicData, newIndex)
-    const buttons = createComicViewerButtons(userId, newIndex, cache.comicData.pages.length)
+    const embed = await createComicViewerEmbed(cache.comicData, newIndex);
+    const buttons = createComicViewerButtons(userId, newIndex, cache.comicData.pages.length);
 
-    await interaction.update({ embeds: [embed], components: buttons })
+    await interaction.update({ embeds: [embed], components: buttons });
   }
 }
 
 async function handleCommands(message) {
-  const [command, ...args] = message.content.slice(1).trim().split(/ +/)
-  const cmd = command.toLowerCase()
+  const [command, ...args] = message.content.slice(1).trim().split(/ +/);
+  const cmd = command.toLowerCase();
 
   try {
     switch (cmd) {
       case "cmx":
-        await handleComicSearch(message, args)
-        break
+        await handleComicSearch(message, args);
+        break;
       default:
-        // Si el comando no es 'cmx', no hace nada.
         break;
     }
   } catch (error) {
-    await logError(message.channel, error, `Error ejecutando comando: ${cmd}`)
-    return message.reply(`❌ Error ejecutando el comando: ${error.message}`)
+    logError(message.channel, error, `Error ejecutando comando: ${cmd}`);
+    return message.reply(`❌ Error ejecutando el comando: ${error.message}`);
   }
 }
 
 async function handleComicSearch(message, args) {
-  const query = args.join(" ")
-  if (!query) return message.reply("⚠️ Debes escribir algo para buscar.")
+  const query = args.join(" ");
+  if (!query) return message.reply("⚠️ Debes escribir algo para buscar.");
 
-  const userId = message.author.id
-  pendingComicSearch.set(userId, query)
+  const userId = message.author.id;
+  pendingComicSearch.set(userId, query);
 
   const siteSelector = new StringSelectMenuBuilder()
     .setCustomId(`comicsite-${userId}`)
     .setPlaceholder("📚 Selecciona el sitio para buscar comics")
-    .addOptions(COMIC_SITES)
+    .addOptions(COMIC_SITES);
 
   return message.reply({
     content: "Selecciona el sitio donde deseas buscar comics:",
     components: [new ActionRowBuilder().addComponents(siteSelector)],
     ephemeral: true,
-  })
+  });
 }
 
 async function handleSelectMenu(interaction) {
-  const userId = interaction.user.id
+  const userId = interaction.user.id;
 
   try {
     if (interaction.customId.startsWith("comicsite-")) {
-      await handleComicSiteSelection(interaction)
+      await handleComicSiteSelection(interaction);
     }
   } catch (error) {
-    await logError(interaction.channel, error, "Error en handleSelectMenu")
+    logError(interaction.channel, error, "Error en handleSelectMenu");
   }
 }
 
 async function handleComicSiteSelection(interaction) {
-  const [_, userId] = interaction.customId.split("-")
+  const [_, userId] = interaction.customId.split("-");
   if (interaction.user.id !== userId) {
-    return interaction.reply({ content: "⛔ No puedes usar este menú.", ephemeral: true })
+    return interaction.reply({ content: "⛔ No puedes usar este menú.", ephemeral: true });
   }
 
-  const query = pendingComicSearch.get(interaction.user.id)
+  const query = pendingComicSearch.get(interaction.user.id);
   if (!query) {
-    return interaction.reply({ content: "❌ No se encontró tu búsqueda previa.", ephemeral: true })
+    return interaction.reply({ content: "❌ No se encontró tu búsqueda previa.", ephemeral: true });
   }
 
-  const selectedSite = interaction.values[0]
+  const selectedSite = interaction.values[0];
 
   try {
-    let comicsFound = null
+    let comicsFound = null;
 
     if (selectedSite === "chochox.com") {
-      comicsFound = await comicScraper.scrapeChochoxAPI(query)
+      comicsFound = await comicScraper.scrapeChochoxAPI(query);
     } else if (selectedSite === "reycomix.com") {
-      comicsFound = await comicScraper.scrapeReyComixAPI(query)
+      comicsFound = await comicScraper.scrapeReyComixAPI(query);
     }
 
     if (!comicsFound) {
-      const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&q=${encodeURIComponent(query + " site:" + selectedSite)}&num=10`
-      const response = await makeGoogleAPIRequest(url, "google")
-      const items = response.data.items
+      const url = `https://www.googleapis.com/customsearch/v1?key=GOOGLE_API_KEY&cx=GOOGLE_CX&q=${encodeURIComponent(
+        query + " site:" + selectedSite
+      )}&num=10`;
+      const response = await makeGoogleAPIRequest(url, "google");
+      const items = response.data.items;
 
       if (!items || items.length === 0) {
-        return interaction.reply({ content: "❌ No se encontraron comics.", ephemeral: true })
+        return interaction.reply({ content: "❌ No se encontraron comics.", ephemeral: true });
       }
 
       comicSearchCache.set(interaction.user.id, {
@@ -809,17 +760,17 @@ async function handleComicSiteSelection(interaction) {
         currentIndex: 0,
         query,
         site: selectedSite,
-      })
+      });
 
-      const item = items[0]
-      const embed = createComicSearchEmbed(item, 0, items.length)
-      const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic")
+      const item = items[0];
+      const embed = createComicSearchEmbed(item, 0, items.length);
+      const buttons = createNavigationButtons(interaction.user.id, 0, items.length, "comic");
 
       await interaction.update({
         content: "",
         embeds: [embed],
         components: [buttons],
-      })
+      });
     } else {
       comicSearchCache.set(interaction.user.id, {
         items: comicsFound,
@@ -827,27 +778,27 @@ async function handleComicSiteSelection(interaction) {
         query,
         site: selectedSite,
         isAPI: true,
-      })
+      });
 
-      const item = comicsFound[0]
-      const embed = createAPIComicEmbed(item, 0, comicsFound.length)
-      const buttons = createNavigationButtons(interaction.user.id, 0, comicsFound.length, "comic")
+      const item = comicsFound[0];
+      const embed = createAPIComicEmbed(item, 0, comicsFound.length);
+      const buttons = createNavigationButtons(interaction.user.id, 0, comicsFound.length, "comic");
 
       await interaction.update({
         content: "",
         embeds: [embed],
         components: [buttons],
-      })
+      });
     }
 
-    pendingComicSearch.delete(interaction.user.id)
+    pendingComicSearch.delete(interaction.user.id);
   } catch (error) {
-    console.error("Error en búsqueda de comics:", error.message)
-    await logError(interaction.channel, error, "Error en búsqueda de comics")
+    console.error("Error en búsqueda de comics:", error.message);
+    logError(interaction.channel, error, "Error en búsqueda de comics");
     return interaction.reply({
       content: "❌ Error al buscar comics. Intenta de nuevo más tarde.",
       ephemeral: true,
-    })
+    });
   }
 }
 
@@ -855,7 +806,9 @@ function createAPIComicEmbed(comic, index, total) {
   const embed = new EmbedBuilder()
     .setTitle(`📚 ${comic.title}`)
     .setDescription(
-      `**📖 Comic encontrado via API 📖**\n[📚 Ver comic completo](${comic.url})\n\n📄 **Páginas**: ${comic.pages || "N/A"}`,
+      `**📖 Comic encontrado via API 📖**\n[📚 Ver comic completo](${comic.url})\n\n📄 **Páginas**: ${
+        comic.pages || "N/A"
+      }`
     )
     .setColor("#9b59b6")
     .setImage(comic.thumbnail)
@@ -863,33 +816,33 @@ function createAPIComicEmbed(comic, index, total) {
     .addFields({
       name: "📚 Nota",
       value: "Este comic fue encontrado usando la API oficial del sitio.",
-    })
+    });
 
-  const apiInfo = apiManager.getCurrentAPIInfo("google")
+  const apiInfo = apiManager.getCurrentAPIInfo("google");
   if (apiInfo) {
     embed.setFooter({
       text: `Resultado ${index + 1} de ${total} | API: ${apiInfo.remaining}/${apiInfo.max}`,
-    })
+    });
   }
 
-  return embed
+  return embed;
 }
 
 async function handleButtonInteraction(interaction) {
-  const userId = interaction.user.id
-  const customId = interaction.customId
+  const userId = interaction.user.id;
+  const customId = interaction.customId;
 
-  let buttonUserId = null
+  let buttonUserId = null;
   if (customId.includes("-")) {
-    const parts = customId.split("-")
-    buttonUserId = parts[parts.length - 1]
+    const parts = customId.split("-");
+    buttonUserId = parts[parts.length - 1];
   }
 
   if (userId !== buttonUserId) {
     if (!interaction.replied && !interaction.deferred) {
-      return interaction.reply({ content: "⛔ No puedes usar estos botones.", ephemeral: true })
+      return interaction.reply({ content: "⛔ No puedes usar estos botones.", ephemeral: true });
     }
-    return
+    return;
   }
 
   try {
@@ -902,79 +855,79 @@ async function handleButtonInteraction(interaction) {
         customId.includes("Jump") ||
         customId.includes("Back")
       ) {
-        await handleComicViewerNavigation(interaction, customId.split("-")[0])
+        await handleComicViewerNavigation(interaction, customId.split("-")[0]);
       } else {
-        await handleComicSearchNavigation(interaction, customId.split("-")[0])
+        await handleComicSearchNavigation(interaction, customId.split("-")[0]);
       }
     }
   } catch (error) {
-    await logError(interaction.channel, error, "Error en handleButtonInteraction")
+    logError(interaction.channel, error, "Error en handleButtonInteraction");
   }
 }
 
 async function handleComicSearchNavigation(interaction, action) {
-  const userId = interaction.user.id
+  const userId = interaction.user.id;
   if (!comicSearchCache.has(userId)) {
-    return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true })
+    return interaction.reply({ content: "❌ No hay búsqueda activa para paginar.", ephemeral: true });
   }
 
-  const data = comicSearchCache.get(userId)
-  const { items, currentIndex, isAPI } = data
+  const data = comicSearchCache.get(userId);
+  const { items, currentIndex, isAPI } = data;
 
-  let newIndex = currentIndex
+  let newIndex = currentIndex;
   if (action === "comicnext" && currentIndex < items.length - 1) {
-    newIndex++
+    newIndex++;
   } else if (action === "comicback" && currentIndex > 0) {
-    newIndex--
+    newIndex--;
   } else if (action === "comicview") {
-    const currentItem = items[currentIndex]
+    const currentItem = items[currentIndex];
 
     if (isAPI) {
       try {
-        const comicData = await comicScraper.getComicPages(currentItem.url, data.site)
+        const comicData = await comicScraper.getComicPages(currentItem.url, data.site);
         if (comicData && comicData.pages && comicData.pages.length > 0) {
-          return await handleComicCompleteView(interaction, comicData)
+          return await handleComicCompleteView(interaction, comicData);
         } else {
-          return interaction.reply({ content: "❌ No se pudieron extraer las páginas del comic.", ephemeral: true })
+          return interaction.reply({ content: "❌ No se pudieron extraer las páginas del comic.", ephemeral: true });
         }
       } catch (error) {
-        await logError(interaction.channel, error, "Error obteniendo páginas del comic")
-        return interaction.reply({ content: "❌ Error al procesar el comic.", ephemeral: true })
+        logError(interaction.channel, error, "Error obteniendo páginas del comic");
+        return interaction.reply({ content: "❌ Error al procesar el comic.", ephemeral: true });
       }
     } else {
       if (data.site === "chochox.com") {
         try {
-          const comicData = await comicScraper.scrapeChochoxComic(currentItem.link)
+          const comicData = await comicScraper.scrapeChochoxComic(currentItem.link);
           if (comicData && comicData.pages.length > 0) {
-            return await handleComicCompleteView(interaction, comicData)
+            return await handleComicCompleteView(interaction, comicData);
           } else {
-            return interaction.reply({ content: "❌ No se pudieron extraer las imágenes del comic.", ephemeral: true })
+            return interaction.reply({ content: "❌ No se pudieron extraer las imágenes del comic.", ephemeral: true });
           }
         } catch (error) {
-          await logError(interaction.channel, error, "Error scraping comic")
-          return interaction.reply({ content: "❌ Error al procesar el comic.", ephemeral: true })
+          logError(interaction.channel, error, "Error scraping comic");
+          return interaction.reply({ content: "❌ Error al procesar el comic.", ephemeral: true });
         }
       }
     }
   }
 
-  data.currentIndex = newIndex
-  comicSearchCache.set(userId, data)
+  data.currentIndex = newIndex;
+  comicSearchCache.set(userId, data);
 
-  const item = items[newIndex]
+  const item = items[newIndex];
   const embed = isAPI
     ? createAPIComicEmbed(item, newIndex, items.length)
-    : createComicSearchEmbed(item, newIndex, items.length)
-  const buttons = createNavigationButtons(userId, newIndex, items.length, "comic")
+    : createComicSearchEmbed(item, newIndex, items.length);
+  const buttons = createNavigationButtons(userId, newIndex, items.length, "comic");
 
-  await interaction.update({ embeds: [embed], components: buttons })
+  await interaction.update({ embeds: [embed], components: buttons });
 }
 
 function createComicSearchEmbed(item, index, total) {
-  const title = item.title
-  const link = item.link
-  const context = item.displayLink
-  const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || item.pagemap?.cse_image?.[0]?.src
+  const title = item.title;
+  const link = item.link;
+  const context = item.displayLink;
+  const thumb = item.pagemap?.cse_thumbnail?.[0]?.src || item.pagemap?.cse_image?.[0]?.src;
 
   const embed = new EmbedBuilder()
     .setTitle(`📚 ${title.slice(0, 80)}...`)
@@ -985,11 +938,11 @@ function createComicSearchEmbed(item, index, total) {
     .addFields({
       name: "📚 Nota",
       value: "Usa las flechas para navegar entre resultados.",
-    })
+    });
 
-  addAPIUsageToEmbed(embed, "google")
+  addAPIUsageToEmbed(embed, "google");
 
-  return embed
+  return embed;
 }
 
 function createNavigationButtons(userId, currentIndex, total, prefix) {
@@ -997,20 +950,20 @@ function createNavigationButtons(userId, currentIndex, total, prefix) {
     .setCustomId(`${prefix}back-${userId}`)
     .setLabel("⬅️")
     .setStyle(ButtonStyle.Primary)
-    .setDisabled(currentIndex === 0)
+    .setDisabled(currentIndex === 0);
 
   const nextBtn = new ButtonBuilder()
     .setCustomId(`${prefix}next-${userId}`)
     .setLabel("➡️")
     .setStyle(ButtonStyle.Primary)
-    .setDisabled(currentIndex === total - 1)
+    .setDisabled(currentIndex === total - 1);
 
   const viewBtn = new ButtonBuilder()
     .setCustomId(`${prefix}view-${userId}`)
     .setLabel("Ver Comic")
-    .setStyle(ButtonStyle.Success)
+    .setStyle(ButtonStyle.Success);
 
-  return new ActionRowBuilder().addComponents(backBtn, nextBtn, viewBtn)
+  return new ActionRowBuilder().addComponents(backBtn, nextBtn, viewBtn);
 }
 
-client.login(process.env.DISCORD_TOKEN)
+client.login(process.env.DISCORD_TOKEN);
