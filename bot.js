@@ -18,11 +18,11 @@ const client = new Client({
 });
 
 const COMIC_SITES = [
-  { label: "📚 Chochox", value: "chochox.com" },
-  { label: "📖 ReyComix", value: "reycomix.com" },
-  { label: "🔞 Ver Comics Porno", value: "ver-comics-porno.com" },
-  { label: "🎨 Hitomi", value: "hitomi.la" },
-  { label: "🔥 Ver Comics Porno XXX", value: "vercomicsporno.xxx" },
+  { label: "Chochox", value: "chochox.com" },
+  { label: "ReyComix", value: "reycomix.com" },
+  { label: "Ver Comics Porno", value: "ver-comics-porno.com" },
+  { label: "Hitomi", value: "hitomi.la" },
+  { label: "Ver Comics Porno XXX", value: "vercomicsporno.xxx" },
 ];
 
 const API_POOLS = [
@@ -84,33 +84,39 @@ function getNextApi() {
 async function makeGoogleAPIRequest(query, site) {
   let attempts = 0;
   const maxAttempts = API_POOLS.length;
+  let allItems = [];
 
-  while (attempts < maxAttempts) {
-    const api = getNextApi();
-    if (!api) throw new Error("Todas las APIs están agotadas.");
+  for (let start = 1; start <= 20; start += 10) {
+    while (attempts < maxAttempts) {
+      const api = getNextApi();
+      if (!api) throw new Error("Todas las APIs están agotadas.");
 
-    const url = `https://www.googleapis.com/customsearch/v1?key=${api.apiKey}&cx=${api.cx}&q=${encodeURIComponent(
-      query + " site:" + site
-    )}&num=5`;
+      const url = `https://www.googleapis.com/customsearch/v1?key=${api.apiKey}&cx=${api.cx}&q=${encodeURIComponent(
+        query + " site:" + site
+      )}&num=10&start=${start}`;
 
-    try {
-      const res = await axios.get(url);
-      api.dailyRequests++;
-      if (api.dailyRequests >= api.maxDailyRequests) {
-        api.quotaExhausted = true;
-      }
-      return res.data.items || [];
-    } catch (e) {
-      if (e.response && e.response.status === 429) {
-        api.quotaExhausted = true;
-        currentApiIndex = (currentApiIndex + 1) % API_POOLS.length;
-        attempts++;
-      } else {
-        throw e;
+      try {
+        const res = await axios.get(url);
+        api.dailyRequests++;
+        if (api.dailyRequests >= api.maxDailyRequests) {
+          api.quotaExhausted = true;
+        }
+        if (res.data.items) {
+          allItems = allItems.concat(res.data.items);
+        }
+        break;
+      } catch (e) {
+        if (e.response && e.response.status === 429) {
+          api.quotaExhausted = true;
+          currentApiIndex = (currentApiIndex + 1) % API_POOLS.length;
+          attempts++;
+        } else {
+          throw e;
+        }
       }
     }
   }
-  throw new Error("No hay APIs disponibles.");
+  return allItems;
 }
 
 const comicCache = new Map();
@@ -127,11 +133,11 @@ client.on("messageCreate", async (message) => {
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`siteSelect-${userId}`)
-    .setPlaceholder("Selecciona el sitio para buscar tu cómic favorito")
+    .setPlaceholder("Selecciona sitio para buscar")
     .addOptions(COMIC_SITES);
 
   await message.reply({
-    content: "Elige sitio para buscar comics:",
+    content: "🕵️‍♂️ Elige sitio para buscar comics:",
     components: [new ActionRowBuilder().addComponents(menu)],
     ephemeral: true,
   });
@@ -142,8 +148,7 @@ client.on("messageCreate", async (message) => {
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isStringSelectMenu()) {
     const [action, userId] = interaction.customId.split("-");
-    if (interaction.user.id !== userId)
-      return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
+    if (interaction.user.id !== userId) return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
 
     if (action === "siteSelect") {
       const site = interaction.values[0];
@@ -152,12 +157,12 @@ client.on("interactionCreate", async (interaction) => {
 
       try {
         const items = await makeGoogleAPIRequest(data.query, site);
-        if (!items.length) return interaction.update({ content: "No se encontraron comics.", components: [] });
+        if (!items.length) return interaction.update({ content: "❌ No se encontraron comics.", components: [] });
 
-        comicCache.set(userId, { items, index: 0, pageNum: 1 });
+        comicCache.set(userId, { items, index: 0 });
 
-        const embed = createEmbed(items[0], 1, items.length, 1);
-        const buttons = createButtons(userId, 0, items.length, items[0].link);
+        const embed = createEmbed(items[0], 1, items.length);
+        const buttons = createButtons(userId, 0, items.length);
 
         await interaction.update({ content: "", embeds: [embed], components: [buttons] });
       } catch {
@@ -166,84 +171,46 @@ client.on("interactionCreate", async (interaction) => {
     }
   } else if (interaction.isButton()) {
     const [action, userId] = interaction.customId.split("-");
-    if (interaction.user.id !== userId)
-      return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
+    if (interaction.user.id !== userId) return interaction.reply({ content: "No puedes usar esto.", ephemeral: true });
 
     const data = comicCache.get(userId);
     if (!data || !data.items) return interaction.reply({ content: "No hay búsqueda activa.", ephemeral: true });
 
     let idx = data.index;
-    let pageNum = data.pageNum || 1;
+    if (action === "prev" && idx > 0) idx--;
+    else if (action === "next" && idx < data.items.length - 1) idx++;
 
-    if (action === "prev" && idx > 0) {
-      idx--;
-      if (data.items[idx].link.includes("chochox.com") && pageNum > 1) pageNum--;
-      else pageNum = 1;
-    } else if (action === "next" && idx < data.items.length - 1) {
-      idx++;
-      if (data.items[idx].link.includes("chochox.com")) pageNum = 1;
-      else pageNum = 1;
-    } else if (action === "next" && idx === data.index && data.items[idx].link.includes("chochox.com")) {
-      pageNum++;
-    } else if (action === "prev" && idx === data.index && data.items[idx].link.includes("chochox.com") && pageNum > 1) {
-      pageNum--;
-    }
+    comicCache.set(userId, { ...data, index: idx });
 
-    comicCache.set(userId, { ...data, index: idx, pageNum });
-
-    const item = data.items[idx];
-    const embed = createEmbed(item, idx + 1, data.items.length, pageNum);
-    const buttons = createButtons(userId, idx, data.items.length, item.link);
+    const embed = createEmbed(data.items[idx], idx + 1, data.items.length);
+    const buttons = createButtons(userId, idx, data.items.length);
 
     await interaction.update({ embeds: [embed], components: [buttons] });
   }
 });
 
-function createEmbed(item, current, total, pageNum = 1) {
-  let imageUrl = item.pagemap?.cse_image?.[0]?.src || null;
+function createEmbed(item, current, total) {
+  const embed = new EmbedBuilder()
+    .setTitle(item.title + " 📚")
+    .setURL(item.link)
+    .setDescription(item.snippet || "Sin descripción")
+    .setFooter({ text: `Resultado ${current} de ${total}` });
 
-  if (item.link.includes("chochox.com")) {
-    const baseUrlMatch = item.link.match(/(https:\/\/chochox\.com\/wp-content\/uploads\/\d{4}\/\d{2}\/.+-)(\d+)(\.webp)/);
-    if (baseUrlMatch) {
-      const base = baseUrlMatch[1];
-      const ext = baseUrlMatch[3];
-      const pageStr = pageNum.toString().padStart(2, "0");
-      imageUrl = `${base}${pageStr}${ext}`;
-    }
+  const imageUrl = item.pagemap?.cse_image?.[0]?.src;
+  if (imageUrl) {
+    embed.setImage(imageUrl);
+  } else {
+    embed.setDescription((item.snippet || "") + "\n\n⚠️ Imagen no disponible");
   }
 
-  return new EmbedBuilder()
-    .setTitle(item.title)
-    .setURL(item.link)
-    .setDescription(item.snippet || "")
-    .setImage(imageUrl)
-    .setFooter({ text: `Página ${pageNum} - Resultado ${current} de ${total}` });
+  return embed;
 }
 
-function createButtons(userId, index, total, link) {
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`prev-${userId}`)
-      .setLabel("⬅️")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(index === 0),
-    new ButtonBuilder()
-      .setCustomId(`next-${userId}`)
-      .setLabel("➡️")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(false)
+function createButtons(userId, index, total) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`prev-${userId}`).setLabel("⬅️").setStyle(ButtonStyle.Primary).setDisabled(index === 0),
+    new ButtonBuilder().setCustomId(`next-${userId}`).setLabel("➡️").setStyle(ButtonStyle.Primary).setDisabled(index === total - 1)
   );
-
-  if (link) {
-    buttons.addComponents(
-      new ButtonBuilder()
-        .setLabel("Ver cómic completo")
-        .setStyle(ButtonStyle.Link)
-        .setURL(link)
-    );
-  }
-
-  return buttons;
 }
 
 client.login(process.env.DISCORD_TOKEN);
