@@ -1,10 +1,6 @@
-const {
-  Client,
-  GatewayIntentBits,
-  EmbedBuilder,
-} = require("discord.js")
-const axios = require("axios")
-const fs = require("fs")
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const axios = require("axios");
+const fs = require("fs");
 
 const client = new Client({
   intents: [
@@ -12,31 +8,19 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
-})
+});
 
 const MONITORED_GAMES_IDS = [
-  "292439477",
-  "606849621",
-]
-const MONITOR_INTERVAL_MINUTES = 5
-const MONITOR_CHANNEL_ID = "1415397363970736259"
+  "11063612131",
+  "109983668079237",
+  "3101667897",
+  "3623096087",
+  "99567941238278",
+  "128696516339161",
+];
+const MONITOR_INTERVAL_MINUTES = 5;
 
-const gameMonitorCache = new Map()
-let messageToEditId = null
-
-function loadMessageToEditId() {
-  try {
-    const data = fs.readFileSync("./monitorMessageId.json")
-    messageToEditId = JSON.parse(data).messageId
-  } catch (error) {
-    messageToEditId = null
-  }
-}
-
-function saveMessageToEditId(id) {
-  messageToEditId = id
-  fs.writeFileSync("./monitorMessageId.json", JSON.stringify({ messageId: id }, null, 2))
-}
+const gameMonitorCache = new Map();
 
 async function getGameIcon(universeId) {
   try {
@@ -44,43 +28,38 @@ async function getGameIcon(universeId) {
       `https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false`,
       {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "User -Agent": "Mozilla/5.0",
         },
-      },
-    )
-    return (
-      response.data.data?.[0]?.imageUrl || `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
-    )
-  } catch (error) {
-    return `https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png`
+      }
+    );
+    return response.data.data?.[0]?.imageUrl || "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png";
+  } catch {
+    return "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/512/512/Image/Png";
   }
 }
 
 async function getGameInfoForMonitoring(placeId) {
   try {
-    const placeInfoUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
+    const placeInfoUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`;
     const placeInfoResponse = await axios.get(placeInfoUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-    })
-    const universeId = placeInfoResponse.data.universeId
+      headers: { "User -Agent": "Mozilla/5.0" },
+    });
+    const universeId = placeInfoResponse.data.universeId;
 
-    const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${universeId}`
+    const gameInfoUrl = `https://games.roblox.com/v1/games?universeIds=${universeId}`;
     const gameInfoResponse = await axios.get(gameInfoUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-    })
-    const gameData = gameInfoResponse.data.data?.[0]
+      headers: { "User -Agent": "Mozilla/5.0" },
+    });
+    const gameData = gameInfoResponse.data.data?.[0];
+    if (!gameData) return null;
 
-    if (!gameData) {
-      return null
-    }
-
-    const publicServersUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&limit=100`
+    const publicServersUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&limit=100`;
     const publicServersResponse = await axios.get(publicServersUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-    })
-    const publicServers = publicServersResponse.data.data || []
+      headers: { "User -Agent": "Mozilla/5.0" },
+    });
+    const publicServers = publicServersResponse.data.data || [];
 
-    const gameIcon = await getGameIcon(universeId)
+    const gameIcon = await getGameIcon(universeId);
 
     return {
       placeId,
@@ -88,114 +67,73 @@ async function getGameInfoForMonitoring(placeId) {
       gameName: gameData.name,
       publicServers,
       gameIcon,
-    }
-  } catch (error) {
-    console.error(`Error al obtener información del juego ${placeId}:`, error.message)
-    return null
+    };
+  } catch {
+    return null;
   }
 }
 
 async function monitorGame(placeId) {
-  const gameInfo = await getGameInfoForMonitoring(placeId)
+  const gameInfo = await getGameInfoForMonitoring(placeId);
+  if (!gameInfo) return;
 
-  if (!gameInfo) {
-    return
-  }
-
-  const { gameName, publicServers, gameIcon } = gameInfo
-  const currentCache = gameMonitorCache.get(placeId) || {}
+  const { gameName, publicServers, gameIcon } = gameInfo;
 
   const serverUrls = publicServers.map(
-    (server) => `https://www.roblox.com/games/start?placeId=${placeId}&gameInstanceId=${server.id}`,
-  )
+    (server) => `https://www.roblox.com/games/start?placeId=${placeId}&gameInstanceId=${server.id}`
+  );
 
   gameMonitorCache.set(placeId, {
-    gameName: gameName,
-    gameIcon: gameIcon,
-    serverUrls: serverUrls,
+    gameName,
+    gameIcon,
+    serverUrls,
     lastUpdated: new Date(),
-  })
-
-  await updateMonitorMessage()
+  });
 }
 
-async function updateMonitorMessage() {
-  const channel = client.channels.cache.get(MONITOR_CHANNEL_ID)
-  if (!channel) {
-    console.error(`No se encontró el canal de monitoreo con ID: ${MONITOR_CHANNEL_ID}`)
-    return
+async function updateAllGames() {
+  for (const placeId of MONITORED_GAMES_IDS) {
+    await monitorGame(placeId);
   }
+}
 
-  let description = "**🌐 Últimas URLs de Servidores de Roblox Monitoreados:**\n\n"
-  let embeds = []
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  if (!message.content.toLowerCase().startsWith(".url")) return;
 
   if (gameMonitorCache.size === 0) {
-    description += "No hay datos de juegos monitoreados aún. Esperando la primera actualización..."
-  } else {
-    for (const [placeId, data] of gameMonitorCache.entries()) {
-      const gameName = data.gameName || `Juego ID: ${placeId}`
-      const gameIcon = data.gameIcon
-      const serverUrls = data.serverUrls || []
-      const lastUpdated = data.lastUpdated ? data.lastUpdated.toLocaleString("es-ES") : "N/A"
-
-      description += `**🎮 ${gameName} (ID: ${placeId})**\n`
-      description += `🖼️ [Icono Actual](${gameIcon})\n`
-      description += `🕒 Última Actualización: ${lastUpdated}\n`
-
-      if (serverUrls.length > 0) {
-        description += `🔗 **URLs de Servidores Públicos (${serverUrls.length} encontrados):**\n`
-        serverUrls.slice(0, 5).forEach((url, index) => {
-          description += `  - [Servidor ${index + 1}](${url})\n`
-        })
-        if (serverUrls.length > 5) {
-          description += `  *(...y ${serverUrls.length - 5} más)*\n`
-        }
-      } else {
-        description += "  *No se encontraron servidores públicos activos.*\n"
-      }
-      description += "\n"
-    }
+    await message.channel.send("No hay datos de juegos monitoreados aún. Por favor espera la próxima actualización.");
+    return;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle("Monitor de Servidores de Roblox")
-    .setDescription(description)
-    .setColor("#00b2ff")
-    .setFooter({ text: "Actualizado automáticamente" })
-    .setTimestamp()
+  let reply = "**🌐 Últimas URLs de los juegos monitoreados:**\n\n";
 
-  embeds.push(embed);
+  for (const [placeId, data] of gameMonitorCache.entries()) {
+    const gameName = data.gameName || `Juego ID: ${placeId}`;
+    const serverUrls = data.serverUrls || [];
 
-  try {
-    if (messageToEditId) {
-      const message = await channel.messages.fetch(messageToEditId).catch(() => null);
-      if (message) {
-        await message.edit({ embeds: embeds, components: [] });
-      } else {
-        const newMessage = await channel.send({ embeds: embeds, components: [] });
-        saveMessageToEditId(newMessage.id);
+    reply += `**🎮 ${gameName} (ID: ${placeId})**\n`;
+
+    if (serverUrls.length > 0) {
+      serverUrls.slice(0, 5).forEach((url, index) => {
+        reply += `  - [Servidor ${index + 1}](${url})\n`;
+      });
+      if (serverUrls.length > 5) {
+        reply += `  *(...y ${serverUrls.length - 5} más)*\n`;
       }
     } else {
-      const newMessage = await channel.send({ embeds: embeds, components: [] });
-      saveMessageToEditId(newMessage.id);
+      reply += "  *No se encontraron servidores públicos activos.*\n";
     }
-  } catch (error) {
-    console.error("Error al enviar/editar el mensaje de monitoreo:", error);
+    reply += "\n";
   }
-}
 
-function startMonitoringGames() {
-  MONITORED_GAMES_IDS.forEach(placeId => monitorGame(placeId));
+  await message.channel.send({ content: reply });
+});
 
-  setInterval(() => {
-    MONITORED_GAMES_IDS.forEach(placeId => monitorGame(placeId));
-  }, MONITOR_INTERVAL_MINUTES * 60 * 1000)
-}
+client.once("ready", async () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
+  await updateAllGames();
+  setInterval(updateAllGames, MONITOR_INTERVAL_MINUTES * 60 * 1000);
+});
 
-client.once("ready", () => {
-  console.log(`✅ Bot conectado como ${client.user.tag}`)
-  loadMessageToEditId()
-  startMonitoringGames()
-})
-
-client.login(process.env.DISCORD_TOKEN)
+client.login(process.env.DISCORD_TOKEN);
