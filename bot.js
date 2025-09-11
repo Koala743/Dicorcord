@@ -4,7 +4,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 })
 
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`Bot activo como ${client.user.tag}`)
 })
 
