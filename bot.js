@@ -19,15 +19,14 @@ const MONITOR_INTERVAL_MINUTES = 5
 
 async function getGameIconUrl(placeId) {
   try {
-    const placeInfo = await axios.get(
-      `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
-    )
+    const placeInfo = await axios.get(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`)
     const universeId = placeInfo.data.universeId
 
     const iconResponse = await axios.get(
       `https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png&isCircular=false`
     )
-    return iconResponse.data.data?.[0]?.imageUrl || null
+    const iconUrl = iconResponse.data.data?.[0]?.imageUrl
+    return iconUrl || null
   } catch (error) {
     console.error(`Error obteniendo icono para placeId ${placeId}:`, error.message)
     return null
@@ -42,11 +41,14 @@ async function sendGameIcons() {
   }
 
   let messageContent = "**URLs de imágenes de juegos Roblox:**\n\n"
+
   for (const placeId of MONITORED_GAMES_IDS) {
     const iconUrl = await getGameIconUrl(placeId)
-    messageContent += iconUrl
-      ? `${iconUrl}\n`
-      : `No se pudo obtener imagen para juego ID ${placeId}\n`
+    if (iconUrl) {
+      messageContent += `${iconUrl}\n`
+    } else {
+      messageContent += `No se pudo obtener imagen para juego ID ${placeId}\n`
+    }
   }
 
   try {
@@ -62,4 +64,5 @@ client.once("ready", () => {
   setInterval(sendGameIcons, MONITOR_INTERVAL_MINUTES * 60 * 1000)
 })
 
-client.login(process.env.DISCORD_TOKEN)
+// Usar la variable de entorno Bot_Token en lugar de DISCORD
+client.login(process.env.Bot_Token)
