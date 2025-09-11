@@ -1,26 +1,65 @@
-const Discord = require("discord.js");
+const { Client, GatewayIntentBits } = require("discord.js")
+const axios = require("axios")
 
-const version = Discord?.version || "14.0.0";
-const major = parseInt(version.split(".")[0], 10) || 14;
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+})
 
-let intents;
-if (major >= 14) intents = [Discord.GatewayIntentBits.Guilds, Discord.GatewayIntentBits.GuildMessages];
-else if (major >= 13) intents = [Discord.Intents.FLAGS.GUILDS, Discord.Intents.FLAGS.GUILD_MESSAGES];
-else intents = [Discord.Intents?.FLAGS?.GUILDS, Discord.Intents?.FLAGS?.GUILD_MESSAGES].filter(Boolean);
+const MONITORED_GAMES_IDS = [
+  "11063612131",
+  "109983668079237",
+  "3101667897",
+  "3623096087",
+  "99567941238278",
+  "128696516339161",
+]
 
-const client = major <= 12 ? new Discord.Client({ ws: { intents } }) : new Discord.Client({ intents });
+const MONITOR_CHANNEL_ID = "1415397363970736259"
+const MONITOR_INTERVAL_MINUTES = 5
 
-let readyHandled = false;
-function onReady() {
-  if (readyHandled) return;
-  readyHandled = true;
-  console.log(`Bot activo como ${client.user.tag}`);
+async function getGameIconUrl(placeId) {
+  try {
+    const placeInfo = await axios.get(
+      `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
+    )
+    const universeId = placeInfo.data.universeId
+
+    const iconResponse = await axios.get(
+      `https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png&isCircular=false`
+    )
+    return iconResponse.data.data?.[0]?.imageUrl || null
+  } catch (error) {
+    console.error(`Error obteniendo icono para placeId ${placeId}:`, error.message)
+    return null
+  }
 }
 
-client.once("ready", onReady);
-client.once("clientReady", onReady);
+async function sendGameIcons() {
+  const channel = client.channels.cache.get(MONITOR_CHANNEL_ID)
+  if (!channel) {
+    console.error("No se encontró el canal de monitoreo")
+    return
+  }
 
-client.login(process.env.DISCORD_TOKEN).catch(err => {
-  console.error("Error iniciando sesión:", err.message);
-  process.exit(1);
-});
+  let messageContent = "**URLs de imágenes de juegos Roblox:**\n\n"
+  for (const placeId of MONITORED_GAMES_IDS) {
+    const iconUrl = await getGameIconUrl(placeId)
+    messageContent += iconUrl
+      ? `${iconUrl}\n`
+      : `No se pudo obtener imagen para juego ID ${placeId}\n`
+  }
+
+  try {
+    await channel.send(messageContent)
+  } catch (error) {
+    console.error("Error enviando mensaje:", error)
+  }
+}
+
+client.once("ready", () => {
+  console.log(`Bot listo como ${client.user.tag}`)
+  sendGameIcons()
+  setInterval(sendGameIcons, MONITOR_INTERVAL_MINUTES * 60 * 1000)
+})
+
+client.login(process.env.DISCORD_TOKEN)
