@@ -66,4 +66,4 @@ client.once("ready", () => {
   setInterval(sendGameIcons, MONITOR_INTERVAL_MINUTES * 60 * 1000)
 })
 
-client.login(process.env.DISCORD)
+client.login(process.env.DISCORD_TOKEN)
