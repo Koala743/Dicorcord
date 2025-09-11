@@ -19,16 +19,15 @@ const MONITOR_INTERVAL_MINUTES = 5
 
 async function getGameIconUrl(placeId) {
   try {
-    // Obtener universeId desde placeId
-    const placeInfo = await axios.get(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`)
+    const placeInfo = await axios.get(
+      `https://apis.roblox.com/universes/v1/places/${placeId}/universe`
+    )
     const universeId = placeInfo.data.universeId
 
-    // Obtener icono del juego
     const iconResponse = await axios.get(
       `https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png&isCircular=false`
     )
-    const iconUrl = iconResponse.data.data?.[0]?.imageUrl
-    return iconUrl || null
+    return iconResponse.data.data?.[0]?.imageUrl || null
   } catch (error) {
     console.error(`Error obteniendo icono para placeId ${placeId}:`, error.message)
     return null
@@ -43,14 +42,11 @@ async function sendGameIcons() {
   }
 
   let messageContent = "**URLs de imágenes de juegos Roblox:**\n\n"
-
   for (const placeId of MONITORED_GAMES_IDS) {
     const iconUrl = await getGameIconUrl(placeId)
-    if (iconUrl) {
-      messageContent += `${iconUrl}\n`
-    } else {
-      messageContent += `No se pudo obtener imagen para juego ID ${placeId}\n`
-    }
+    messageContent += iconUrl
+      ? `${iconUrl}\n`
+      : `No se pudo obtener imagen para juego ID ${placeId}\n`
   }
 
   try {
