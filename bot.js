@@ -64,5 +64,4 @@ client.once("ready", () => {
   setInterval(sendGameIcons, MONITOR_INTERVAL_MINUTES * 60 * 1000)
 })
 
-// Usar la variable de entorno Bot_Token en lugar de DISCORD
 client.login(process.env.Bot_Token)
