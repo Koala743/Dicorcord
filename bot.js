@@ -7,5 +7,4 @@ const client = new Client({
 client.once("clientReady", () => {
   console.log(`Bot activo como ${client.user.tag}`)
 })
-
 client.login(process.env.DISCORD_TOKEN)  
