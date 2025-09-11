@@ -15,7 +15,7 @@ const MONITORED_GAMES_IDS = [
 ]
 
 const MONITOR_CHANNEL_ID = "1415397363970736259"
-const MONITOR_INTERVAL_MINUTES = 5
+const MONITOR_INTERVAL_MINUTES = 4
 
 async function getGameIconUrl(placeId) {
   try {
