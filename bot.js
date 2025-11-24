@@ -177,12 +177,45 @@ async function bypassAndExtractKey(url) {
 
 		console.log('🔍 Navegando a:', url);
 		await page.goto(url, { 
-			waitUntil: 'networkidle2', 
-			timeout: 45000 
+			waitUntil: 'networkidle0', 
+			timeout: 60000 
 		});
 
-		console.log('⏳ Esperando y detectando keys...');
-		await page.waitForTimeout(10000);
+		console.log('⏳ Esperando carga inicial...');
+		await page.waitForTimeout(3000);
+
+		try {
+			await page.waitForSelector('body', { timeout: 5000 });
+		} catch (e) {
+			console.log('⚠️ No se encontró selector body');
+		}
+
+		console.log('🖱️ Intentando interacciones...');
+		try {
+			const buttons = await page.$$('button, [role="button"], .btn, input[type="submit"]');
+			for (let i = 0; i < Math.min(buttons.length, 5); i++) {
+				try {
+					await buttons[i].click();
+					await page.waitForTimeout(2000);
+				} catch (e) {}
+			}
+		} catch (e) {
+			console.log('⚠️ No se encontraron botones para hacer click');
+		}
+
+		console.log('📜 Scrolleando página...');
+		await page.evaluate(() => {
+			window.scrollTo(0, document.body.scrollHeight / 2);
+		});
+		await page.waitForTimeout(2000);
+
+		await page.evaluate(() => {
+			window.scrollTo(0, document.body.scrollHeight);
+		});
+		await page.waitForTimeout(2000);
+
+		console.log('⏳ Esperando generación de keys (20 segundos más)...');
+		await page.waitForTimeout(20000);
 
 		const pageContent = await page.evaluate(() => {
 			const keyPattern = /FREE_[a-zA-Z0-9]{30,}/g;
@@ -199,12 +232,22 @@ async function bypassAndExtractKey(url) {
 			document.querySelectorAll('*').forEach(el => {
 				const matches = (el.textContent || '').match(keyPattern);
 				if (matches) matches.forEach(k => found.add(k));
+				
+				Array.from(el.attributes || []).forEach(attr => {
+					const attrMatches = (attr.value || '').match(keyPattern);
+					if (attrMatches) attrMatches.forEach(k => found.add(k));
+				});
 			});
+
+			const scripts = Array.from(document.querySelectorAll('script')).map(s => s.textContent).join(' ');
+			const scriptMatches = scripts.match(keyPattern);
+			if (scriptMatches) scriptMatches.forEach(k => found.add(k));
 
 			return {
 				keys: Array.from(found),
 				title: document.title,
-				url: window.location.href
+				url: window.location.href,
+				bodyLength: document.body.innerHTML.length
 			};
 		});
 
@@ -250,8 +293,8 @@ client.on('interactionCreate', async (interaction) => {
 	await interaction.deferReply({ ephemeral: true });
 
 	const loadingEmbed = new EmbedBuilder()
-		.setTitle('🔍 Bypass con Puppeteer')
-		.setDescription(`**URL:** ${url}\n\n⏳ Iniciando Chrome headless...\n⏳ Inyectando detectores de eventos...\n⏳ Interceptando fetch/XHR...\n⏳ Rastreando mutaciones DOM...\n⏳ Escaneando localStorage...\n⏳ Buscando keys FREE_...\n\n**Esto puede tomar 45 segundos**`)
+		.setTitle('🔍 Bypass con Puppeteer Mejorado')
+		.setDescription(`**URL:** ${url}\n\n⏳ Iniciando Chrome headless...\n⏳ Inyectando detectores de eventos...\n⏳ Interceptando fetch/XHR...\n⏳ Rastreando mutaciones DOM...\n⏳ Haciendo clicks en botones...\n⏳ Scrolleando página...\n⏳ Escaneando scripts...\n⏳ Buscando keys FREE_...\n\n**Esto puede tomar hasta 60 segundos**`)
 		.setColor('#FFA500')
 		.setTimestamp();
 
@@ -263,12 +306,12 @@ client.on('interactionCreate', async (interaction) => {
 		if (result.keys.length === 0) {
 			const embed = new EmbedBuilder()
 				.setTitle('❌ No se encontraron Keys')
-				.setDescription(`**URL Original:** ${url}\n**URL Final:** ${result.pageInfo.url}\n**Título:** ${result.pageInfo.title}\n**Eventos detectados:** ${result.events.length}\n\nNo se detectó ninguna key con formato \`FREE_\`\n\n**Posibles razones:**\n• La key requiere interacción manual (clicks, captcha)\n• Se genera después de completar tareas\n• Usa formato diferente\n• La URL ha expirado o requiere autenticación`)
+				.setDescription(`**URL Original:** ${url}\n**URL Final:** ${result.pageInfo.url}\n**Título:** ${result.pageInfo.title}\n**Tamaño del body:** ${result.pageInfo.bodyLength} caracteres\n**Eventos detectados:** ${result.events.length}\n\nNo se detectó ninguna key con formato \`FREE_\`\n\n**Posibles razones:**\n• La key requiere completar captcha o tareas específicas\n• Se genera después de cierto tiempo o interacción especial\n• Usa formato diferente al esperado\n• La URL ha expirado o requiere autenticación\n• Necesita cookies o sesión de usuario real`)
 				.setColor('#FF0000')
 				.setTimestamp();
 
 			if (result.events.length > 0) {
-				const eventsText = result.events.slice(0, 5).map((e, i) => `${i + 1}. ${e.type}: ${e.url || JSON.stringify(e)}`).join('\n');
+				const eventsText = result.events.slice(0, 10).map((e, i) => `${i + 1}. ${e.type}: ${e.url || JSON.stringify(e)}`).join('\n');
 				embed.addFields({ name: '📊 Eventos detectados', value: `\`\`\`\n${eventsText}\n\`\`\`` });
 			}
 
@@ -279,7 +322,7 @@ client.on('interactionCreate', async (interaction) => {
 
 		const successEmbed = new EmbedBuilder()
 			.setTitle('✅ KEY(S) EXTRAÍDA(S) CON PUPPETEER')
-			.setDescription(`**URL Original:** ${url}\n**URL Final:** ${result.pageInfo.url}\n**Título:** ${result.pageInfo.title}\n**Usuario:** ${interaction.user.tag}\n**Eventos:** ${result.events.length}\n\n${keysText}\n\n**🎯 Método:** Puppeteer + MutationObserver\n**💡 Tip:** Copia la key antes de cerrar`)
+			.setDescription(`**URL Original:** ${url}\n**URL Final:** ${result.pageInfo.url}\n**Título:** ${result.pageInfo.title}\n**Usuario:** ${interaction.user.tag}\n**Eventos:** ${result.events.length}\n\n${keysText}\n\n**🎯 Método:** Puppeteer + MutationObserver + Interacciones\n**💡 Tip:** Copia la key antes de cerrar`)
 			.setColor('#00FF00')
 			.setFooter({ text: `Total: ${result.keys.length} key(s) detectada(s)` })
 			.setTimestamp();
@@ -292,7 +335,7 @@ client.on('interactionCreate', async (interaction) => {
 		console.error('❌ Error:', error);
 		const errorEmbed = new EmbedBuilder()
 			.setTitle('❌ Error al Procesar')
-			.setDescription(`**Error:** ${error.message}\n\n**URL:** ${url}\n\n**Stack:**\n\`\`\`${error.stack?.substring(0, 500)}\`\`\`\n\n**Solución:**\n• Verifica que estés en Railway\n• Asegúrate de tener Puppeteer instalado\n• Revisa los logs del servidor`)
+			.setDescription(`**Error:** ${error.message}\n\n**URL:** ${url}\n\n**Stack:**\n\`\`\`${error.stack?.substring(0, 500)}\`\`\`\n\n**Solución:**\n• Verifica que estés en Railway\n• Asegúrate de tener Puppeteer instalado\n• Revisa los logs del servidor\n• Intenta de nuevo en unos minutos`)
 			.setColor('#FF0000')
 			.setTimestamp();
 
